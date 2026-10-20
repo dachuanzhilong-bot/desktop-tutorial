@@ -224,10 +224,10 @@ h1, h2, h3 { margin: 0; text-wrap: balance; }
 }
 .empty strong { color: var(--fg); font-family: var(--font-display); font-weight: 400; font-size: 20px; }
 
-.checkin { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+.checkin { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
 .checkin button { text-align: left; border: 1.5px solid var(--line-2); background: var(--panel); padding: 10px; display: flex; flex-direction: column; gap: 2px; min-width: 0; }
 .checkin small { font-size: 11px; color: var(--muted); font-weight: 700; display: flex; align-items: center; gap: 4px; }
-.checkin .num { font-size: 18px; white-space: nowrap; }
+.checkin .num { font-size: 16px; white-space: nowrap; }
 .num small.u { font-family: var(--font-body); font-weight: 700; font-size: 11px; margin: 0 1px; color: var(--muted); display: inline; }
 .checkin .unset { color: var(--dim); font-size: 13px; font-weight: 700; }
 
@@ -551,4 +551,26 @@ canvas.fx { position: fixed; inset: 0; z-index: 95; pointer-events: none; width:
 }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; }
+}
+
+/* ---------- 追加：曜日・体重・シーズン ---------- */
+.opts.week { display: grid; grid-template-columns: auto repeat(7, minmax(0, 1fr)); gap: 4px; }
+.opts.week button { min-width: 0; justify-content: center; padding: 0 4px; }
+.opts.week button:first-child { padding: 0 10px; margin-right: 4px; }
+
+.panel.weight { display: flex; flex-direction: column; gap: 6px; border-radius: 18px; }
+.wt-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.wt-head .num { font-size: 30px; color: var(--st-con); }
+.chart text { fill: var(--muted); font-size: 10px; font-family: var(--font-mono); }
+
+.season-card {
+  position: relative; display: block; width: 100%; height: 132px; overflow: hidden; text-align: left;
+  border: 2px solid var(--ember); box-shadow: 6px 6px 0 rgba(255, 107, 10, .35);
+}
+.season-card .scene { position: absolute; inset: 0; width: 100%; height: 100%; }
+.season-card .in { position: absolute; inset: auto 14px 12px 14px; display: flex; flex-direction: column; gap: 2px; }
+.season-card strong { font-family: var(--font-display); font-weight: 400; font-size: 24px; text-shadow: 0 2px 8px #000; }
+.season-card small { font-weight: 700; display: inline-flex; align-items: center; gap: 4px; text-shadow: 0 1px 6px #000; }
+@media (max-width: 370px) {
+  .checkin { grid-template-columns: repeat(2, 1fr); }
 }

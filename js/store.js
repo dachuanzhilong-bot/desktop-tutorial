@@ -23,7 +23,8 @@
       v: 1, demo: false, name: '', startDate: today(),
       base: { wis: 10, con: 10, str: 10, dis: 10, foc: 10 },
       habits: [], logs: {}, metrics: {}, workouts: [], active: null,
-      dismissed: [], rest: 90, nextTpl: null, updatedAt: 0
+      dismissed: [], rest: 90, nextTpl: null, updatedAt: 0,
+      templates: [], seasons: [], carryXp: 0, carryDone: 0
     };
   }
 
@@ -105,8 +106,12 @@
   };
 
   /* ---------- 習慣 ---------- */
+  const wdCache = {};
+  function weekdayOf(k) { return wdCache[k] != null ? wdCache[k] : (wdCache[k] = parseKey(k).getDay()); }
+  // days が未設定（または7日すべて）なら毎日
+  function scheduledOn(h, k) { return !h.days || !h.days.length || h.days.length === 7 || h.days.includes(weekdayOf(k)); }
   function habitsOn(k) {
-    return S.habits.filter(h => h.created <= k && (!h.archivedAt || h.archivedAt > k));
+    return S.habits.filter(h => h.created <= k && (!h.archivedAt || h.archivedAt > k) && scheduledOn(h, k));
   }
   function logOf(k, id) { return (S.logs[k] && S.logs[k][id]) || null; }
   function setLog(k, id, entry) {
@@ -176,12 +181,13 @@
     });
   }
 
-  // その日までの連続完了日数（スキップは途切れないが加算もしない）
+  // その日までの連続完了日数（スキップと予定のない曜日は途切れないが加算もしない）
   function habitStreak(h, k) {
     let n = 0, d = k;
     const l0 = logOf(d, h.id);
     if (!l0 || l0.s !== 'done') d = addDays(d, -1);
-    while (d >= h.created) {
+    while (d >= h.created && d >= S.startDate) {
+      if (!scheduledOn(h, d)) { d = addDays(d, -1); continue; }
       const l = logOf(d, h.id);
       if (l && l.s === 'done') n++;
       else if (!(l && l.s === 'skip')) break;
@@ -212,7 +218,8 @@
     return cache('ledger', () => {
       const t = today();
       const stats = Object.assign({}, S.base);
-      let xp = 0, totalDone = 0;
+      // 前のシーズンから引き継いだ分を足して始める
+      let xp = S.carryXp || 0, totalDone = S.carryDone || 0;
       const daily = [];
       const wByDay = {};
       S.workouts.forEach(w => { (wByDay[w.date] = wByDay[w.date] || []).push(w); });
@@ -232,9 +239,9 @@
         const m = S.metrics[k];
         if (m && +m.water >= 2) stats.dis++;
         xp += dxp; totalDone += dDone;
-        daily.push({ k, xp: dxp, done: dDone, cum: totalDone, stats: Object.assign({}, stats) });
+        daily.push({ k, xp: dxp, done: dDone, cum: totalDone - (S.carryDone || 0), cumXp: xp, stats: Object.assign({}, stats) });
       }
-      return { xp, stats, totalDone, daily };
+      return { xp, stats, totalDone, seasonDone: totalDone - (S.carryDone || 0), daily };
     });
   }
 
@@ -248,7 +255,7 @@
       S.workouts.forEach(w => { totalVolume += volumeOf(w).volume; });
       return {
         totalDone: L.totalDone, xp: L.xp, level: levelOf(L.xp),
-        bestStreak: streakInfo().best, streak: streakInfo().current,
+        bestStreak: Math.max(streakInfo().best, ...S.seasons.map(x => x.best || 0)), streak: streakInfo().current,
         workouts: S.workouts.length, totalVolume, day: Math.min(CHALLENGE_DAYS, Math.max(1, dayIndex(today())))
       };
     });
@@ -263,11 +270,30 @@
   }
 
   /* ---------- ワークアウト ---------- */
-  function templateById(id) { return TEMPLATES.find(t => t.id === id) || TEMPLATES[0]; }
+  function allTemplates() { return TEMPLATES.concat((S && S.templates) || []); }
+  function templateById(id) { return allTemplates().find(t => t.id === id) || TEMPLATES[0]; }
+
+  // 終えたワークアウトをマイテンプレートとして保存する（各種目の最後のセットを基準にする）
+  function saveTemplate(w) {
+    const base = w.tpl ? templateById(w.tpl) : null;
+    const t = {
+      id: 'c' + uid(), custom: true, name: w.name, short: w.name.slice(0, 5), hue: '#e2b552',
+      scene: base ? base.scene : 'city',
+      exercises: w.ex.map(e => { const last = e.sets[e.sets.length - 1] || {}; return { name: e.name, sets: e.sets.length, reps: +last.r || 10, w: +last.w || 0 }; })
+    };
+    S.templates.push(t);
+    commit();
+    return t;
+  }
+  function removeTemplate(id) {
+    S.templates = S.templates.filter(t => t.id !== id);
+    if (S.nextTpl === id) S.nextTpl = null;
+    commit();
+  }
 
   function suggestedTemplate() {
     if (S.nextTpl) return templateById(S.nextTpl);
-    const last = S.workouts.slice().sort((a, b) => b.start - a.start).find(w => w.tpl);
+    const last = S.workouts.slice().sort((a, b) => b.start - a.start).find(w => w.tpl && TEMPLATES.some(t => t.id === w.tpl));
     if (!last) return TEMPLATES[0];
     const i = TEMPLATES.findIndex(t => t.id === last.tpl);
     return TEMPLATES[(i + 1) % TEMPLATES.length];
@@ -326,6 +352,29 @@
     return { w, records, xp: workoutXP(w), ...volumeOf(w) };
   }
 
+  /* ---------- シーズン（66日ごとの区切り） ---------- */
+  function seasonOver() { return dayIndex(today()) > CHALLENGE_DAYS; }
+
+  // 能力値・XP・タスクを引き継いで、今日から次の66日を始める
+  function startNextSeason() {
+    const L = ledger(), t = totals();
+    const end = addDays(S.startDate, CHALLENGE_DAYS - 1);
+    let perfect = 0;
+    for (let k = S.startDate; k <= end; k = addDays(k, 1)) if (dayComplete(k)) perfect++;
+    S.seasons.push({
+      n: S.seasons.length + 1, start: S.startDate, end,
+      xp: L.xp - (S.carryXp || 0), done: L.seasonDone, best: streakInfo().best, perfect, level: t.level
+    });
+    const tk = today();
+    S.base = Object.assign({}, L.stats);
+    S.carryXp = L.xp;
+    S.carryDone = L.totalDone;
+    S.startDate = tk;
+    S.habits = S.habits.filter(h => !h.archivedAt).map(h => Object.assign({}, h, { created: tk }));
+    S.dismissed = [];
+    commit();
+  }
+
   /* ---------- 記録（ビフォーアフター） ---------- */
   function metricSeries(field) {
     return Object.keys(S.metrics).sort().filter(k => S.metrics[k][field] != null && S.metrics[k][field] !== '').map(k => ({ k, v: S.metrics[k][field] }));
@@ -344,7 +393,7 @@
     const mk = (i, over) => Object.assign({ id: 'demo' + i, created: start, target: 1, unit: '' }, PRESETS[i], over);
     s.habits = [
       mk(0, { title: '午前8時に起きる', time: '08:00' }),
-      mk(1, { created: addDays(start, 4) }),
+      mk(1, { created: addDays(start, 4), days: [1, 3, 5, 6] }),
       mk(2, { created: addDays(start, 1) }),
       mk(3, { created: addDays(start, 6) }),
       mk(4, {}),
@@ -387,11 +436,12 @@
       s.metrics[k] = {
         water: Math.round((0.7 + p * 1.4 + (r() - 0.5) * 0.2) * 10) / 10,
         wake: fromMin(648 - p * 113 + (r() - 0.5) * 12),
-        screen: Math.round(262 - p * 32 + (r() - 0.5) * 14)
+        screen: Math.round(262 - p * 32 + (r() - 0.5) * 14),
+        weight: Math.round((68.4 - p * 1.5 + (r() - 0.5) * 0.4) * 10) / 10
       };
     }
-    s.metrics[start] = { water: 0.7, wake: '10:48', screen: 262 };
-    s.metrics[t] = { water: 2.1, wake: '8:55', screen: 230 };
+    s.metrics[start] = { water: 0.7, wake: '10:48', screen: 262, weight: 68.4 };
+    s.metrics[t] = { water: 2.1, wake: '8:55', screen: 230, weight: 66.9 };
     return s;
   }
 
@@ -400,10 +450,10 @@
     get version() { return version; },
     Cloud, load, commit, replace, blank, seedDemo, on: fn => listeners.push(fn),
     keyOf, parseKey, today, addDays, diffDays, WD, uid, pad,
-    habitsOn, logOf, setLog, addHabit, updateHabit, removeHabit,
+    habitsOn, scheduledOn, logOf, setLog, addHabit, updateHabit, removeHabit, seasonOver, startNextSeason,
     dayIndex, dayStatus, dayComplete, streakInfo, habitStreak,
     ledger, totals, levelOf, xpForLevel, achievements,
-    volumeOf, workoutXP, templateById, suggestedTemplate, lastSetsFor, bestE1RM, startWorkout, finishWorkout,
+    volumeOf, workoutXP, templateById, allTemplates, saveTemplate, removeTemplate, suggestedTemplate, lastSetsFor, bestE1RM, startWorkout, finishWorkout,
     metricSeries, toMin, fromMin, STATS, LS_KEY
   };
 })(window);

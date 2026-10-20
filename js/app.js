@@ -52,6 +52,7 @@
     cloud: P('M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6 9.5 4.25 4.25 0 0 0 7 18z'),
     diamond: '<path d="M12 3l9 9-9 9-9-9z" fill="currentColor" stroke="none"/>',
     wave: P('M3 12h2 M7 9v6 M10 6v12 M14 8v8 M17 10v4 M21 12h-2'),
+    scale: P('M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z M8.5 10a3.5 3.5 0 0 1 7 0z M12 10l1.5-2'),
     restart: P('M4 4v6h6 M4.5 15a8 8 0 1 0 1.9-8.3L4 10')
   };
   const icon = (n, extra) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true" ${extra || ''}>${ICONS[n] || ''}</svg>`;
@@ -132,6 +133,11 @@
     const h = Math.floor(min / 60), m = min % 60;
     return (h ? `${h}<small class="u">時間</small>` : '') + `${m}<small class="u">分</small>`;
   }
+  const WEEK = [1, 2, 3, 4, 5, 6, 0];
+  function daysLabel(h) {
+    if (!h.days || !h.days.length || h.days.length === 7) return '';
+    return WEEK.filter(d => h.days.includes(d)).map(d => T.WD[d]).join('・');
+  }
   function dateLabel(k) {
     const d = T.parseKey(k);
     return `${d.getMonth() + 1}月${d.getDate()}日（${T.WD[d.getDay()]}）`;
@@ -176,7 +182,7 @@
     const isDone = l && l.s === 'done', isSkip = l && l.s === 'skip';
     const streak = T.habitStreak(h, k);
     const v = l ? +l.v || 0 : 0;
-    const meta = [h.time ? `<span class="num">${esc(h.time)}</span>` : '', esc(h.detail)].filter(Boolean).join(' · ');
+    const meta = [daysLabel(h), h.time ? `<span class="num">${esc(h.time)}</span>` : '', esc(h.detail)].filter(Boolean).join(' · ');
     const count = h.type === 'count'
       ? `<p class="meta"><span class="num">${isDone ? h.target : v} / ${h.target}</span>${esc(h.unit)}${h.detail ? ' · ' + esc(h.detail) : ''}</p><div class="bar"><i style="width:${Math.min(100, ((isDone ? h.target : v) / h.target) * 100)}%"></i></div>`
       : `<p class="meta">${meta || '&nbsp;'}</p>`;
@@ -206,6 +212,8 @@
     const list = groups[ui.filter];
     const trophies = T.achievements().filter(a => a.done).length;
     const m = S.metrics[k] || {};
+    const resting = S.habits.filter(h => h.created <= k && (!h.archivedAt || h.archivedAt > k) && !T.scheduledOn(h, k));
+    const over = T.seasonOver();
     const emptyMsg = {
       todo: items.length ? ['全部片付いた。', '今日のあなたは強い。明日もこの調子で。'] : ['まだタスクがありません', '右上の＋から、66日間続けたいことを追加しよう。'],
       done: ['まだ完了なし', 'チェックボタンを押すとここに並びます。'],
@@ -213,6 +221,7 @@
     }[ui.filter];
 
     return `
+      ${over && !S.demo ? `<button class="season-card" data-act="season">${scene('peak', 'season-' + S.seasons.length, { tone: false })}<span class="in"><span class="eyebrow hot">シーズン${S.seasons.length + 1} 完走</span><strong>66日を走り切った。</strong><small>結果を見て、次の66日へ ${icon('arrow')}</small></span></button>` : ''}
       ${S.demo ? `<div class="demo-bar"><p><strong>サンプルデータを表示中。</strong>触って試せます。</p><button class="btn small primary" data-act="onboard">自分の66日を始める</button></div>` : ''}
       <div class="topbar">
         <span class="chip hot" title="連続日数">${icon('flame')}<span class="num">${tot.streak}</span></span>
@@ -224,7 +233,7 @@
 
       <section class="dayhead">
         <div class="left">
-          <div class="daynum"><span class="num">${Math.max(1, day)}</span><span class="of">日目 / ${CHALLENGE_DAYS}</span></div>
+          <div class="daynum"><span class="num">${Math.max(1, day)}</span><span class="of">${day > CHALLENGE_DAYS ? '日目 · 延長戦' : `日目 / ${CHALLENGE_DAYS}`}</span></div>
           <p class="cheer">${cheer(k, st)}</p>
           <div class="date-label">${dateLabel(k)}${k === t ? ' · 今日' : ''}</div>
         </div>
@@ -248,6 +257,7 @@
         <button class="icon-btn" data-act="add-habit" aria-label="タスクを追加">${icon('plus')}</button>
       </div>
 
+      ${resting.length && ui.filter === 'todo' ? `<p class="muted small" style="margin:-8px 0 0">${k === t ? '今日' : 'この日'}は予定なし：${resting.map(h => esc(h.title)).join('、')}</p>` : ''}
       <div class="cards">
         ${list.length ? list.map(x => habitCard(x.h, x.l, k)).join('') : `<div class="empty"><strong>${emptyMsg[0]}</strong><span>${emptyMsg[1]}</span>${!items.length ? `<button class="btn primary" data-act="add-habit">${icon('plus')}タスクを追加</button>` : ''}</div>`}
       </div>
@@ -257,6 +267,7 @@
         <button data-act="metrics"><small style="color:var(--st-foc)">${icon('drop')}水分</small>${m.water != null && m.water !== '' ? `<span class="num">${m.water}<small class="u">L</small></span>` : '<span class="unset">未記録</span>'}</button>
         <button data-act="metrics"><small style="color:#e2b552">${icon('sun')}起床</small>${m.wake ? `<span class="num">${esc(m.wake)}</span>` : '<span class="unset">未記録</span>'}</button>
         <button data-act="metrics"><small style="color:var(--st-dis)">${icon('phone')}スマホ</small>${m.screen != null && m.screen !== '' ? `<span class="num">${durHTML(m.screen)}</span>` : '<span class="unset">未記録</span>'}</button>
+        <button data-act="metrics"><small style="color:var(--st-con)">${icon('scale')}体重</small>${m.weight ? `<span class="num">${m.weight}<small class="u">kg</small></span>` : '<span class="unset">未記録</span>'}</button>
       </div>`;
   }
 
@@ -296,7 +307,7 @@
           const d = T.addDays(T.S.startDate, i);
           const x = T.logOf(d, h.id);
           let c = '';
-          if (d < h.created || d > T.today()) c = 'n';
+          if (d < h.created || d > T.today() || !T.scheduledOn(h, d)) c = 'n';
           else if (x && x.s === 'done') { c = 'd'; run++; doneCount++; best = Math.max(best, run); }
           else if (x && x.s === 'skip') c = 's';
           else if (d !== T.today()) run = 0;
@@ -310,7 +321,7 @@
             <div><small>最長</small><span class="num">${best}</span><small>日</small></div>
             <div><small>累計</small><span class="num">${doneCount}</span><small>回</small></div>
           </div>
-          <p class="muted small" style="margin:0">${esc(h.detail) || '詳細なし'}${h.time ? ` · ${esc(h.time)}` : ''} · <span style="color:${STAT[h.stat].color}">${STAT[h.stat].label}</span>が伸びる</p>
+          <p class="muted small" style="margin:0">${daysLabel(h) ? daysLabel(h) + ' · ' : '毎日 · '}${esc(h.detail) || '詳細なし'}${h.time ? ` · ${esc(h.time)}` : ''} · <span style="color:${STAT[h.stat].color}">${STAT[h.stat].label}</span>が伸びる</p>
           ${h.type === 'count' && !isSkip ? `
             <div class="stepper">
               <button data-act="step" data-id="${h.id}" data-d="-1" aria-label="減らす">${icon('minus')}</button>
@@ -365,6 +376,10 @@
             <label class="field"><span>詳細</span><input type="text" id="hf-detail" data-draft="detail" value="${esc(d.detail)}" maxlength="40" placeholder="例：ゾーン2ペース"></label>
             <label class="field"><span>時間（任意）</span><input type="time" id="hf-time" data-draft="time" value="${esc(d.time)}"></label>
             <div class="field"><span>伸びる能力</span><div class="opts">${STATS.map(s => `<button type="button" data-act="draft" data-k="stat" data-v="${s.key}" aria-pressed="${d.stat === s.key}"><i class="sw" style="--c:${s.color}"></i>${s.label}</button>`).join('')}</div></div>
+            <div class="field"><span>やる曜日</span><div class="opts week">
+              <button type="button" data-act="draft-everyday" aria-pressed="${!d.days || !d.days.length || d.days.length === 7}">毎日</button>
+              ${WEEK.map(w => `<button type="button" data-act="draft-day" data-v="${w}" aria-pressed="${!!(d.days && d.days.length && d.days.length < 7 && d.days.includes(w))}">${T.WD[w]}</button>`).join('')}
+            </div></div>
             <div class="field"><span>記録の仕方</span><div class="opts">
               <button type="button" data-act="draft" data-k="type" data-v="check" aria-pressed="${d.type !== 'count'}">${icon('check')}チェック</button>
               <button type="button" data-act="draft" data-k="type" data-v="count" aria-pressed="${d.type === 'count'}">${icon('plus')}回数・量</button>
@@ -385,7 +400,8 @@
     if (!d.title.trim()) { toast('タイトルを入力してください'); return; }
     const data = {
       title: d.title.trim(), detail: (d.detail || '').trim(), time: d.time || '', stat: d.stat, scene: d.scene, type: d.type,
-      target: Math.max(1, Math.min(9999, parseInt(d.target, 10) || 1)), unit: (d.unit || '').trim()
+      target: Math.max(1, Math.min(9999, parseInt(d.target, 10) || 1)), unit: (d.unit || '').trim(),
+      days: d.days && d.days.length && d.days.length < 7 ? d.days.slice().sort() : null
     };
     if (ui.draftId) { T.updateHabit(ui.draftId, data); toast('保存しました'); }
     else {
@@ -421,6 +437,7 @@
                 <label class="field"><span class="small muted">時間</span><input type="number" id="mf-sh" data-mdraft="sh" min="0" max="24" inputmode="numeric" value="${d.screen != null && d.screen !== '' ? Math.floor(d.screen / 60) : ''}"></label>
                 <label class="field"><span class="small muted">分</span><input type="number" id="mf-sm" data-mdraft="sm" min="0" max="59" inputmode="numeric" value="${d.screen != null && d.screen !== '' ? d.screen % 60 : ''}"></label>
               </div></div>
+            <label class="field"><span>${icon('scale')} 体重（kg・任意）</span><input type="number" id="mf-weight" step="0.1" min="20" max="300" inputmode="decimal" value="${d.weight || ''}" placeholder="例：66.9"></label>
             <button class="btn primary block" type="submit">記録する</button>
           </form>`;
       }
@@ -435,6 +452,8 @@
     if (d.water != null && d.water !== '') out.water = Math.round(d.water * 100) / 100;
     if (wake) out.wake = wake.replace(/^0(\d):/, '$1:');
     if (sh !== '' || sm !== '') out.screen = (parseInt(sh, 10) || 0) * 60 + (parseInt(sm, 10) || 0);
+    const wt = parseFloat($('#mf-weight').value);
+    if (wt >= 20 && wt <= 300) out.weight = Math.round(wt * 10) / 10;
     progress(() => {
       if (Object.keys(out).length) T.S.metrics[k] = out; else delete T.S.metrics[k];
       T.commit();
@@ -506,7 +525,7 @@
       <p class="eyebrow">クイックスタート</p>
       <div class="quick">
         <button data-act="start-free"><span class="ico">${icon('plus')}</span>新規</button>
-        ${TEMPLATES.map(x => `<button data-act="pick-tpl" data-tpl="${x.id}" aria-pressed="${!a && x.id === tpl.id}"><span class="ico" style="--c:${x.hue}">${icon('wave')}</span>${x.short}</button>`).join('')}
+        ${T.allTemplates().map(x => `<button data-act="pick-tpl" data-tpl="${x.id}" aria-pressed="${!a && x.id === tpl.id}"><span class="ico" style="--c:${x.hue}">${icon(x.custom ? 'diamond' : 'wave')}</span>${esc(x.short)}</button>`).join('')}
       </div>
       <button class="create-row" data-act="start-free">
         <span class="sq">${icon('diamond')}</span>
@@ -517,6 +536,8 @@
         <div class="mini"><h4>今週の総挙上量</h4><span class="big num" style="font-size:28px">${fmt(wk)}<small style="font-size:13px"> kg</small></span><span class="sub">${delta == null ? '先週の記録なし' : `先週比 <b style="color:${delta >= 0 ? 'var(--good)' : 'var(--bad)'}">${delta >= 0 ? '+' : ''}${delta}%</b>`}</span></div>
         <div class="mini"><h4>累計</h4><span class="big num" style="font-size:28px">${S.workouts.length}<small style="font-size:13px"> 回</small></span><span class="sub">${fmt(T.totals().totalVolume)} kg 挙げた</span></div>
       </div>
+      ${S.templates.length ? `<div class="section-head"><p class="eyebrow">マイテンプレート</p></div>
+      <div class="list">${S.templates.map(x => `<button class="row" data-act="tpl-open" data-id="${x.id}"><span class="txt"><strong>${esc(x.name)}</strong><small>${x.exercises.length}種目 · ${x.exercises.reduce((n, e) => n + e.sets, 0)}セット · ${x.exercises.map(e => esc(e.name)).join('、')}</small></span>${icon('chevR')}</button>`).join('')}</div>` : ''}
       ${prList.length ? `<div class="section-head"><p class="eyebrow">自己ベスト（推定1RM）</p></div>
       <div class="prs">${prList.map(([n, p]) => `<div><small>${esc(n)}</small><span class="num">${Math.round(p.v)}<em>kg</em></span><small class="mono" style="font-weight:400">${p.w}kg × ${p.r}</small></div>`).join('')}</div>` : ''}
       <p class="eyebrow">最近</p>
@@ -667,7 +688,9 @@
     progress(() => { res = T.finishWorkout(); });
     ui.sessionMin = false;
     if (!res) return;
+    ui.savedTpl = false;
     openSheet({
+      live: true,
       render() {
         return `
           <div class="art">${scene(res.w.tpl ? T.templateById(res.w.tpl).scene : 'night', 'tpl-' + (res.w.tpl || 'free'))}<h3>${esc(res.w.name)} 完了</h3></div>
@@ -678,6 +701,7 @@
           </div>
           ${res.records.length ? `<div class="records">${res.records.map(r => `<div>${icon('trophy')}<span>${esc(r.name)}</span>${r.first ? '初記録' : '自己ベスト更新'} ${r.value}kg</div>`).join('')}</div>` : ''}
           <p class="muted" style="margin:0">強さ <b style="color:var(--st-str)">+3</b>・自制心 <b style="color:var(--st-dis)">+1</b>・<b style="color:var(--ember-2)">+${res.xp} XP</b>。追い込んだら、賢く休もう。</p>
+          ${ui.savedTpl ? `<p class="muted small" style="margin:0">${icon('check')} マイテンプレートに保存しました。トレーニング画面のクイックスタートから開始できます。</p>` : `<button class="btn block" data-act="tpl-save" data-id="${res.w.id}">${icon('diamond')}このメニューをマイテンプレートに保存</button>`}
           <button class="btn primary block" data-act="close">閉じる</button>`;
       }
     });
@@ -720,10 +744,14 @@
     const wk = S.workouts.filter(w => T.diffDays(w.date, t) < 7);
     let vol = 0, prevVol = 0;
     S.workouts.forEach(w => { const dd = T.diffDays(w.date, t), v = T.volumeOf(w).volume; if (dd < 7) vol += v; else if (dd < 14) prevVol += v; });
+    const wts = T.metricSeries('weight');
+    const bw = wts.length ? +wts[wts.length - 1].v : null;
+    const protein = bw ? Math.round((bw * 1.6) / 5) * 5 : 120;
     if (wk.length >= 2) {
       const reasons = [`今は週${wk.length}回の筋トレ`];
+      if (bw) reasons.unshift(`体重${bw}kg×1.6g`);
       if (prevVol) reasons.push(`筋負荷が先週より${Math.round(((vol - prevVol) / prevVol) * 100)}%${vol >= prevVol ? '増' : '減'}`);
-      out.push({ id: 'protein', big: '120g', sub: 'タンパク質 / 日', reasons, habit: { title: 'タンパク質120g', detail: '体重×1.6gが目安', stat: 'str', scene: 'dojo', type: 'count', target: 120, unit: 'g' } });
+      out.push({ id: 'protein', big: `${protein}g`, sub: 'タンパク質 / 日', reasons: reasons.slice(0, 3), habit: { title: `タンパク質${protein}g`, detail: '体重×1.6gが目安', stat: 'str', scene: 'dojo', type: 'count', target: protein, unit: 'g' } });
     }
     const water = T.metricSeries('water').slice(-3);
     if (water.length && water.reduce((n, x) => n + +x.v, 0) / water.length < 2) {
@@ -789,6 +817,34 @@
       return `<div style="--c:${f.c}"><span class="hd"><span class="ico">${icon(f.ico)}</span>${f.label}</span><span class="was">${f.show(a.v)}<br>${ago}日前</span><span class="now num">${f.big(b.v)}</span><span class="delta">${f.delta(a.v, b.v)}</span></div>`;
     });
     return { html: cells.join(''), changes };
+  }
+
+  function weightChart() {
+    const s = T.metricSeries('weight').map(x => ({ k: x.k, v: +x.v }));
+    if (s.length < 2) return '';
+    const W = 320, H = 120, padL = 34, padR = 10, padT = 12, padB = 22;
+    const vs = s.map(x => x.v);
+    const lo = Math.floor(Math.min(...vs) - 0.5), hi = Math.ceil(Math.max(...vs) + 0.5);
+    const span = Math.max(1, T.diffDays(s[0].k, s[s.length - 1].k));
+    const x = k => padL + (T.diffDays(s[0].k, k) / span) * (W - padL - padR);
+    const y = v => padT + (1 - (v - lo) / (hi - lo)) * (H - padT - padB);
+    const pts = s.map(p => `${x(p.k).toFixed(1)},${y(p.v).toFixed(1)}`).join(' ');
+    const first = s[0], last = s[s.length - 1];
+    const d = Math.round((last.v - first.v) * 10) / 10;
+    const mid = Math.round(((lo + hi) / 2) * 10) / 10;
+    const dl = k => { const dt = T.parseKey(k); return `${dt.getMonth() + 1}/${dt.getDate()}`; };
+    return `
+      <div class="section-head"><p class="eyebrow">体重の推移</p><span class="more mono">${d > 0 ? '+' : d < 0 ? '−' : '±'}${Math.abs(d)} kg</span></div>
+      <div class="panel weight">
+        <div class="wt-head"><span class="num">${last.v}<small class="u">kg</small></span><span class="muted small">${dl(first.k)}は${first.v}kg</span></div>
+        <svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="体重の推移">
+          ${[lo, mid, hi].map(v => `<line x1="${padL}" y1="${y(v).toFixed(1)}" x2="${W - padR}" y2="${y(v).toFixed(1)}" stroke="var(--line)" ${v === mid ? 'stroke-dasharray="2 4"' : ''}/><text x="${padL - 6}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${v}</text>`).join('')}
+          <polyline points="${pts}" fill="none" stroke="var(--st-con)" stroke-width="2.5" stroke-linejoin="round"/>
+          ${s.map(p => `<circle cx="${x(p.k).toFixed(1)}" cy="${y(p.v).toFixed(1)}" r="2.5" fill="var(--st-con)"/>`).join('')}
+          <circle cx="${x(last.k).toFixed(1)}" cy="${y(last.v).toFixed(1)}" r="5" fill="var(--panel)" stroke="var(--st-con)" stroke-width="2.5"/>
+          <text x="${padL}" y="${H - 4}">${dl(first.k)}</text><text x="${W - padR}" y="${H - 4}" text-anchor="end">${dl(last.k)}</text>
+        </svg>
+      </div>`;
   }
 
   function weekdayBars() {
@@ -864,7 +920,7 @@
       <div class="duo">
         <div class="mini">
           <h4>完了数</h4>
-          <span class="big num">${fmt(L.totalDone)}</span>
+          <span class="big num">${fmt(L.seasonDone)}</span>
           <span class="sub">1日目から</span>
           ${completionChart()}
           <div class="legend"><span><i></i>あなた</span><span><i class="dash"></i>目標ペース</span><span style="margin-left:auto">今日 +${firstDay}</span></div>
@@ -880,6 +936,8 @@
 
       <div class="section-head"><p class="eyebrow">ビフォーアフター</p><button class="more" data-act="metrics">${ba.changes}つの変化${icon('chevR')}</button></div>
       <div class="ba">${ba.html}</div>
+
+      ${weightChart()}
 
       <div class="section-head"><p class="eyebrow">66日マップ</p></div>
       <div class="heat" aria-label="66日間の達成状況">${heatmap()}</div>
@@ -972,6 +1030,33 @@
   }
 
   /* ======================================================================
+   * シーズン完走
+   * ==================================================================== */
+  function seasonSheet() {
+    openSheet({
+      render() {
+        const S = T.S, L = T.ledger(), tot = T.totals();
+        const end = T.addDays(S.startDate, CHALLENGE_DAYS - 1);
+        let perfect = 0;
+        for (let k = S.startDate; k <= end; k = T.addDays(k, 1)) if (T.dayComplete(k)) perfect++;
+        const tops = topStats(L.stats);
+        const growth = STATS.map(s => ({ s, g: L.stats[s.key] - S.base[s.key] })).sort((a, b) => b.g - a.g);
+        return `
+          <div class="art">${scene('peak', 'season-' + S.seasons.length)}<h3>シーズン${S.seasons.length + 1} 完走</h3></div>
+          <div class="kv">
+            <div><small>完了</small><span class="num">${fmt(L.seasonDone)}</span><small>回</small></div>
+            <div><small>完璧な日</small><span class="num">${perfect}</span><small>/ 66日</small></div>
+            <div><small>最長連続</small><span class="num">${T.streakInfo().best}</span><small>日</small></div>
+          </div>
+          <p style="margin:0">クラスは<b>${CLASSES[tops[0].k].name}</b>、レベル<b>${tot.level}</b>。いちばん伸びたのは<b style="color:${growth[0].s.color}">${growth[0].s.label}（+${growth[0].g}）</b>。</p>
+          <p class="muted small" style="margin:0">次のシーズンでは、今のレベル・能力値・タスクを引き継いで1日目から数え直します。過去の記録は消えません。</p>
+          <button class="btn primary block" data-act="season-next">${icon('flame')}次の66日を始める</button>
+          <button class="btn quiet block" data-act="close">あとで</button>`;
+      }
+    });
+  }
+
+  /* ======================================================================
    * 設定
    * ==================================================================== */
   function settingsSheet() {
@@ -993,14 +1078,15 @@
           <div class="field"><span>データ</span>
             <p class="muted small" style="margin:0">${icon('cloud')} ${cloud}</p>
             <div class="acts">
-              <button class="btn quiet small" data-act="export">${icon('copy')}バックアップをコピー</button>
+              <button class="btn quiet small" data-act="export">${icon('copy')}書き出す</button>
               <button class="btn quiet small" data-act="import-open">読み込む</button>
             </div>
             ${ui.io === 'import' ? `<label class="field"><span class="sr">バックアップ</span><textarea id="io-text" placeholder="コピーしたバックアップを貼り付け"></textarea></label><button class="btn primary small" data-act="import">このデータで置き換える</button>` : ''}
             ${ui.io === 'export' ? `<label class="field"><span class="small muted">コピーできない場合は、下の文字を全選択してコピー</span><textarea id="io-text" readonly>${esc(JSON.stringify(S))}</textarea></label>` : ''}
           </div>
+          ${S.seasons.length ? `<div class="field"><span>過去のシーズン</span><div class="list">${S.seasons.map(x => `<div class="row"><span class="txt"><strong>シーズン${x.n}</strong><small>${x.start} 〜 ${x.end} · 完了${fmt(x.done)}回 · 最長${x.best}日 · 完璧な日${x.perfect}</small></span><span class="pill hot">Lv${x.level}</span></div>`).join('')}</div></div>` : ''}
           <div class="field"><span>やり直す</span>
-            ${ui.confirm === 'reset' ? `<div class="confirm"><p>すべての記録を消して、1日目から始めます。元に戻せません。先にバックアップをコピーしておくと安心です。</p><div class="acts"><button class="btn quiet small" data-act="confirm-cancel">やめる</button><button class="btn danger small" data-act="reset">消して始める</button></div></div>` : `
+            ${ui.confirm === 'reset' ? `<div class="confirm"><p>すべての記録を消して、1日目から始めます。元に戻せません。先に「書き出す」でバックアップしておくと安心です。</p><div class="acts"><button class="btn quiet small" data-act="confirm-cancel">やめる</button><button class="btn danger small" data-act="reset">消して始める</button></div></div>` : `
             <div class="acts">
               <button class="btn quiet small" data-act="${S.demo ? 'onboard' : 'confirm'}" data-c="reset">${icon('restart')}最初から始める</button>
               ${S.demo ? '' : `<button class="btn quiet small" data-act="demo">サンプルを見る</button>`}
@@ -1260,7 +1346,7 @@
       renderOnb();
     },
     // ワークアウト
-    start(el) { hideRest(); ui.sessionMin = false; T.startWorkout(el.dataset.tpl); },
+    start(el) { hideRest(); closeSheet(); ui.sessionMin = false; T.startWorkout(el.dataset.tpl); },
     'start-free'() {
       if (T.S.active) { ui.sessionMin = false; render(); return; }
       ui.sessionMin = false; T.startWorkout(null); setTimeout(exerciseSheet, 50);
@@ -1304,7 +1390,47 @@
       T.addHabit(Object.assign({ created: T.today() }, sg.habit));
       toast(`「${esc(sg.habit.title)}」を追加しました`);
     },
-    'lv-close'() { /* 背景クリックで閉じる */ }
+    'lv-close'() { /* 背景クリックで閉じる */ },
+    'draft-day'(el) {
+      const v = +el.dataset.v, d = ui.draft;
+      let days = d.days && d.days.length && d.days.length < 7 ? d.days.slice() : [];
+      days = days.includes(v) ? days.filter(x => x !== v) : days.concat(v);
+      d.days = days.length && days.length < 7 ? days : null;
+      drawSheet();
+    },
+    'draft-everyday'() { ui.draft.days = null; drawSheet(); },
+    'tpl-save'(el) {
+      const w = T.S.workouts.find(x => x.id === el.dataset.id);
+      if (!w) return;
+      T.saveTemplate(w);
+      ui.savedTpl = true;
+      drawSheet();
+    },
+    'tpl-open'(el) {
+      const id = el.dataset.id;
+      openSheet({
+        live: true,
+        render() {
+          const x = T.S.templates.find(t => t.id === id);
+          if (!x) { setTimeout(closeSheet); return ''; }
+          return `
+            <div class="sheet-head"><h2>${esc(x.name)}</h2><button class="icon-btn ghost" data-act="close" aria-label="閉じる">${icon('x')}</button></div>
+            <div class="list">${x.exercises.map(e => `<div class="row">${exIcon(e.name)}<span class="txt"><strong>${esc(e.name)}</strong><small class="mono">${e.sets}セット × ${e.reps}回${e.w ? ` · ${e.w}kg` : ''}</small></span></div>`).join('')}</div>
+            <button class="btn primary block" data-act="start" data-tpl="${x.id}">${icon('play')}このメニューで開始</button>
+            ${ui.confirm === 'tdel' ? `<div class="confirm"><p>「${esc(x.name)}」を削除します。過去のワークアウト記録は残ります。</p><div class="acts"><button class="btn quiet small" data-act="confirm-cancel">やめる</button><button class="btn danger small" data-act="tpl-del" data-id="${x.id}">削除する</button></div></div>` : `<button class="btn quiet block" data-act="confirm" data-c="tdel">${icon('trash')}テンプレートを削除</button>`}`;
+        }
+      });
+    },
+    'tpl-del'(el) { T.removeTemplate(el.dataset.id); closeSheet(); toast('テンプレートを削除しました'); },
+    season() { seasonSheet(); },
+    'season-next'() {
+      T.startNextSeason();
+      closeSheet();
+      ui.viewDate = T.today(); ui.filter = 'todo';
+      render(true);
+      confetti();
+      toast(`${icon('flame')} シーズン${T.S.seasons.length + 1}、1日目スタート`);
+    }
   };
 
   function selectIO() { const t = $('#io-text'); if (t) { t.focus(); t.select(); } }
