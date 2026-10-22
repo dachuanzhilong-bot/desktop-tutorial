@@ -2,7 +2,7 @@
 (function (G) {
   'use strict';
 
-  const { CHALLENGE_DAYS, STATS, TEMPLATES, ACHIEVEMENTS, PRESETS } = G.D;
+  const { CHALLENGE_DAYS, STATS, TEMPLATES, ACHIEVEMENTS, PRESETS, EX_KIND } = G.D;
   const LS_KEY = 'sixtysix.v1';
   const MAX_DOC = 240 * 1024;
 
@@ -24,7 +24,7 @@
       base: { wis: 10, con: 10, str: 10, dis: 10, foc: 10 },
       habits: [], logs: {}, metrics: {}, workouts: [], active: null,
       dismissed: [], rest: 90, nextTpl: null, updatedAt: 0,
-      templates: [], seasons: [], carryXp: 0, carryDone: 0, journal: {}, timer: null
+      templates: [], seasons: [], carryXp: 0, carryDone: 0, journal: {}, timer: null, sortMode: 'time', reviewSeen: null
     };
   }
 
@@ -151,6 +151,17 @@
     } else {
       h.archivedAt = today();
     }
+    commit();
+  }
+
+  // 自分の順番に並べ替える（アーカイブ済みは末尾のまま）
+  function moveHabit(id, dir) {
+    const live = S.habits.filter(h => !h.archivedAt);
+    const i = live.findIndex(h => h.id === id), j = i + dir;
+    if (i < 0 || j < 0 || j >= live.length) return;
+    [live[i], live[j]] = [live[j], live[i]];
+    S.habits = live.concat(S.habits.filter(h => h.archivedAt));
+    S.sortMode = 'manual';
     commit();
   }
 
@@ -351,13 +362,34 @@
     return out;
   }
 
+  /*
+   * 漸進的オーバーロード：前回すべてのセットで目標回数に届いていたら負荷を上げる。
+   * 下半身・デッドリフトのバーベル系 +5kg、その他 +2.5kg、ダンベル +1kg、自重は +1回。
+   */
+  const BIG_LIFTS = ['スクワット', 'デッドリフト', 'ルーマニアンデッドリフト', 'レッグプレス'];
+  function progression(name, targetReps) {
+    const prev = lastSetsFor(name);
+    if (!prev || !prev.length) return { prev: null, add: 0, addReps: 0 };
+    const hit = prev.every(s => (+s.r || 0) >= targetReps);
+    if (!hit) return { prev, add: 0, addReps: 0 };
+    const kind = EX_KIND[name] || 'dumbbell';
+    if (kind === 'body' || !prev.some(s => +s.w > 0)) return { prev, add: 0, addReps: 1 };
+    return { prev, add: kind === 'dumbbell' ? 1 : BIG_LIFTS.includes(name) ? 5 : 2.5, addReps: 0 };
+  }
+
   function startWorkout(tpl) {
     const t = tpl ? templateById(tpl) : null;
     S.active = {
       id: uid(), tpl: t ? t.id : null, name: t ? t.name : '自由セッション', start: Date.now(),
       ex: t ? t.exercises.map(e => {
-        const prev = lastSetsFor(e.name);
-        return { name: e.name, sets: Array.from({ length: e.sets }, (_, i) => ({ w: prev && prev[i] ? prev[i].w : e.w, r: prev && prev[i] ? prev[i].r : e.reps, done: false })) };
+        const { prev, add, addReps } = progression(e.name, e.reps);
+        const sets = Array.from({ length: e.sets }, (_, i) => {
+          const base = prev ? prev[i] || prev[prev.length - 1] : null;
+          if (!base) return { w: e.w, r: e.reps, done: false };
+          if (add) return { w: Math.round(((+base.w || 0) + add) * 10) / 10, r: e.reps, done: false };
+          return { w: base.w, r: (+base.r || 0) + addReps, done: false };
+        });
+        return { name: e.name, target: e.reps, hint: add ? `+${add}kg` : addReps ? `+${addReps}回` : '', sets };
       }) : []
     };
     commit();
@@ -380,6 +412,45 @@
     S.nextTpl = null;
     commit();
     return { w, records, xp: workoutXP(w), ...volumeOf(w) };
+  }
+
+  /* ---------- 週のふりかえり（月曜はじまり） ---------- */
+  function mondayOf(k) { return addDays(k, -((weekdayOf(k) + 6) % 7)); }
+
+  function weekSummary(ws) {
+    const t = today(), we = addDays(ws, 6);
+    const from = ws > S.startDate ? ws : S.startDate, to = we < t ? we : t;
+    let total = 0, done = 0, skip = 0, perfect = 0, days = 0, xp = 0, bestDay = null;
+    const per = {};
+    for (let k = from; k <= to; k = addDays(k, 1)) {
+      const st = dayStatus(k);
+      days++;
+      total += st.total; done += st.done; skip += st.skip;
+      if (dayComplete(k)) perfect++;
+      if (st.done && (!bestDay || st.done > bestDay.done)) bestDay = { k, done: st.done, total: st.total };
+      habitsOn(k).forEach(h => {
+        const x = per[h.id] || (per[h.id] = { h, due: 0, done: 0 });
+        const l = logOf(k, h.id);
+        if (l && l.s === 'skip') return;
+        x.due++;
+        if (l && l.s === 'done') x.done++;
+      });
+    }
+    ledger().daily.forEach(d => { if (d.k >= from && d.k <= to) xp += d.xp; });
+    const ws_ = S.workouts.filter(w => w.date >= ws && w.date <= we);
+    let volume = 0, sets = 0;
+    ws_.forEach(w => { const v = volumeOf(w); volume += v.volume; sets += v.sets; });
+    const moods = Object.keys(S.journal || {}).filter(k => k >= from && k <= to && S.journal[k].mood).map(k => S.journal[k].mood);
+    const weights = Object.keys(S.metrics).filter(k => k >= ws && k <= we && S.metrics[k].weight).sort().map(k => +S.metrics[k].weight);
+    return {
+      ws, we, from, to, days, total, done, skip, perfect, xp, bestDay,
+      rate: total - skip > 0 ? done / (total - skip) : 0,
+      habits: Object.values(per).sort((a, b) => (b.due ? b.done / b.due : 0) - (a.due ? a.done / a.due : 0)),
+      workouts: ws_.length, volume, sets,
+      mood: moods.length ? moods.reduce((a, b) => a + b, 0) / moods.length : null,
+      weight: weights.length >= 2 ? Math.round((weights[weights.length - 1] - weights[0]) * 10) / 10 : null,
+      valid: from <= to
+    };
   }
 
   /* ---------- シーズン（66日ごとの区切り） ---------- */
@@ -491,7 +562,7 @@
     get version() { return version; },
     Cloud, load, commit, replace, blank, seedDemo, on: fn => listeners.push(fn),
     keyOf, parseKey, today, addDays, diffDays, WD, uid, pad,
-    isAmount, exerciseHistory, habitsOn, scheduledOn, logOf, setLog, addHabit, updateHabit, removeHabit, seasonOver, startNextSeason,
+    isAmount, exerciseHistory, moveHabit, mondayOf, weekSummary, habitsOn, scheduledOn, logOf, setLog, addHabit, updateHabit, removeHabit, seasonOver, startNextSeason,
     dayIndex, dayStatus, dayComplete, streakInfo, habitStreak,
     ledger, totals, levelOf, xpForLevel, achievements,
     volumeOf, workoutXP, templateById, allTemplates, saveTemplate, removeTemplate, suggestedTemplate, lastSetsFor, bestE1RM, startWorkout, finishWorkout,

@@ -53,6 +53,9 @@
     diamond: '<path d="M12 3l9 9-9 9-9-9z" fill="currentColor" stroke="none"/>',
     wave: P('M3 12h2 M7 9v6 M10 6v12 M14 8v8 M17 10v4 M21 12h-2'),
     pause: P('M8 5v14 M16 5v14'),
+    sort: P('M7 4v16 M4 7l3-3 3 3 M17 20V4 M14 17l3 3 3-3'),
+    chevU: P('M6 15l6-6 6 6'),
+    calendar: P('M4 6h16v14H4z M4 10h16 M8 3v4 M16 3v4'),
     stop: '<rect x="6" y="6" width="12" height="12" fill="currentColor" stroke="none"/>',
     share: P('M12 3v12 M7 8l5-5 5 5 M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6'),
     scale: P('M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z M8.5 10a3.5 3.5 0 0 1 7 0z M12 10l1.5-2'),
@@ -212,11 +215,14 @@
     const day = T.dayIndex(k);
     const st = T.dayStatus(k);
     const items = T.habitsOn(k).map(h => ({ h, l: T.logOf(k, h.id) }));
-    const byTime = (a, b) => (a.h.time || '99') < (b.h.time || '99') ? -1 : 1;
+    const order = new Map(S.habits.map((h, i) => [h.id, i]));
+    const sorter = S.sortMode === 'manual'
+      ? (a, b) => order.get(a.h.id) - order.get(b.h.id)
+      : (a, b) => (a.h.time || '99') < (b.h.time || '99') ? -1 : (a.h.time || '99') > (b.h.time || '99') ? 1 : order.get(a.h.id) - order.get(b.h.id);
     const groups = {
-      todo: items.filter(x => !x.l || (x.l.s !== 'done' && x.l.s !== 'skip')).sort(byTime),
-      done: items.filter(x => x.l && x.l.s === 'done'),
-      skip: items.filter(x => x.l && x.l.s === 'skip')
+      todo: items.filter(x => !x.l || (x.l.s !== 'done' && x.l.s !== 'skip')).sort(sorter),
+      done: items.filter(x => x.l && x.l.s === 'done').sort(sorter),
+      skip: items.filter(x => x.l && x.l.s === 'skip').sort(sorter)
     };
     const list = groups[ui.filter];
     const trophies = T.achievements().filter(a => a.done).length;
@@ -224,6 +230,8 @@
     const j = S.journal[k] || {};
     const resting = S.habits.filter(h => h.created <= k && (!h.archivedAt || h.archivedAt > k) && !T.scheduledOn(h, k));
     const over = T.seasonOver();
+    const lastWs = T.addDays(T.mondayOf(t), -7);
+    const reviewDue = !S.demo && k === t && T.addDays(lastWs, 6) >= S.startDate && S.reviewSeen !== lastWs;
     const emptyMsg = {
       todo: items.length ? ['全部片付いた。', '今日のあなたは強い。明日もこの調子で。'] : ['まだタスクがありません', '右上の＋から、66日間続けたいことを追加しよう。'],
       done: ['まだ完了なし', 'チェックボタンを押すとここに並びます。'],
@@ -232,6 +240,7 @@
 
     return `
       ${over && !S.demo ? `<button class="season-card" data-act="season">${scene('peak', 'season-' + S.seasons.length, { tone: false })}<span class="in"><span class="eyebrow hot">シーズン${S.seasons.length + 1} 完走</span><strong>66日を走り切った。</strong><small>結果を見て、次の66日へ ${icon('arrow')}</small></span></button>` : ''}
+      ${reviewDue ? `<button class="review-card" data-act="week" data-ws="${lastWs}">${icon('calendar')}<span class="txt"><strong>先週のふりかえりが届きました</strong><small>${weekRangeLabel(lastWs)}の結果を見る</small></span>${icon('chevR')}</button>` : ''}
       ${S.demo ? `<div class="demo-bar"><p><strong>サンプルデータを表示中。</strong>触って試せます。</p><button class="btn small primary" data-act="onboard">自分の66日を始める</button></div>` : ''}
       <div class="topbar">
         <span class="chip hot" title="連続日数">${icon('flame')}<span class="num">${tot.streak}</span></span>
@@ -264,6 +273,7 @@
         <button class="f" data-act="filter" data-f="done" aria-pressed="${ui.filter === 'done'}">完了 <small>${groups.done.length}</small></button>
         <button class="f" data-act="filter" data-f="skip" aria-pressed="${ui.filter === 'skip'}">スキップ済み <small>${groups.skip.length}</small></button>
       </div>
+        <button class="icon-btn ghost" data-act="reorder" aria-label="並べ替え">${icon('sort')}</button>
         <button class="icon-btn" data-act="add-habit" aria-label="タスクを追加">${icon('plus')}</button>
       </div>
 
@@ -678,7 +688,7 @@
         const prev = T.lastSetsFor(e.name);
         const best = T.bestE1RM(e.name);
         return `<section class="ex">
-          <div class="ex-head">${exIcon(e.name)}<h3>${esc(e.name)}</h3>${best ? `<span class="best">PR ${Math.round(best)}kg</span>` : ''}<button class="icon-btn ghost" style="width:36px;height:36px;font-size:16px" data-act="ex-remove" data-e="${ei}" aria-label="${esc(e.name)}を外す">${icon('x')}</button></div>
+          <div class="ex-head">${exIcon(e.name)}<h3>${esc(e.name)}${e.hint ? `<span class="hint" title="前回すべてのセットで${e.target}回に届いたので負荷を上げました">${icon('chevU')}${esc(e.hint)}</span>` : ''}</h3>${best ? `<span class="best">PR ${Math.round(best)}kg</span>` : ''}<button class="icon-btn ghost" style="width:36px;height:36px;font-size:16px" data-act="ex-remove" data-e="${ei}" aria-label="${esc(e.name)}を外す">${icon('x')}</button></div>
           <table class="sets"><thead><tr><th>SET</th><th>前回</th><th>kg</th><th>回</th><th><span class="sr">完了</span></th></tr></thead><tbody>
           ${e.sets.map((s, si) => `<tr class="${s.done ? 'done' : ''}">
             <td class="idx">${si + 1}</td>
@@ -691,6 +701,7 @@
           <div class="ex-foot"><button class="btn quiet small" data-act="set-add" data-e="${ei}">${icon('plus')}セット追加</button>${e.sets.length > 1 ? `<button class="btn quiet small" data-act="set-del" data-e="${ei}">${icon('minus')}最後を削除</button>` : ''}</div>
         </section>`;
       }).join('')}
+      ${a.ex.some(e => e.hint) ? `<p class="muted small" style="margin:0">${icon('chevU')} の種目は、前回すべてのセットで目標回数に届いたので負荷を上げています。きつければ重さを戻してOK。</p>` : ''}
       <button class="btn block" data-act="ex-add">${icon('plus')}種目を追加</button>
       <div class="field"><span>休憩タイマー</span><div class="opts">${[60, 90, 120, 180].map(s => `<button data-act="rest-len" data-v="${s}" aria-pressed="${T.S.rest === s}">${s}秒</button>`).join('')}<button data-act="rest-len" data-v="0" aria-pressed="${!T.S.rest}">オフ</button></div></div>
       ${confirmDiscard ? `<div class="confirm"><p>このセッションを破棄します。記録したセットは保存されません。</p><div class="acts"><button class="btn quiet small" data-act="confirm-cancel">続ける</button><button class="btn danger small" data-act="discard">破棄する</button></div></div>` : `<button class="btn danger block" data-act="confirm" data-c="discard">${icon('trash')}セッションを破棄</button>`}
@@ -1055,6 +1066,10 @@
         ${next ? `<div class="nextach"><small>次・${esc(next.name)}</small><span class="num">${fmt(Math.min(next.value, next.goal))}<em>/${fmt(next.goal)}</em></span><span class="meter"><i style="width:${Math.min(100, (next.value / next.goal) * 100)}%"></i></span></div>` : ''}
       </div>
 
+      <div class="duo">
+        <button class="review-card" data-act="week" data-ws="${T.mondayOf(T.today())}">${icon('calendar')}<span class="txt"><strong>今週</strong><small>途中経過</small></span>${icon('chevR')}</button>
+        <button class="review-card" data-act="week" data-ws="${T.addDays(T.mondayOf(T.today()), -7)}">${icon('calendar')}<span class="txt"><strong>先週</strong><small>ふりかえり</small></span>${icon('chevR')}</button>
+      </div>
       <article class="classcard">
         ${scene('peak', 'class-' + tops[0].k)}
         <div class="in">
@@ -1260,6 +1275,94 @@
       }
     });
     makeShareImage().then(img => { ui.shareImg = img; if (sheet) drawSheet(); }).catch(() => toast('画像を作れませんでした'));
+  }
+
+  /* ======================================================================
+   * 週のふりかえり
+   * ==================================================================== */
+  function weekRangeLabel(ws) {
+    const a = T.parseKey(ws), b = T.parseKey(T.addDays(ws, 6));
+    return `${a.getMonth() + 1}/${a.getDate()}〜${b.getMonth() + 1}/${b.getDate()}`;
+  }
+  function weekComment(w, prev) {
+    const r = w.rate;
+    let c = r >= 0.9 ? 'ほぼ完璧な一週間。この強度を維持しよう。'
+      : r >= 0.7 ? 'いいペース。落とした日をひとつ減らせば、完璧に近づく。'
+      : r >= 0.4 ? '半分以上はやり切った。苦戦したタスクの時間や曜日を見直そう。'
+      : '立て直しの週。タスクを減らすのも立派な戦略。';
+    if (prev && prev.valid && prev.total) {
+      const d = Math.round((r - prev.rate) * 100);
+      if (d >= 10) c += `先週より${d}ポイント上がった。`;
+      else if (d <= -10) c += `先週より${-d}ポイント下がった。疲れていないか確認を。`;
+    }
+    return c;
+  }
+  function weekSheet(ws) {
+    ui.weekWs = ws;
+    if (!T.S.demo && ws < T.mondayOf(T.today())) { if (ws > (T.S.reviewSeen || '')) { T.S.reviewSeen = ws; T.commit(); } }
+    openSheet({
+      live: true,
+      render() {
+        const S = T.S, ws = ui.weekWs;
+        const w = T.weekSummary(ws), prev = T.weekSummary(T.addDays(ws, -7));
+        const firstWs = T.mondayOf(S.startDate), curWs = T.mondayOf(T.today());
+        const delta = (a, b, unit, digits) => {
+          if (b == null) return '';
+          const d = Math.round((a - b) * (digits || 1)) / (digits || 1);
+          return `<em class="${d > 0 ? 'up' : d < 0 ? 'down' : ''}">${d > 0 ? '+' : d < 0 ? '−' : '±'}${Math.abs(d).toLocaleString('ja-JP')}${unit}</em>`;
+        };
+        const hasPrev = prev.valid && prev.total;
+        const worst = w.habits.filter(x => x.due).slice().reverse()[0];
+        const mo = w.mood ? MOODS[Math.round(w.mood) - 1] : null;
+        return `
+          <div class="sheet-head">
+            <button class="icon-btn ghost" data-act="week-nav" data-d="-7" aria-label="前の週" ${ws <= firstWs ? 'disabled' : ''}>${icon('chevL')}</button>
+            <h2 style="text-align:center">${weekRangeLabel(ws)}</h2>
+            <button class="icon-btn ghost" data-act="week-nav" data-d="7" aria-label="次の週" ${ws >= curWs ? 'disabled' : ''}>${icon('chevR')}</button>
+          </div>
+          ${!w.valid ? '<p class="muted">この週はチャレンジ期間外です。</p>' : `
+          <div class="weekhero">
+            <div><small>達成率</small><span class="num big">${Math.round(w.rate * 100)}<small class="u">%</small></span>${hasPrev ? delta(w.rate * 100, prev.rate * 100, 'pt') : ''}</div>
+            <p>${weekComment(w, prev)}</p>
+          </div>
+          <div class="kv four">
+            <div><small>完了</small><span class="num">${w.done}</span><small>/ ${w.total - w.skip}</small></div>
+            <div><small>完璧な日</small><span class="num">${w.perfect}</span><small>/ ${w.days}日</small></div>
+            <div><small>獲得XP</small><span class="num">${fmt(w.xp)}</span>${hasPrev ? delta(w.xp, prev.xp, '') : ''}</div>
+            <div><small>筋トレ</small><span class="num">${w.workouts}</span><small>回</small></div>
+          </div>
+          ${w.workouts || prev.workouts ? `<p class="muted small" style="margin:0">総挙上量 <b class="num" style="color:var(--fg)">${fmt(w.volume)}kg</b>（${w.sets}セット）${prev.volume ? ` · 先週比 ${delta(w.volume, prev.volume, 'kg')}` : ''}</p>` : ''}
+          <div class="field"><span>タスク別</span>
+            <div class="wk-habits">${w.habits.filter(x => x.due).map(x => `<div><span class="t">${esc(x.h.title)}</span><span class="bar"><i style="width:${(x.done / x.due) * 100}%;background:${STAT[x.h.stat].color}"></i></span><span class="mono">${x.done}/${x.due}</span></div>`).join('') || '<p class="muted small" style="margin:0">記録なし</p>'}</div>
+          </div>
+          <div class="tips">
+            ${w.bestDay ? `<div class="tip"><strong>いちばん良かった日</strong><p>${dateLabel(w.bestDay.k)}：${w.bestDay.done}/${w.bestDay.total} 完了</p></div>` : ''}
+            ${worst && worst.done < worst.due ? `<div class="tip"><strong>いちばん苦戦したタスク</strong><p>${esc(worst.h.title)}（${worst.done}/${worst.due}）。時間・曜日・目標を少し軽くすると続きやすい。</p></div>` : ''}
+            ${mo ? `<div class="tip"><strong>平均の気分</strong><p style="display:flex;align-items:center;gap:6px"><span style="color:${mo.color};font-size:20px;display:flex">${face(mo.v)}</span>${mo.label}（${w.mood.toFixed(1)}）</p></div>` : ''}
+            ${w.weight != null ? `<div class="tip"><strong>体重</strong><p>週のはじめから ${w.weight > 0 ? '+' : w.weight < 0 ? '−' : '±'}${Math.abs(w.weight)}kg</p></div>` : ''}
+          </div>`}`;
+      }
+    });
+  }
+
+  /* ---------- 並べ替えシート ---------- */
+  function reorderSheet() {
+    openSheet({
+      live: true,
+      render() {
+        const S = T.S, live = S.habits.filter(h => !h.archivedAt), manual = S.sortMode === 'manual';
+        return `
+          <div class="sheet-head"><h2>並べ替え</h2><button class="icon-btn ghost" data-act="close" aria-label="閉じる">${icon('x')}</button></div>
+          <div class="seg" role="group" aria-label="並び順">
+            <button data-act="sort-mode" data-v="time" aria-pressed="${!manual}">時間順</button>
+            <button data-act="sort-mode" data-v="manual" aria-pressed="${manual}">自分の順番</button>
+          </div>
+          <p class="muted small" style="margin:0">${manual ? '矢印で順番を入れ替えます。「今日」の一覧がこの順で並びます。' : '時間を入れたタスクが早い順に並び、時間なしは最後になります。矢印を押すと「自分の順番」に切り替わります。'}</p>
+          <div class="reorder">${live.map((h, i) => `<div><i class="sw" style="--c:${STAT[h.stat].color}"></i><span class="t"><strong>${esc(h.title)}</strong><small>${[daysLabel(h) || '毎日', h.time].filter(Boolean).join(' · ')}</small></span>
+            <button class="icon-btn ghost" data-act="move" data-id="${h.id}" data-d="-1" aria-label="${esc(h.title)}を上へ" ${i === 0 ? 'disabled' : ''}>${icon('chevU')}</button>
+            <button class="icon-btn ghost" data-act="move" data-id="${h.id}" data-d="1" aria-label="${esc(h.title)}を下へ" ${i === live.length - 1 ? 'disabled' : ''}>${icon('chevD')}</button></div>`).join('')}</div>`;
+      }
+    });
   }
 
   /* ======================================================================
@@ -1680,6 +1783,11 @@
       if (!k || k > T.today() || k < T.S.startDate) return;
       ui.tab = 'today'; ui.viewDate = k; ui.filter = 'todo'; saveUI(); closeSheet(); render();
     },
+    week(el) { weekSheet(el.dataset.ws); },
+    'week-nav'(el) { ui.weekWs = T.addDays(ui.weekWs, +el.dataset.d); weekSheet(ui.weekWs); },
+    reorder() { reorderSheet(); },
+    'sort-mode'(el) { T.S.sortMode = el.dataset.v; T.commit(); },
+    move(el) { T.moveHabit(el.dataset.id, +el.dataset.d); },
     'ex-hist'(el) { exerciseHistorySheet(el.dataset.n); },
     share() { shareSheet(); },
     'share-send'() {

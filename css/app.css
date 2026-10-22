@@ -612,3 +612,40 @@ canvas.fx { position: fixed; inset: 0; z-index: 95; pointer-events: none; width:
 .note .txt small { font-size: 11px; color: var(--muted); font-family: var(--font-mono); }
 
 .shareimg { display: block; width: 100%; max-width: 420px; margin: 0 auto; border: 2px solid var(--paper); -webkit-touch-callout: default; }
+
+/* ---------- 追加：週のふりかえり・並べ替え・負荷提案 ---------- */
+.review-card { display: flex; align-items: center; gap: 12px; width: 100%; text-align: left; padding: 12px 14px; border: 2px solid var(--paper); background: var(--panel); box-shadow: 4px 4px 0 rgba(239, 227, 204, .14); min-width: 0; }
+.review-card > svg:first-child { font-size: 22px; color: var(--ember); }
+.review-card .txt { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.review-card strong { font-size: 15px; }
+.review-card small { color: var(--muted); font-size: 12px; }
+
+.weekhero { display: flex; gap: 14px; align-items: center; padding: 14px; border: 2px solid var(--paper); background: var(--paper-ink); }
+.weekhero > div { display: flex; flex-direction: column; flex: none; }
+.weekhero small { color: var(--muted); font-size: 11px; font-weight: 700; }
+.weekhero .num.big { font-size: 44px; line-height: 1; color: var(--ember); }
+.weekhero p { margin: 0; font-size: 14px; font-weight: 700; min-width: 0; }
+em.up, em.down { font-style: normal; font-family: var(--font-mono); font-size: 12px; font-weight: 500; }
+em.up { color: var(--good); }
+em.down { color: var(--bad); }
+.kv.four { grid-template-columns: repeat(4, 1fr); gap: 8px; }
+.kv.four > div { padding: 8px; min-width: 0; }
+.kv.four .num { font-size: 18px; }
+.kv.four em { display: block; }
+
+.wk-habits { display: flex; flex-direction: column; gap: 8px; }
+.wk-habits > div { display: grid; grid-template-columns: minmax(0, 1fr) 90px 40px; gap: 10px; align-items: center; font-size: 13px; }
+.wk-habits .t { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 700; }
+.wk-habits .bar { height: 8px; background: var(--line); }
+.wk-habits .bar i { display: block; height: 100%; }
+.wk-habits .mono { text-align: right; color: var(--muted); font-size: 12px; }
+
+.reorder { display: flex; flex-direction: column; gap: 8px; }
+.reorder > div { display: flex; align-items: center; gap: 8px; padding: 8px 8px 8px 12px; border: 1.5px solid var(--line-2); background: var(--panel); }
+.reorder .sw { width: 10px; height: 10px; background: var(--c); flex: none; }
+.reorder .t { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.reorder .t strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.reorder .t small { color: var(--muted); font-size: 12px; }
+.reorder .icon-btn { width: 40px; height: 40px; font-size: 18px; }
+
+.ex-head .hint { display: inline-flex; align-items: center; gap: 2px; margin-left: 8px; padding: 0 6px; font-size: 12px; vertical-align: middle; color: var(--good); border: 1.5px solid var(--good); font-family: var(--font-display); font-weight: 400; }
