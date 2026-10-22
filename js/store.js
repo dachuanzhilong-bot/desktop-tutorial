@@ -24,7 +24,7 @@
       base: { wis: 10, con: 10, str: 10, dis: 10, foc: 10 },
       habits: [], logs: {}, metrics: {}, workouts: [], active: null,
       dismissed: [], rest: 90, nextTpl: null, updatedAt: 0,
-      templates: [], seasons: [], carryXp: 0, carryDone: 0
+      templates: [], seasons: [], carryXp: 0, carryDone: 0, journal: {}, timer: null
     };
   }
 
@@ -120,9 +120,16 @@
     if (!Object.keys(S.logs[k]).length) delete S.logs[k];
   }
 
+  // 回数・タイマーは target に向けて量を積み上げる
+  function isAmount(h) { return h.type === 'count' || h.type === 'timer'; }
+  function normalizeType(h) {
+    if (!isAmount(h)) { h.target = 1; h.unit = ''; }
+    else if (h.type === 'timer') h.unit = '分';
+  }
+
   function addHabit(h) {
     const habit = Object.assign({ id: uid(), detail: '', time: '', stat: 'dis', scene: 'night', type: 'check', target: 1, unit: '', created: today() }, h);
-    if (habit.type !== 'count') { habit.target = 1; habit.unit = ''; }
+    normalizeType(habit);
     S.habits.push(habit);
     commit();
     return habit;
@@ -131,7 +138,7 @@
     const h = S.habits.find(x => x.id === id);
     if (!h) return;
     Object.assign(h, patch);
-    if (h.type !== 'count') { h.target = 1; h.unit = ''; }
+    normalizeType(h);
     commit();
   }
   function removeHabit(id) {
@@ -213,6 +220,7 @@
    * 完璧な日: +30XP、自制心と自信 +1
    * ワークアウト: workoutXP、強さ +3、自制心 +1
    * 記録（水分2L以上）: 自制心 +1
+   * ひとこと日記: +10XP、知恵 +1
    */
   function ledger() {
     return cache('ledger', () => {
@@ -238,6 +246,8 @@
         (wByDay[k] || []).forEach(w => { dxp += workoutXP(w); stats.str += 3; stats.dis += 1; });
         const m = S.metrics[k];
         if (m && +m.water >= 2) stats.dis++;
+        const j = S.journal && S.journal[k];
+        if (j && (j.mood || j.text)) { dxp += 10; stats.wis++; }
         xp += dxp; totalDone += dDone;
         daily.push({ k, xp: dxp, done: dDone, cum: totalDone - (S.carryDone || 0), cumXp: xp, stats: Object.assign({}, stats) });
       }
@@ -320,6 +330,26 @@
     return best;
   }
   function e1rm(w, r) { return w * (1 + Math.min(r, 15) / 30); }
+
+  // 種目ごとのセッション履歴（古い順）。自重種目は最大回数で追う
+  function exerciseHistory(name) {
+    const out = [];
+    S.workouts.slice().sort((a, b) => a.start - b.start).forEach(w => {
+      const e = w.ex.find(x => x.name === name);
+      if (!e) return;
+      const sets = e.sets.filter(s => s.done);
+      if (!sets.length) return;
+      let best = 0, bestSet = sets[0], reps = 0, vol = 0;
+      sets.forEach(s => {
+        const v = +s.w > 0 ? e1rm(+s.w, +s.r) : 0;
+        if (v > best) { best = v; bestSet = s; }
+        reps = Math.max(reps, +s.r || 0);
+        vol += (+s.w || 0) * (+s.r || 0);
+      });
+      out.push({ id: w.id, date: w.date, e1rm: Math.round(best * 10) / 10, w: +bestSet.w || 0, r: +bestSet.r || 0, reps, sets: sets.length, volume: Math.round(vol) });
+    });
+    return out;
+  }
 
   function startWorkout(tpl) {
     const t = tpl ? templateById(tpl) : null;
@@ -418,6 +448,17 @@
       });
     }
     s.logs[t] = { demo0: { s: 'done', v: 1 }, demo3: { s: 'open', v: 8 }, demo5: { s: 'open', v: 5 } };
+    // ひとこと日記：達成率が高い日ほど気分がいい傾向
+    const notes = ['朝の空気が気持ちよかった', 'ベンチで自己ベスト', '眠くて読書は少しだけ', '雨でランはスキップ。明日やる', '集中ブロックが一番はかどった', '二度寝しなかった。小さく勝った', '仕事が長引いてバタバタ'];
+    for (let d = 1; d < 13; d++) {
+      const k = addDays(start, d);
+      const hs = s.habits.filter(h => h.created <= k);
+      const done = hs.filter(h => s.logs[k] && s.logs[k][h.id] && s.logs[k][h.id].s === 'done').length;
+      const rate = hs.length ? done / hs.length : 0;
+      if (r() < 0.25) continue;
+      const mood = Math.max(1, Math.min(5, Math.round(1.5 + rate * 3 + (r() - 0.5) * 1.2)));
+      s.journal[k] = { mood, text: r() < 0.6 ? notes[Math.floor(r() * notes.length)] : '' };
+    }
     // ワークアウトはプッシュ→プル→レッグの順に回す
     const plan = [[-12, 'push'], [-10, 'pull'], [-8, 'legs'], [-6, 'push'], [-4, 'pull'], [-1, 'legs']];
     plan.forEach(([off, id], i) => {
@@ -450,7 +491,7 @@
     get version() { return version; },
     Cloud, load, commit, replace, blank, seedDemo, on: fn => listeners.push(fn),
     keyOf, parseKey, today, addDays, diffDays, WD, uid, pad,
-    habitsOn, scheduledOn, logOf, setLog, addHabit, updateHabit, removeHabit, seasonOver, startNextSeason,
+    isAmount, exerciseHistory, habitsOn, scheduledOn, logOf, setLog, addHabit, updateHabit, removeHabit, seasonOver, startNextSeason,
     dayIndex, dayStatus, dayComplete, streakInfo, habitStreak,
     ledger, totals, levelOf, xpForLevel, achievements,
     volumeOf, workoutXP, templateById, allTemplates, saveTemplate, removeTemplate, suggestedTemplate, lastSetsFor, bestE1RM, startWorkout, finishWorkout,

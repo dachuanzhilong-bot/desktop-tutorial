@@ -30,10 +30,10 @@
     { title: '5km走る', detail: 'ゾーン2ペース', time: '16:00', stat: 'str', scene: 'run', type: 'check' },
     { title: '腕立て伏せ20回', detail: '10回×2セット', time: '', stat: 'str', scene: 'dojo', type: 'count', target: 20, unit: '回' },
     { title: '20ページ読む', detail: '寝る前の読書', time: '22:00', stat: 'wis', scene: 'study', type: 'count', target: 20, unit: 'ページ' },
-    { title: '瞑想10分', detail: '呼吸だけに集中', time: '07:15', stat: 'foc', scene: 'peak', type: 'check' },
+    { title: '瞑想10分', detail: '呼吸だけに集中', time: '07:15', stat: 'foc', scene: 'peak', type: 'timer', target: 10, unit: '分' },
     { title: '水を2L飲む', detail: 'コップ8杯', time: '', stat: 'dis', scene: 'water', type: 'count', target: 8, unit: '杯' },
     { title: '日記を書く', detail: '今日の勝ちを3つ', time: '23:00', stat: 'con', scene: 'night', type: 'check' },
-    { title: '深い集中ブロック', detail: '通知オフで50分', time: '09:00', stat: 'foc', scene: 'city', type: 'check' },
+    { title: '深い集中ブロック', detail: '通知オフで集中', time: '09:00', stat: 'foc', scene: 'city', type: 'timer', target: 50, unit: '分' },
     { title: '冷水シャワー', detail: '最後の30秒', time: '', stat: 'con', scene: 'water', type: 'check' },
     { title: 'SNSは夜9時まで', detail: '寝る前のスクロール禁止', time: '21:00', stat: 'dis', scene: 'night', type: 'check' },
     { title: '英単語30個', detail: 'アプリで復習', time: '', stat: 'wis', scene: 'study', type: 'count', target: 30, unit: '個' },
@@ -122,5 +122,14 @@
     { h: '積み重ね', b: '既存の習慣の直後に新しい習慣をつなげる。「歯を磨いたら腕立て」。' }
   ];
 
-  G.D = { CHALLENGE_DAYS, STATS, STAT, CLASSES, SCENES, PRESETS, EXERCISES, EX_KIND, TEMPLATES, ACHIEVEMENTS, TIPS };
+  // ひとこと日記の気分（1〜5）
+  const MOODS = [
+    { v: 1, label: '最悪', color: 'var(--bad)' },
+    { v: 2, label: 'いまいち', color: '#e08a4a' },
+    { v: 3, label: 'ふつう', color: 'var(--muted)' },
+    { v: 4, label: 'いい', color: 'var(--st-con)' },
+    { v: 5, label: '最高', color: 'var(--good)' }
+  ];
+
+  G.D = { MOODS, CHALLENGE_DAYS, STATS, STAT, CLASSES, SCENES, PRESETS, EXERCISES, EX_KIND, TEMPLATES, ACHIEVEMENTS, TIPS };
 })(window);

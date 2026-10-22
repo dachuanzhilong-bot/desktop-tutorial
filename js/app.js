@@ -3,7 +3,7 @@
   'use strict';
 
   const { D, Store: T, Scenes } = G;
-  const { STATS, STAT, CLASSES, SCENES, PRESETS, EXERCISES, EX_KIND, TEMPLATES, TIPS, CHALLENGE_DAYS } = D;
+  const { STATS, STAT, CLASSES, SCENES, PRESETS, EXERCISES, EX_KIND, TEMPLATES, TIPS, CHALLENGE_DAYS, MOODS } = D;
 
   const $ = (s, el) => (el || document).querySelector(s);
   const $$ = (s, el) => Array.from((el || document).querySelectorAll(s));
@@ -52,9 +52,17 @@
     cloud: P('M7 18h10a4 4 0 0 0 .5-7.97A6 6 0 0 0 6 9.5 4.25 4.25 0 0 0 7 18z'),
     diamond: '<path d="M12 3l9 9-9 9-9-9z" fill="currentColor" stroke="none"/>',
     wave: P('M3 12h2 M7 9v6 M10 6v12 M14 8v8 M17 10v4 M21 12h-2'),
+    pause: P('M8 5v14 M16 5v14'),
+    stop: '<rect x="6" y="6" width="12" height="12" fill="currentColor" stroke="none"/>',
+    share: P('M12 3v12 M7 8l5-5 5 5 M5 13v6a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-6'),
     scale: P('M5 4h14a1 1 0 0 1 1 1v14a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1z M8.5 10a3.5 3.5 0 0 1 7 0z M12 10l1.5-2'),
     restart: P('M4 4v6h6 M4.5 15a8 8 0 1 0 1.9-8.3L4 10')
   };
+  // 気分の顔（1=しかめ面 … 5=笑顔）
+  function face(v) {
+    const c = (v - 3) * 2.6;
+    return `<svg class="i" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><circle cx="9" cy="10" r=".6" fill="currentColor"/><circle cx="15" cy="10" r=".6" fill="currentColor"/><path d="M8 ${(15.5 - c / 3).toFixed(1)} Q12 ${(15.5 + c).toFixed(1)} 16 ${(15.5 - c / 3).toFixed(1)}"/></svg>`;
+  }
   const icon = (n, extra) => `<svg class="i" viewBox="0 0 24 24" aria-hidden="true" ${extra || ''}>${ICONS[n] || ''}</svg>`;
   const STAT_ICON = { wis: 'brain', con: 'rise', str: 'lift', dis: 'lock', foc: 'target' };
 
@@ -183,8 +191,9 @@
     const streak = T.habitStreak(h, k);
     const v = l ? +l.v || 0 : 0;
     const meta = [daysLabel(h), h.time ? `<span class="num">${esc(h.time)}</span>` : '', esc(h.detail)].filter(Boolean).join(' · ');
-    const count = h.type === 'count'
-      ? `<p class="meta"><span class="num">${isDone ? h.target : v} / ${h.target}</span>${esc(h.unit)}${h.detail ? ' · ' + esc(h.detail) : ''}</p><div class="bar"><i style="width:${Math.min(100, ((isDone ? h.target : v) / h.target) * 100)}%"></i></div>`
+    const running = T.S.timer && T.S.timer.id === h.id && T.S.timer.k === k;
+    const count = T.isAmount(h)
+      ? `<p class="meta">${running ? `<span class="live-tag">${icon('clock')}計測中</span> ` : h.type === 'timer' ? icon('clock') + ' ' : ''}<span class="num">${isDone ? h.target : v} / ${h.target}</span>${esc(h.unit)}${h.detail ? ' · ' + esc(h.detail) : ''}</p><div class="bar"><i style="width:${Math.min(100, ((isDone ? h.target : v) / h.target) * 100)}%"></i></div>`
       : `<p class="meta">${meta || '&nbsp;'}</p>`;
     return `
       <div class="hcard ${isDone ? 'is-done' : ''} ${isSkip ? 'is-skip' : ''} ${ui.pop === h.id ? 'pop' : ''}" data-act="habit" data-id="${h.id}" role="button" tabindex="0" aria-label="${esc(h.title)}の詳細">
@@ -212,6 +221,7 @@
     const list = groups[ui.filter];
     const trophies = T.achievements().filter(a => a.done).length;
     const m = S.metrics[k] || {};
+    const j = S.journal[k] || {};
     const resting = S.habits.filter(h => h.created <= k && (!h.archivedAt || h.archivedAt > k) && !T.scheduledOn(h, k));
     const over = T.seasonOver();
     const emptyMsg = {
@@ -268,6 +278,12 @@
         <button data-act="metrics"><small style="color:#e2b552">${icon('sun')}起床</small>${m.wake ? `<span class="num">${esc(m.wake)}</span>` : '<span class="unset">未記録</span>'}</button>
         <button data-act="metrics"><small style="color:var(--st-dis)">${icon('phone')}スマホ</small>${m.screen != null && m.screen !== '' ? `<span class="num">${durHTML(m.screen)}</span>` : '<span class="unset">未記録</span>'}</button>
         <button data-act="metrics"><small style="color:var(--st-con)">${icon('scale')}体重</small>${m.weight ? `<span class="num">${m.weight}<small class="u">kg</small></span>` : '<span class="unset">未記録</span>'}</button>
+      </div>
+
+      <div class="section-head"><p class="eyebrow">ひとこと日記</p>${j.mood || j.text ? `<span class="more">${icon('check')}+10 XP</span>` : ''}</div>
+      <div class="journal">
+        <div class="moods" role="group" aria-label="今日の気分">${MOODS.map(x => `<button data-act="mood" data-v="${x.v}" aria-pressed="${j.mood === x.v}" style="--c:${x.color}">${face(x.v)}<small>${x.label}</small></button>`).join('')}</div>
+        <label class="field"><span class="sr">ひとこと</span><input type="text" id="jr-text" maxlength="80" value="${esc(j.text || '')}" placeholder="${k === t ? '今日いちばんの出来事は？' : 'この日のひとこと'}" enterkeyhint="done"></label>
       </div>`;
   }
 
@@ -279,10 +295,11 @@
     const l = T.logOf(k, h.id);
     progress(() => {
       if (l && (l.s === 'done' || l.s === 'skip')) {
-        T.setLog(k, h.id, h.type === 'count' && l.s === 'done' ? { s: 'open', v: Math.max(0, h.target - 1) } : null);
+        T.setLog(k, h.id, T.isAmount(h) && l.s === 'done' ? { s: 'open', v: Math.max(0, h.target - (h.type === 'timer' ? 5 : 1)) } : null);
         ui.pop = null;
       } else {
         T.setLog(k, h.id, { s: 'done', v: h.target });
+        if (T.S.timer && T.S.timer.id === h.id) T.S.timer = null;
         ui.pop = h.id;
         haptic(30);
       }
@@ -322,11 +339,12 @@
             <div><small>累計</small><span class="num">${doneCount}</span><small>回</small></div>
           </div>
           <p class="muted small" style="margin:0">${daysLabel(h) ? daysLabel(h) + ' · ' : '毎日 · '}${esc(h.detail) || '詳細なし'}${h.time ? ` · ${esc(h.time)}` : ''} · <span style="color:${STAT[h.stat].color}">${STAT[h.stat].label}</span>が伸びる</p>
-          ${h.type === 'count' && !isSkip ? `
-            <div class="stepper">
-              <button data-act="step" data-id="${h.id}" data-d="-1" aria-label="減らす">${icon('minus')}</button>
-              <div class="val"><span class="num">${v}</span><small>/ ${h.target} ${esc(h.unit)}</small></div>
-              <button data-act="step" data-id="${h.id}" data-d="1" aria-label="増やす">${icon('plus')}</button>
+          ${h.type === 'timer' && !isDone && !isSkip && k === T.today() ? focusBlock(h, v) : ''}
+          ${T.isAmount(h) && !isSkip ? `
+            <div class="stepper ${h.type === 'timer' ? 'slim' : ''}">
+              <button data-act="step" data-id="${h.id}" data-d="${h.type === 'timer' ? -5 : -1}" aria-label="減らす">${icon('minus')}</button>
+              <div class="val"><span class="num">${v}</span><small>/ ${h.target} ${esc(h.unit)}${h.type === 'timer' ? '（手動で記録）' : ''}</small></div>
+              <button data-act="step" data-id="${h.id}" data-d="${h.type === 'timer' ? 5 : 1}" aria-label="増やす">${icon('plus')}</button>
             </div>` : ''}
           <div class="acts">
             <button class="btn ${isDone ? '' : 'primary'}" data-act="toggle" data-id="${h.id}">${isDone ? '完了を取り消す' : isSkip ? 'スキップを取り消す' : `${icon('check')}完了`}</button>
@@ -342,6 +360,80 @@
             </div>`}`;
       }
     });
+  }
+
+  /* ---------- 集中タイマー（タイマー型タスク） ---------- */
+  function timerLeft(tm) { return tm.end ? Math.max(0, (tm.end - Date.now()) / 1000) : tm.left; }
+  function mmss(sec) { sec = Math.ceil(sec); return Math.floor(sec / 60) + ':' + T.pad(sec % 60); }
+
+  function focusBlock(h, v) {
+    const tm = T.S.timer && T.S.timer.id === h.id ? T.S.timer : null;
+    const other = T.S.timer && !tm ? T.S.habits.find(x => x.id === T.S.timer.id) : null;
+    const total = tm ? tm.total : Math.max(1, h.target - v) * 60;
+    const left = tm ? timerLeft(tm) : total;
+    const off = (264 * (1 - left / total)).toFixed(1);
+    let btns;
+    if (!tm) btns = other ? `<p class="muted small" style="margin:0">「${esc(other.title)}」のタイマーが動いています</p>` : `<button class="btn primary" data-act="ft-start" data-id="${h.id}">${icon('play')}${Math.round(total / 60)}分 開始</button>`;
+    else if (tm.end) btns = `<button class="btn" data-act="ft-pause">${icon('pause')}一時停止</button>`;
+    else btns = `<button class="btn primary" data-act="ft-resume">${icon('play')}再開</button><button class="btn quiet" data-act="ft-log">ここまで記録</button><button class="btn quiet" data-act="ft-reset" aria-label="リセット">${icon('restart')}</button>`;
+    return `
+      <div class="ftimer">
+        <svg class="ring" viewBox="0 0 100 100" aria-hidden="true"><circle cx="50" cy="50" r="42" fill="none" stroke="var(--line)" stroke-width="6"/><circle id="ft-ring" cx="50" cy="50" r="42" fill="none" stroke="var(--ember)" stroke-width="6" stroke-dasharray="264" stroke-dashoffset="${off}" transform="rotate(-90 50 50)"/></svg>
+        <div class="t"><span class="num" id="ft-left">${mmss(left)}</span><small>${tm ? (tm.end ? '集中しています' : '一時停止中') : 'タイマーで記録'}</small></div>
+        <div class="acts">${btns}</div>
+      </div>`;
+  }
+
+  function startFocus(id) {
+    const h = T.S.habits.find(x => x.id === id);
+    const k = T.today();
+    const l = T.logOf(k, id);
+    const v = l ? +l.v || 0 : 0;
+    const total = Math.max(1, h.target - v) * 60;
+    T.S.timer = { id, k, total, end: Date.now() + total * 1000, left: null, base: v };
+    T.commit();
+    ensureFocusTick();
+  }
+  function logFocus(finished) {
+    const tm = T.S.timer;
+    if (!tm) return;
+    const h = T.S.habits.find(x => x.id === tm.id);
+    T.S.timer = null;
+    if (!h) { T.commit(); return; }
+    const mins = finished ? Math.ceil(tm.total / 60) : Math.floor((tm.total - timerLeft(tm)) / 60);
+    const v = Math.min(h.target, (tm.base || 0) + mins);
+    progress(() => {
+      if (v >= h.target) { T.setLog(tm.k, h.id, { s: 'done', v: h.target }); ui.pop = h.id; }
+      else T.setLog(tm.k, h.id, v ? { s: 'open', v } : null);
+      T.commit();
+    });
+    setTimeout(() => { ui.pop = null; }, 700);
+    if (finished) { beep(); haptic([200, 100, 200]); toast(`${icon('target')} 「${esc(h.title)}」完了。よく集中した`); }
+    else if (mins) toast(`${mins}分を記録しました`);
+  }
+  let focusTimer = 0;
+  function ensureFocusTick() {
+    if (focusTimer || !T.S.timer) return;
+    focusTimer = setInterval(() => {
+      const tm = T.S.timer;
+      if (!tm) { clearInterval(focusTimer); focusTimer = 0; renderFocusPill(); return; }
+      const left = timerLeft(tm);
+      if (tm.end && left <= 0) { logFocus(true); return; }
+      const a = $('#ft-left'); if (a) a.textContent = mmss(left);
+      const r = $('#ft-ring'); if (r) r.style.strokeDashoffset = String(264 * (1 - left / tm.total));
+      const b = $('#fp-left'); if (b) b.textContent = mmss(left);
+    }, 500);
+  }
+  // シートを閉じても、動いているタイマーをタブバーの上に出しておく
+  function renderFocusPill() {
+    const tm = T.S.timer;
+    const h = tm && T.S.habits.find(x => x.id === tm.id);
+    let el = $('#focuspill');
+    if (!h || sheet || T.S.active) { if (el) el.remove(); return; }
+    if (!el) { el = document.createElement('button'); el.id = 'focuspill'; el.className = 'focuspill'; document.body.appendChild(el); }
+    el.dataset.act = 'habit-focus';
+    el.dataset.id = h.id;
+    el.innerHTML = `${icon(tm.end ? 'clock' : 'pause')}<span class="t">${esc(h.title)}</span><span class="num" id="fp-left">${mmss(timerLeft(tm))}</span>`;
   }
 
   function stepHabit(id, d) {
@@ -381,9 +473,11 @@
               ${WEEK.map(w => `<button type="button" data-act="draft-day" data-v="${w}" aria-pressed="${!!(d.days && d.days.length && d.days.length < 7 && d.days.includes(w))}">${T.WD[w]}</button>`).join('')}
             </div></div>
             <div class="field"><span>記録の仕方</span><div class="opts">
-              <button type="button" data-act="draft" data-k="type" data-v="check" aria-pressed="${d.type !== 'count'}">${icon('check')}チェック</button>
+              <button type="button" data-act="draft" data-k="type" data-v="check" aria-pressed="${d.type !== 'count' && d.type !== 'timer'}">${icon('check')}チェック</button>
               <button type="button" data-act="draft" data-k="type" data-v="count" aria-pressed="${d.type === 'count'}">${icon('plus')}回数・量</button>
+              <button type="button" data-act="draft" data-k="type" data-v="timer" aria-pressed="${d.type === 'timer'}">${icon('clock')}タイマー</button>
             </div></div>
+            ${d.type === 'timer' ? `<label class="field"><span>目標（分）</span><input type="number" id="hf-target" data-draft="target" value="${esc(d.target)}" min="1" max="600" inputmode="numeric" required></label>` : ''}
             ${d.type === 'count' ? `<div class="row2">
               <label class="field"><span>目標</span><input type="number" id="hf-target" data-draft="target" value="${esc(d.target)}" min="1" max="9999" inputmode="numeric" required></label>
               <label class="field"><span>単位</span><input type="text" id="hf-unit" data-draft="unit" value="${esc(d.unit)}" maxlength="6" placeholder="回"></label>
@@ -483,7 +577,7 @@
       const v = (+s.w) * (1 + Math.min(+s.r, 15) / 30);
       if (!prs[e.name] || v > prs[e.name].v) prs[e.name] = { v, w: +s.w, r: +s.r };
     })));
-    const prList = Object.entries(prs).sort((x, y) => y[1].v - x[1].v).slice(0, 4);
+    const prList = Object.entries(prs).sort((x, y) => y[1].v - x[1].v).slice(0, 6);
     // 直近7日と、その前の7日の総挙上量
     const t = T.today();
     let wk = 0, prev = 0;
@@ -539,7 +633,7 @@
       ${S.templates.length ? `<div class="section-head"><p class="eyebrow">マイテンプレート</p></div>
       <div class="list">${S.templates.map(x => `<button class="row" data-act="tpl-open" data-id="${x.id}"><span class="txt"><strong>${esc(x.name)}</strong><small>${x.exercises.length}種目 · ${x.exercises.reduce((n, e) => n + e.sets, 0)}セット · ${x.exercises.map(e => esc(e.name)).join('、')}</small></span>${icon('chevR')}</button>`).join('')}</div>` : ''}
       ${prList.length ? `<div class="section-head"><p class="eyebrow">自己ベスト（推定1RM）</p></div>
-      <div class="prs">${prList.map(([n, p]) => `<div><small>${esc(n)}</small><span class="num">${Math.round(p.v)}<em>kg</em></span><small class="mono" style="font-weight:400">${p.w}kg × ${p.r}</small></div>`).join('')}</div>` : ''}
+      <div class="prs">${prList.map(([n, p]) => `<button data-act="ex-hist" data-n="${esc(n)}"><small>${esc(n)}</small><span class="num">${Math.round(p.v)}<em>kg</em></span><small class="mono" style="font-weight:400">${p.w}kg × ${p.r}</small></button>`).join('')}</div>` : ''}
       <p class="eyebrow">最近</p>
       <div class="list">
         ${recent.length ? recent.map(w => {
@@ -723,8 +817,45 @@
             <div><small>セット</small><span class="num">${v.sets}</span></div>
             <div><small>総挙上量</small><span class="num">${fmt(v.volume)}</span><small>kg</small></div>
           </div>
-          <div class="list">${w.ex.map(e => `<div class="row"><span class="txt"><strong>${esc(e.name)}</strong><small class="mono">${e.sets.map(s => (+s.w ? s.w + 'kg×' : '') + s.r).join('  ')}</small></span></div>`).join('')}</div>
+          <div class="list">${w.ex.map(e => `<button class="row" data-act="ex-hist" data-n="${esc(e.name)}"><span class="txt"><strong>${esc(e.name)}</strong><small class="mono">${e.sets.map(s => (+s.w ? s.w + 'kg×' : '') + s.r).join('  ')}</small></span>${icon('chart')}</button>`).join('')}</div>
           ${ui.confirm === 'wdel' ? `<div class="confirm"><p>この記録を削除します。獲得したXPも取り消されます。</p><div class="acts"><button class="btn quiet small" data-act="confirm-cancel">やめる</button><button class="btn danger small" data-act="workout-del" data-id="${w.id}">削除する</button></div></div>` : `<button class="btn quiet block" data-act="confirm" data-c="wdel">${icon('trash')}記録を削除</button>`}`;
+      }
+    });
+  }
+
+  function exerciseHistorySheet(name) {
+    openSheet({
+      render() {
+        const hs = T.exerciseHistory(name);
+        const weighted = hs.some(x => x.e1rm > 0);
+        const vals = hs.map(x => weighted ? x.e1rm : x.reps);
+        const unit = weighted ? 'kg' : '回';
+        let chart = '';
+        if (hs.length >= 2) {
+          const W = 320, H = 140, pl = 34, pr = 10, pt = 14, pb = 22;
+          const lo = Math.floor(Math.min(...vals) * 0.95), hi = Math.ceil(Math.max(...vals) * 1.03) || 1;
+          const x = i => pl + (i / (hs.length - 1)) * (W - pl - pr);
+          const y = v => pt + (1 - (v - lo) / Math.max(1, hi - lo)) * (H - pt - pb);
+          const best = Math.max(...vals);
+          const dl = k => { const d = T.parseKey(k); return `${d.getMonth() + 1}/${d.getDate()}`; };
+          chart = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${esc(name)}の推移">
+            ${[lo, hi].map(v => `<line x1="${pl}" y1="${y(v).toFixed(1)}" x2="${W - pr}" y2="${y(v).toFixed(1)}" stroke="var(--line)"/><text x="${pl - 6}" y="${(y(v) + 4).toFixed(1)}" text-anchor="end">${v}</text>`).join('')}
+            <polyline points="${vals.map((v, i) => `${x(i).toFixed(1)},${y(v).toFixed(1)}`).join(' ')}" fill="none" stroke="var(--ember)" stroke-width="2.5" stroke-linejoin="round"/>
+            ${vals.map((v, i) => `<circle cx="${x(i).toFixed(1)}" cy="${y(v).toFixed(1)}" r="${v === best ? 5 : 3}" fill="${v === best ? 'var(--paper)' : 'var(--ember)'}"/>`).join('')}
+            <text x="${pl}" y="${H - 4}">${dl(hs[0].date)}</text><text x="${W - pr}" y="${H - 4}" text-anchor="end">${dl(hs[hs.length - 1].date)}</text>
+          </svg>`;
+        }
+        const first = vals[0], last = vals[vals.length - 1];
+        return `
+          <div class="sheet-head">${exIcon(name)}<h2>${esc(name)}</h2><button class="icon-btn ghost" data-act="close" aria-label="閉じる">${icon('x')}</button></div>
+          ${hs.length ? `
+          <div class="kv">
+            <div><small>${weighted ? '推定1RM' : '最大回数'}</small><span class="num">${Math.round(Math.max(...vals))}</span><small>${unit}</small></div>
+            <div><small>はじめ→今</small><span class="num">${hs.length > 1 ? (last - first >= 0 ? '+' : '−') + Math.abs(Math.round((last - first) * 10) / 10) : '—'}</span><small>${unit}</small></div>
+            <div><small>記録</small><span class="num">${hs.length}</span><small>回</small></div>
+          </div>
+          ${chart || '<p class="muted small" style="margin:0">2回以上記録すると推移のグラフが出ます。</p>'}
+          <div class="list">${hs.slice().reverse().map(x => `<div class="row"><span class="txt"><strong>${dateLabel(x.date)}</strong><small class="mono">${x.sets}セット · ベスト ${x.w ? x.w + 'kg×' : ''}${x.r}回${x.volume ? ` · ${fmt(x.volume)}kg` : ''}</small></span>${weighted ? `<span class="pill">${x.e1rm}kg</span>` : ''}</div>`).join('')}</div>` : '<p class="muted">まだ記録がありません。</p>'}`;
       }
     });
   }
@@ -847,6 +978,25 @@
       </div>`;
   }
 
+  function moodSection() {
+    const S = T.S, t = T.today();
+    const days = Object.keys(S.journal).filter(k => k >= S.startDate && k <= t).sort();
+    const withMood = days.filter(k => S.journal[k].mood);
+    if (withMood.length < 3) return `
+      <div class="section-head"><p class="eyebrow">気分と達成率</p></div>
+      <p class="muted small" style="margin:0">「今日」画面のひとこと日記で気分を3日分つけると、気分と達成率の関係がここに出ます。</p>`;
+    const sum = [0, 0, 0, 0, 0, 0], cnt = [0, 0, 0, 0, 0, 0];
+    withMood.forEach(k => { const st = T.dayStatus(k); if (!st.total) return; const m = S.journal[k].mood; sum[m] += Math.min(1, st.rate); cnt[m]++; });
+    const notes = days.filter(k => S.journal[k].text).slice(-3).reverse();
+    return `
+      <div class="section-head"><p class="eyebrow">気分と達成率</p><span class="more mono">${withMood.length}日分</span></div>
+      <div class="wkbars moodbars">${MOODS.map(x => {
+        const r = cnt[x.v] ? sum[x.v] / cnt[x.v] : null;
+        return `<div style="--c:${x.color}"><em>${r == null ? '—' : Math.round(r * 100) + '%'}</em><span class="b" style="height:${r == null ? 0 : Math.max(3, r * 80)}px"></span><small>${face(x.v)}</small></div>`;
+      }).join('')}</div>
+      ${notes.length ? `<div class="notes">${notes.map(k => { const x = S.journal[k]; const mo = MOODS.find(m => m.v === x.mood); return `<button class="note" data-act="goto-day" data-k="${k}"><span style="color:${mo ? mo.color : 'var(--dim)'}">${x.mood ? face(x.mood) : icon('edit')}</span><span class="txt"><small>${dateLabel(k)}</small>${esc(x.text)}</span></button>`; }).join('')}</div>` : ''}`;
+  }
+
   function weekdayBars() {
     const S = T.S, t = T.today();
     const sum = [0, 0, 0, 0, 0, 0, 0], cnt = [0, 0, 0, 0, 0, 0, 0];
@@ -877,7 +1027,7 @@
         if (T.dayComplete(d)) cls = 'p3'; else if (st.rate >= 0.5) cls = 'p2'; else if (st.done) cls = 'p1';
       }
       if (d === t) cls += ' today';
-      out += `<i class="${cls}" title="${i + 1}日目">${i + 1}</i>`;
+      out += `<button class="c ${cls}" data-act="goto-day" data-k="${d}" aria-label="${i + 1}日目を開く" ${d > t ? 'disabled' : ''}>${i + 1}</button>`;
     }
     return out;
   }
@@ -941,6 +1091,8 @@
 
       <div class="section-head"><p class="eyebrow">66日マップ</p></div>
       <div class="heat" aria-label="66日間の達成状況">${heatmap()}</div>
+
+      ${moodSection()}
 
       <div class="section-head"><p class="eyebrow">曜日別の達成率</p></div>
       ${weekdayBars()}
@@ -1010,6 +1162,7 @@
         <div class="blocks">${blocks}</div>
         <div class="next">レベル${lv + 1}まであと${fmt(hi - xp)} XP</div>
       </div>
+      ${ui.rating === 'now' ? `<button class="btn block" data-act="share">${icon('share')}シェア画像を作る</button>` : ''}
       <div class="statlist">
         ${STATS.map(s => {
           const g = stats[s.key] - gainBase[s.key];
@@ -1026,7 +1179,87 @@
         <div class="tip"><strong>タスク完了 20XP＋連続ボーナス</strong><p>連続日数×2XP（最大+30）。対応する能力が+2。</p></div>
         <div class="tip"><strong>完璧な日 +30XP</strong><p>全タスクを完了かスキップで締めた日。自制心と自信が+1。</p></div>
         <div class="tip"><strong>ワークアウト 40XP〜</strong><p>セット数と総挙上量でボーナス。強さ+3、自制心+1。</p></div>
+        <div class="tip"><strong>ひとこと日記 +10XP</strong><p>気分かひとことを残した日。知恵が+1。</p></div>
       </div>`;
+  }
+
+  /* ======================================================================
+   * シェア画像（canvas で描いて <img> に。長押しで保存できる）
+   * ==================================================================== */
+  async function makeShareImage() {
+    try { await Promise.all(['400 120px "Dela Gothic One"', '700 32px "Zen Kaku Gothic New"'].map(f => document.fonts.load(f))); } catch (e) { /* フォールバックで描く */ }
+    const S = T.S, L = T.ledger(), tot = T.totals();
+    const W = 1080, H = 1350;
+    const c = document.createElement('canvas');
+    c.width = W; c.height = H;
+    const x = c.getContext('2d');
+    const DISP = '"Dela Gothic One", "Hiragino Sans", sans-serif';
+    const BODY = '"Zen Kaku Gothic New", "Hiragino Sans", sans-serif';
+    x.fillStyle = '#0e0c0b'; x.fillRect(0, 0, W, H);
+    const g = x.createRadialGradient(W / 2, H + 200, 50, W / 2, H + 200, 900);
+    g.addColorStop(0, 'rgba(255,107,10,.55)'); g.addColorStop(1, 'rgba(255,107,10,0)');
+    x.fillStyle = g; x.fillRect(0, 0, W, H);
+    // 火の粉
+    const r = Scenes.rng(tot.xp + 7);
+    for (let i = 0; i < 70; i++) { x.fillStyle = `rgba(255,${120 + Math.floor(r() * 80)},40,${(0.2 + r() * 0.6).toFixed(2)})`; x.beginPath(); x.arc(r() * W, H * 0.45 + r() * H * 0.55, 1 + r() * 4, 0, 7); x.fill(); }
+    // 枠
+    x.strokeStyle = '#efe3cc'; x.lineWidth = 6; x.strokeRect(48, 48, W - 96, H - 96);
+    x.textBaseline = 'alphabetic';
+    // 日数
+    x.fillStyle = '#ff6b0a'; x.font = `400 260px ${DISP}`;
+    const dayTxt = String(tot.day);
+    x.fillText(dayTxt, 96, 340);
+    const dw = x.measureText(dayTxt).width;
+    x.fillStyle = '#a69684'; x.font = `400 64px ${DISP}`;
+    x.fillText(`日目 / ${CHALLENGE_DAYS}`, 96 + dw + 24, 330);
+    // 進捗バー
+    for (let i = 0; i < CHALLENGE_DAYS; i++) {
+      const d = T.addDays(S.startDate, i);
+      const on = d <= T.today() && T.dayStatus(d).done > 0;
+      x.fillStyle = on ? (T.dayComplete(d) ? '#ff6b0a' : 'rgba(255,107,10,.5)') : '#342c27';
+      x.fillRect(96 + (i % 33) * 27, 380 + Math.floor(i / 33) * 22, 22, 14);
+    }
+    // クラスとレベル
+    const tops = topStats(L.stats);
+    const cls = CLASSES[tops[0].k];
+    x.fillStyle = '#ff6b0a'; x.fillRect(96, 470, 230, 150);
+    x.fillStyle = '#fff'; x.font = `400 100px ${DISP}`; x.fillText(String(tot.level), 120, 580);
+    x.font = `700 30px ${BODY}`; x.fillText('レベル', 230, 600);
+    x.fillStyle = '#f5eee3'; x.font = `400 92px ${DISP}`; x.fillText(cls.name, 360, 570);
+    x.fillStyle = '#a69684'; x.font = `700 34px ${BODY}`; x.fillText(cls.line, 362, 618);
+    // 能力値
+    const max = Math.max(...STATS.map(s => L.stats[s.key]));
+    const COL = { wis: '#b48cff', con: '#8fcf5a', str: '#ec6a52', dis: '#7f84ff', foc: '#3fc2b8' };
+    STATS.forEach((s, i) => {
+      const yy = 700 + i * 82;
+      x.fillStyle = '#a69684'; x.font = `700 34px ${BODY}`; x.fillText(s.label, 96, yy + 30);
+      x.fillStyle = '#342c27'; x.fillRect(250, yy + 6, 560, 30);
+      x.fillStyle = COL[s.key]; x.fillRect(250, yy + 6, 560 * (L.stats[s.key] / max), 30);
+      x.fillStyle = '#f5eee3'; x.font = `400 46px ${DISP}`; x.textAlign = 'right'; x.fillText(String(L.stats[s.key]), W - 96, yy + 38); x.textAlign = 'left';
+    });
+    // 3つの数字
+    [['連続', tot.streak + '日'], ['完了', fmt(L.seasonDone) + '回'], ['ワークアウト', tot.workouts + '回']].forEach(([k, v], i) => {
+      const xx = 96 + i * 300;
+      x.fillStyle = '#a69684'; x.font = `700 30px ${BODY}`; x.fillText(k, xx, 1150);
+      x.fillStyle = '#f5eee3'; x.font = `400 64px ${DISP}`; x.fillText(v, xx, 1225);
+    });
+    x.fillStyle = '#6e6258'; x.font = `700 28px ${BODY}`;
+    x.fillText(`${S.name ? S.name + ' · ' : ''}66日間 · ${dateLabel(T.today())}`, 96, H - 84);
+    return new Promise(res => c.toBlob(b => res({ url: c.toDataURL('image/png'), blob: b }), 'image/png'));
+  }
+
+  function shareSheet() {
+    ui.shareImg = null;
+    openSheet({
+      render() {
+        return `
+          <div class="sheet-head"><h2>シェア画像</h2><button class="icon-btn ghost" data-act="close" aria-label="閉じる">${icon('x')}</button></div>
+          ${ui.shareImg ? `<img class="shareimg" src="${ui.shareImg.url}" alt="今の進み具合をまとめた画像">
+          <p class="muted small" style="margin:0">画像を長押しすると、写真に保存したり送ったりできます。</p>
+          ${navigator.share ? `<button class="btn primary block" data-act="share-send">${icon('share')}共有する</button>` : ''}` : '<p class="muted">画像を作っています…</p>'}`;
+      }
+    });
+    makeShareImage().then(img => { ui.shareImg = img; if (sheet) drawSheet(); }).catch(() => toast('画像を作れませんでした'));
   }
 
   /* ======================================================================
@@ -1207,6 +1440,7 @@
     ui.confirm = def.keepConfirm ? ui.confirm : null;
     sheet = def;
     drawSheet();
+    renderFocusPill();
   }
   function drawSheet() {
     if (!sheet) { const s = $('#scrim'); if (s) s.remove(); return; }
@@ -1227,6 +1461,7 @@
     sheet = null; ui.confirm = null;
     const s = $('#scrim');
     if (s) s.remove();
+    renderFocusPill();
   }
 
   /* ======================================================================
@@ -1250,6 +1485,8 @@
     if (dot) dot.hidden = !T.S.active;
     renderSession();
     if (sheet && sheet.live) drawSheet();
+    renderFocusPill();
+    ensureFocusTick();
   }
 
   function buildTabbar() {
@@ -1291,7 +1528,11 @@
       ui.draft = Object.assign({ target: 10, unit: '回', time: '' }, p);
       drawSheet();
     },
-    draft(el) { ui.draft[el.dataset.k] = el.dataset.v; drawSheet(); },
+    draft(el) {
+      ui.draft[el.dataset.k] = el.dataset.v;
+      if (el.dataset.k === 'type' && el.dataset.v === 'timer' && !(+ui.draft.target > 1)) ui.draft.target = 10;
+      drawSheet();
+    },
     metrics() { metricsSheet(); },
     water(el) {
       const d = ui.metricDraft;
@@ -1423,6 +1664,31 @@
     },
     'tpl-del'(el) { T.removeTemplate(el.dataset.id); closeSheet(); toast('テンプレートを削除しました'); },
     season() { seasonSheet(); },
+    'ft-start'(el) { startFocus(el.dataset.id); },
+    'ft-pause'() { const tm = T.S.timer; if (!tm) return; tm.left = timerLeft(tm); tm.end = null; T.commit(); },
+    'ft-resume'() { const tm = T.S.timer; if (!tm) return; tm.end = Date.now() + tm.left * 1000; tm.left = null; T.commit(); ensureFocusTick(); },
+    'ft-log'() { logFocus(false); },
+    'ft-reset'() { T.S.timer = null; T.commit(); },
+    'habit-focus'(el) { ui.tab = 'today'; ui.viewDate = T.S.timer ? T.S.timer.k : T.today(); saveUI(); render(); habitSheet(el.dataset.id); },
+    mood(el) {
+      const v = +el.dataset.v, cur = (T.S.journal[ui.viewDate] || {}).mood;
+      const txt = $('#jr-text');
+      saveJournal(ui.viewDate, { mood: cur === v ? 0 : v, text: txt ? txt.value.trim() : undefined });
+    },
+    'goto-day'(el) {
+      const k = el.dataset.k;
+      if (!k || k > T.today() || k < T.S.startDate) return;
+      ui.tab = 'today'; ui.viewDate = k; ui.filter = 'todo'; saveUI(); closeSheet(); render();
+    },
+    'ex-hist'(el) { exerciseHistorySheet(el.dataset.n); },
+    share() { shareSheet(); },
+    'share-send'() {
+      const img = ui.shareImg;
+      if (!img) return;
+      const file = img.blob ? new File([img.blob], '66days.png', { type: 'image/png' }) : null;
+      const data = file && navigator.canShare && navigator.canShare({ files: [file] }) ? { files: [file], title: '66日間' } : { title: '66日間', text: `66日間チャレンジ ${T.totals().day}日目 · レベル${T.totals().level}` };
+      Promise.resolve().then(() => navigator.share(data)).catch(() => toast('共有できない環境です。画像を長押しして保存してください'));
+    },
     'season-next'() {
       T.startNextSeason();
       closeSheet();
@@ -1436,6 +1702,9 @@
   function selectIO() { const t = $('#io-text'); if (t) { t.focus(); t.select(); } }
 
   function onClick(e) {
+    // 日記の入力中に別の操作をしても、書いた内容を落とさない
+    const ae = document.activeElement;
+    if (ae && ae.id === 'jr-text' && !e.target.closest('#jr-text')) onChange({ target: ae });
     const el = e.target.closest('[data-act]');
     if (!el || el.disabled) return;
     const fn = A[el.dataset.act];
@@ -1447,6 +1716,7 @@
 
   function onKey(e) {
     if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('[role="button"][data-act]')) { e.preventDefault(); onClick(e); }
+    if (e.key === 'Enter' && e.target.id === 'jr-text') e.target.blur();
     if (e.key === 'Escape') {
       if ($('.levelup')) $('.levelup').remove();
       else if (sheet) closeSheet();
@@ -1470,6 +1740,23 @@
       if (lab) lab.textContent = +t.value * 10 + 5;
       const hint = $('#hint-' + t.dataset.rate);
       if (hint) hint.textContent = RATE_HINT[t.dataset.rate][+t.value];
+    }
+  }
+
+  function saveJournal(k, patch) {
+    if (k > T.today()) return;
+    const cur = Object.assign({}, T.S.journal[k] || {}, patch);
+    if (!cur.mood) delete cur.mood;
+    if (!cur.text) delete cur.text;
+    progress(() => {
+      if (Object.keys(cur).length) T.S.journal[k] = cur; else delete T.S.journal[k];
+      T.commit();
+    });
+  }
+  function onChange(e) {
+    if (e.target.id === 'jr-text') {
+      const v = e.target.value.trim();
+      if (v !== ((T.S.journal[ui.viewDate] || {}).text || '')) saveJournal(ui.viewDate, { text: v });
     }
   }
 
@@ -1500,6 +1787,7 @@
     document.addEventListener('click', onClick);
     document.addEventListener('keydown', onKey);
     document.addEventListener('input', onInput);
+    document.addEventListener('change', onChange);
     document.addEventListener('submit', onSubmit);
     // 日付をまたいだら「今日」を進める
     let lastDay = T.today();
