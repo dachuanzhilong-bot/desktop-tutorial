@@ -56,6 +56,11 @@ for (const theme of ["dark", "light"] as const) {
       await page.getByTestId("icm-result").waitFor({ timeout: 60_000 });
       await page.locator('[data-cls="14"]').click();
       await audit(page, `${theme} icm result`);
+      await page.getByTestId("icm-drill-start").click();
+      await page.getByTestId("icm-drill-act").click();
+      await page.getByTestId("icm-drill-result").waitFor();
+      await page.waitForTimeout(600); // the cards flip in
+      await audit(page, `${theme} icm drill`);
     });
     test("analyze with imported hands", async ({ page }) => {
       await page.goto("/analyze/");

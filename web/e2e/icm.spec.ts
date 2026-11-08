@@ -63,3 +63,27 @@ test.describe("ICM push/fold", () => {
     await expect(page.getByTestId("icm-stacks").locator("li")).toHaveCount(3);
   });
 });
+
+test.describe("ICM practice", () => {
+  test("asks spots from the solved table and grades the answers", async ({ page }) => {
+    await page.goto("/icm/");
+    await page.getByTestId("icm-quick-bubble").click();
+    await page.getByTestId("icm-acc-fast").click();
+    await page.getByTestId("icm-run").click();
+    await expect(page.getByTestId("icm-result")).toBeVisible({ timeout: 60_000 });
+    await page.getByTestId("icm-drill-start").click();
+    await expect(page.getByTestId("icm-drill-question")).toContainText("BTN");
+    for (let i = 0; i < 3; i++) {
+      await (i % 2 ? page.getByTestId("icm-drill-fold") : page.getByTestId("icm-drill-act")).click();
+      await expect(page.getByTestId("icm-drill-result")).toBeVisible();
+      await expect(page.getByTestId("icm-drill-result")).toContainText("EV損失");
+      await page.getByTestId("icm-drill-next").click();
+    }
+    await expect(page.getByTestId("icm-drill-stats")).toContainText("回答 3回");
+    // another position, answered with the keyboard
+    await page.getByTestId("icm-drill-pos-0").click();
+    await expect(page.getByTestId("icm-drill-question")).toContainText("CO");
+    await page.keyboard.press("f");
+    await expect(page.getByTestId("icm-drill-result")).toBeVisible();
+  });
+});
