@@ -12,6 +12,8 @@ publish = false
 [lib]
 name = "tessera_solver"
 path = "src/lib.rs"
+# `cdylib` is the WebAssembly build (see web/scripts/build-wasm.sh); `rlib` serves the native tools and tests
+crate-type = ["rlib", "cdylib"]
 
 [[bin]]
 name = "gen_preflop"

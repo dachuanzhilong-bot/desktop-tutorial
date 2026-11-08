@@ -13,6 +13,7 @@
     "e2e": "npm run build && playwright test --trace off",
     "solutions:pack": "node scripts/pack-solutions.mjs",
     "icons": "node scripts/make-icons.mjs",
+    "wasm": "bash scripts/build-wasm.sh",
     "verify": "npm run typecheck && npm test && npm run e2e"
   },
   "dependencies": {

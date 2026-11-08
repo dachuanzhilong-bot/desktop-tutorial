@@ -11,6 +11,7 @@ pub mod cards;
 pub mod engine;
 pub mod equity;
 pub mod eval;
+pub mod ffi;
 pub mod games;
 pub mod postflop;
 pub mod preflop;

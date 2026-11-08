@@ -536,6 +536,8 @@ pub struct Solver<'a> {
     pub iters: u32,
     /// iteration at which the strategy average was (re)started
     avg_start: u32,
+    /// node-locking: a fixed strategy (na * NC) for a decision node; the node is then never updated
+    locks: Vec<Option<Vec<f32>>>,
     pub prior: [Vec<f32>; 2],
     extra: HashMap<u64, Strength>,
     z0: f64,
@@ -567,7 +569,37 @@ impl<'a> Solver<'a> {
         let mut cm = vec![0f32; NC];
         compat_mass(fm, &prior[1], &mut cm);
         let z0: f64 = (0..NC).map(|h| prior[0][h] as f64 * cm[h] as f64).sum();
-        Solver { tree, regret, ssum, avg: Vec::new(), iters: 0, avg_start: 0, prior, extra: HashMap::new(), z0 }
+        let locks = vec![None; tree.nodes.len()];
+        Solver { tree, regret, ssum, avg: Vec::new(), iters: 0, avg_start: 0, locks, prior, extra: HashMap::new(), z0 }
+    }
+
+    /// Fix the strategy at a decision node (`strategy` is na * NC, each hand's row must sum to 1).
+    /// The opponent (and the locker's other nodes) keep adapting; this node is never updated.
+    pub fn lock_node(&mut self, node: usize, strategy: Vec<f32>) -> Result<(), String> {
+        match &self.tree.nodes.get(node).ok_or("no such node")?.kind {
+            PKind::Decision { children, .. } => {
+                let na = children.len();
+                if strategy.len() != na * NC {
+                    return Err(format!("expected {} values, got {}", na * NC, strategy.len()));
+                }
+                let mut s = strategy;
+                for h in 0..NC {
+                    let sum: f32 = (0..na).map(|a| s[a * NC + h].max(0.0)).sum();
+                    for a in 0..na {
+                        s[a * NC + h] = if sum > 1e-9 { s[a * NC + h].max(0.0) / sum } else { 1.0 / na as f32 };
+                    }
+                }
+                self.locks[node] = Some(s);
+                Ok(())
+            }
+            _ => Err("not a decision node".into()),
+        }
+    }
+
+    pub fn unlock_node(&mut self, node: usize) {
+        if let Some(l) = self.locks.get_mut(node) {
+            *l = None;
+        }
     }
 
     /// Forget the strategy sums (keeps the regrets): early iterations are far from equilibrium and
@@ -797,11 +829,16 @@ impl<'a> Solver<'a> {
                 let na = children.len();
                 let rp: &[f32] = if p == 0 { r0 } else { r1 };
                 let ro: &[f32] = if p == 0 { r1 } else { r0 };
+                let locked = self.locks[ni].is_some();
                 let mut sigma = vec![0f32; na * NC];
-                match mode {
-                    Mode::Train(_) => regret_match(&self.regret[ni], na, NC, &mut sigma),
-                    Mode::Br(bp) if bp == p => {}
-                    _ => sigma.copy_from_slice(&self.avg[ni]),
+                if locked {
+                    sigma.copy_from_slice(self.locks[ni].as_ref().unwrap());
+                } else {
+                    match mode {
+                        Mode::Train(_) => regret_match(&self.regret[ni], na, NC, &mut sigma),
+                        Mode::Br(bp) if bp == p => {}
+                        _ => sigma.copy_from_slice(&self.avg[ni]),
+                    }
                 }
                 let mut cfv_p = vec![0f32; NC];
                 let mut cfv_o = vec![0f32; NC];
@@ -824,7 +861,7 @@ impl<'a> Solver<'a> {
                         }
                     }
                     match mode {
-                        Mode::Br(bp) if bp == p => {
+                        Mode::Br(bp) if bp == p && !locked => {
                             let b = best.get_or_insert_with(|| vec![f32::MIN; NC]);
                             for h in 0..NC {
                                 b[h] = b[h].max(res.v[p][h]);
@@ -842,6 +879,7 @@ impl<'a> Solver<'a> {
                     cfv_p = b;
                 }
                 match mode {
+                    Mode::Train(_) if locked => {}
                     Mode::Train(t) => {
                         for a in 0..na {
                             for h in 0..NC {
@@ -951,6 +989,11 @@ pub fn decode_loss(c: u8) -> f32 {
 
 /// Binary file for one flop (see docs/03-solution-format.md, "TSP1").
 pub fn export(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32) -> Vec<u8> {
+    export_with_map(tree, ev, min_reach).0
+}
+
+/// Same as `export`, plus the tree node id of every exported node (needed to lock a node of the live solver).
+pub fn export_with_map(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32) -> (Vec<u8>, Vec<u32>) {
     // keep decision nodes that are played, chance nodes that lead to something kept
     let n = tree.nodes.len();
     let mut keep = vec![false; n];
@@ -1087,7 +1130,7 @@ pub fn export(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32) -> Vec<u8> {
             _ => unreachable!(),
         }
     }
-    b
+    (b, order.iter().map(|&i| i as u32).collect())
 }
 
 #[cfg(test)]
