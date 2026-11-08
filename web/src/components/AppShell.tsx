@@ -5,6 +5,8 @@ import { ReactNode, useEffect, useRef } from "react";
 import type { Key } from "@/lib/i18n/ja";
 import { useSettings } from "@/lib/settings";
 import { IconBolt, IconChart, IconGear, IconGrid, IconHome, IconTarget } from "./icons";
+import { CrashProbe } from "./CrashProbe";
+import { OfflineBanner } from "./OfflineBanner";
 import { Onboarding } from "./Onboarding";
 import { useShell } from "./ShellContext";
 
@@ -36,9 +38,10 @@ export function AppShell({ children }: { children: ReactNode }) {
   return (
     <div className="mx-auto flex min-h-dvh max-w-3xl flex-col">
       <a href="#main" className="sr-only focus:not-sr-only focus:absolute focus:left-2 focus:top-2 focus:z-50 focus:rounded-lg focus:bg-accent focus:px-3 focus:py-2 focus:text-accent-ink">
-        Skip to content
+        {t("common.skipToContent")}
       </a>
       <main id="main" className={`flex-1 px-4 pt-4 sm:pt-6 ${immersive ? "pb-6" : "pb-28"}`} data-ready={ready}>
+        <OfflineBanner />
         {children}
       </main>
       <nav
@@ -67,6 +70,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </ul>
       </nav>
       <Onboarding />
+      <CrashProbe tag="root" />
     </div>
   );
 }

@@ -2,6 +2,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Ring } from "@/components/Charts";
+import { CrashProbe } from "@/components/CrashProbe";
 import { IconFlame, IconBolt, IconGrid, IconTarget } from "@/components/icons";
 import { useSettings } from "@/lib/settings";
 import { SEATS } from "@/lib/solution/tree";
@@ -23,6 +24,7 @@ export default function Home() {
 
   return (
     <div className="space-y-5">
+      <CrashProbe tag="page" />
       <header className="pt-2">
         <div className="flex items-center gap-3">
           <svg viewBox="0 0 64 64" width="44" height="44" aria-hidden>

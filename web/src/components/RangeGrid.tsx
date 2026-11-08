@@ -149,7 +149,6 @@ function RangeGridInner({ sol, actions, mode, selected, marker, onSelect, onLong
         const inRange = w >= 0.01;
         const dim = filter ? !filter(h) : false;
         const common = {
-          key: h,
           type: "button" as const,
           "data-cls": h,
           "data-dim": dim,
@@ -158,7 +157,7 @@ function RangeGridInner({ sol, actions, mode, selected, marker, onSelect, onLong
           tabIndex: (selected ?? 0) === h || (selected === null && h === 0) ? 0 : -1,
           className: "cell",
         };
-        if (!sol) return <button {...common} aria-label={c.name} disabled />;
+        if (!sol) return <button key={h} {...common} aria-label={c.name} disabled />;
 
         // aria text
         const parts: string[] = [];
@@ -173,7 +172,7 @@ function RangeGridInner({ sol, actions, mode, selected, marker, onSelect, onLong
           for (let a = 1; a < na; a++) if (sol.freq[a * NUM_CLASSES + h] > sol.freq[topA * NUM_CLASSES + h]) topA = a;
           const topF = sol.freq[topA * NUM_CLASSES + h];
           return (
-            <button {...common} data-empty={!inRange} aria-label={aria}>
+            <button key={h} {...common} data-empty={!inRange} aria-label={aria}>
               {inRange && (
                 <span className="fill" style={{ height: `${Math.min(1, w) * 100}%` }}>
                   {actions.map((act, a) => {
@@ -212,7 +211,7 @@ function RangeGridInner({ sol, actions, mode, selected, marker, onSelect, onLong
         }
         const { bg, fg } = ramp(t);
         return (
-          <button {...common} data-empty={!inRange && mode !== "equity"} aria-label={`${aria}; ${mode} ${text}`} style={mode === "weight" && !inRange ? undefined : { background: bg, color: fg }}>
+          <button key={h} {...common} data-empty={!inRange && mode !== "equity"} aria-label={`${aria}; ${mode} ${text}`} style={mode === "weight" && !inRange ? undefined : { background: bg, color: fg }}>
             <span className="lbl" style={{ color: mode === "weight" && !inRange ? undefined : fg, textShadow: "none" }}>
               <span className="flex flex-col items-center gap-[1px]">
                 <span>{c.name}</span>

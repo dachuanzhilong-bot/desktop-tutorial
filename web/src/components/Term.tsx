@@ -19,10 +19,11 @@ export function Term({ id, children }: { id: string; children?: ReactNode }) {
       >
         {children ?? title}
       </button>
-      <div id={pid} popover="auto" className="tip" role="tooltip">
-        <p className="mb-1 font-bold">{title}</p>
-        <p className="text-sm leading-relaxed text-muted">{desc}</p>
-      </div>
+      {/* spans only: Term is used inside <p> and table cells, where <div>/<p> would be invalid HTML (hydration error) */}
+      <span id={pid} popover="auto" className="tip text-left font-normal" role="tooltip">
+        <span className="mb-1 block font-bold">{title}</span>
+        <span className="block text-sm leading-relaxed text-muted">{desc}</span>
+      </span>
     </>
   );
 }
