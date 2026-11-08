@@ -6,6 +6,7 @@ import { useSettings } from "@/lib/settings";
 const TABS = [
   { href: "/solve/", key: "solve.tab.solve" },
   { href: "/builder/", key: "solve.tab.builder" },
+  { href: "/icm/", key: "solve.tab.icm" },
 ] as const;
 
 /** Solve / Range builder switcher */
@@ -14,7 +15,7 @@ export function SolveTabs() {
   const { t } = useSettings();
   const norm = (p: string) => (p.endsWith("/") ? p : p + "/");
   return (
-    <nav aria-label="Solve" className="mb-3 grid grid-cols-2 gap-1 rounded-2xl bg-surface p-1">
+    <nav aria-label="Solve" className="mb-3 grid grid-cols-3 gap-1 rounded-2xl bg-surface p-1">
       {TABS.map((tab) => {
         const active = norm(path) === tab.href;
         return (

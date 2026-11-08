@@ -1,50 +1,10 @@
-import { readFileSync } from "node:fs";
-import path from "node:path";
-import vm from "node:vm";
 import { describe, expect, it } from "vitest";
+import { startWorker } from "./workerHelper";
 import { buildConfig, DEFAULT_SOLVE, solverRanges } from "../solve/config";
 import { parseRange } from "../ranges/range";
 import { parseBoard } from "../postflop/combos";
 import { decodeFlop } from "../postflop/decode";
 import { NC } from "../postflop/combos";
-
-const PUBLIC = path.resolve(__dirname, "../../../public");
-
-/** runs the real public/solver-worker.js in a vm sandbox, with the real .wasm */
-function startWorker() {
-  const wasm = readFileSync(path.join(PUBLIC, "wasm/tessera_solver.wasm"));
-  const waiting = new Map<number, { resolve: (m: any) => void; progress: any[] }>();
-  const sandbox: any = {
-    self: {} as any,
-    fetch: async () => ({ arrayBuffer: async () => wasm.buffer.slice(wasm.byteOffset, wasm.byteOffset + wasm.byteLength) }),
-    setTimeout,
-    WebAssembly,
-    Float32Array,
-    Uint8Array,
-    Uint32Array,
-    Promise,
-    Math,
-    String,
-  };
-  sandbox.self.postMessage = (m: any) => {
-    const w = waiting.get(m.req);
-    if (!w) return;
-    if (m.type === "progress") w.progress.push(m);
-    else {
-      waiting.delete(m.req);
-      w.resolve({ ...m, progress: w.progress });
-    }
-  };
-  vm.runInNewContext(readFileSync(path.join(PUBLIC, "solver-worker.js"), "utf8"), sandbox);
-  let req = 1;
-  const call = (msg: any) =>
-    new Promise<any>((resolve, reject) => {
-      const r = req++;
-      waiting.set(r, { resolve: (m) => (m.type === "error" ? reject(new Error(m.message)) : resolve(m)), progress: [] });
-      sandbox.self.onmessage({ data: { req: r, ...msg } });
-    });
-  return call;
-}
 
 const cfg = { ...DEFAULT_SOLVE, pot: 10, stack: 30, bets: [[0.5], [0.66], [0.5, 1]] as [number[], number[], number[]], raiseSizes: [false, false, false] as [boolean, boolean, boolean] };
 const board = parseBoard("Ks 7d 2c 9h 3s");

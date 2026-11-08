@@ -18,7 +18,7 @@
 //! well in practice (see docs/07-preflop-model.md).  For two players this is
 //! plain CFR+ with linear averaging.
 
-pub const MAXP: usize = 6;
+pub const MAXP: usize = 9;
 
 pub struct Class {
     /// rows = x hands, cols = y hands: P_y[a][b] * s_x(a,b)
@@ -35,6 +35,13 @@ pub enum Kind {
     /// post-flop actor) to in-position last.  Each player's share of the pot is the
     /// average of the three heads-up shares:  S_i = (s_ij + s_ik) / 3  (zero-sum).
     Showdown3 { p: [usize; 3], class: usize },
+    /// Everybody else folded: every player gets a fixed value (used by the ICM games, where the value
+    /// is the prize-pool equity of the resulting stacks, so folding is *not* value neutral).
+    Const { vals: [f32; MAXP] },
+    /// Heads-up all-in showdown valued in absolute terms: `vx[q]` is player q's value if x wins,
+    /// `vy[q]` if y wins; x's / y's chance of winning with a given hand pair is the class equity.
+    /// Players who folded earlier still care about the winner (their stack, hence ICM equity, changes).
+    Icm { x: usize, y: usize, class: usize, vx: [f32; MAXP], vy: [f32; MAXP] },
 }
 
 pub struct Node {
@@ -369,6 +376,61 @@ impl<'g> Solver<'g> {
                     let (j, l) = (trio[(slot + 1) % 3], trio[(slot + 2) % 3]);
                     for h in 0..k {
                         out[i * k + h] = f[h] * (pot / 3.0 * sacc[slot][h] - node.inv[i] * st.m[j * k + h] * st.m[l * k + h]);
+                    }
+                }
+            }
+            Kind::Const { vals } => {
+                for h in 0..k {
+                    for q in 0..n {
+                        let mut p = 1f32;
+                        for q2 in 0..n {
+                            if q2 != q {
+                                p *= st.m[q2 * k + h];
+                            }
+                        }
+                        out[q * k + h] = vals[q] * p;
+                    }
+                }
+            }
+            Kind::Icm { x, y, class, vx, vy } => {
+                let (x, y) = (*x, *y);
+                let cl = &g.classes[*class];
+                let mut tmp_x = vec![0f32; k];
+                let mut tmp_y = vec![0f32; k];
+                // tmp_x[a] = sum_b P_y[a][b] s(a,b) r_y[b]      (x holds a: prob. of "y has a hand and x wins")
+                matvec(&cl.a, &st.r[y * k..(y + 1) * k], k, &mut tmp_x);
+                matvec(&cl.b, &st.r[x * k..(x + 1) * k], k, &mut tmp_y);
+                // folded players: F(h) = prod of the other folded players' marginals
+                let folded: Vec<usize> = (0..n).filter(|&q| q != x && q != y).collect();
+                // joint (x, y) factors seen by a folded player holding h:
+                //   mxy[h] = sum_a P_x[h][a] r_x[a] m_y[a]      sx[h] = sum_a P_x[h][a] r_x[a] tmp_x[a]
+                let mut rx_my = vec![0f32; k];
+                let mut rx_tx = vec![0f32; k];
+                for a in 0..k {
+                    let w = st.r[x * k + a];
+                    rx_my[a] = w * st.m[y * k + a];
+                    rx_tx[a] = w * tmp_x[a];
+                }
+                let mut mxy = vec![0f32; k];
+                let mut sx = vec![0f32; k];
+                matvec(&g.pm[x], &rx_my, k, &mut mxy);
+                matvec(&g.pm[x], &rx_tx, k, &mut sx);
+                for h in 0..k {
+                    // contestants: other folded players' marginals only
+                    let mut f = 1f32;
+                    for &q in &folded {
+                        f *= st.m[q * k + h];
+                    }
+                    out[x * k + h] = f * (vy[x] * st.m[y * k + h] + (vx[x] - vy[x]) * tmp_x[h]);
+                    out[y * k + h] = f * (vx[y] * st.m[x * k + h] + (vy[y] - vx[y]) * tmp_y[h]);
+                    for &q in &folded {
+                        let mut fq = 1f32;
+                        for &q2 in &folded {
+                            if q2 != q {
+                                fq *= st.m[q2 * k + h];
+                            }
+                        }
+                        out[q * k + h] = fq * (vy[q] * mxy[h] + (vx[q] - vy[q]) * sx[h]);
                     }
                 }
             }

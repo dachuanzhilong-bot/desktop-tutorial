@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { FreqBars } from "@/components/HandPanel";
 import { PlayingCard } from "@/components/PlayingCard";
@@ -64,6 +64,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
   const { t, settings } = useSettings();
   const edgeText = useEdgeText();
   const [mode, setMode] = useState<GridMode>("strategy");
+  const gridMode = useDeferredValue(mode);
   const [selected, setSelected] = useState<number | null>(null);
   const [category, setCategory] = useState<CategoryId>("all");
   const [blocker, setBlocker] = useState<number | null>(null);
@@ -225,7 +226,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
                   </button>
                 ))}
               </div>
-              <RangeGrid sol={sol} actions={actions} mode={mode} selected={selected} onSelect={(c) => { haptic.tap(); setSelected(c); }} filter={gridFilter} showNumbers={settings.labels} ariaLabel={`${seatName(node.actor)}`} />
+              <RangeGrid sol={sol} actions={actions} mode={gridMode} selected={selected} onSelect={(c) => { haptic.tap(); setSelected(c); }} filter={gridFilter} showNumbers={settings.labels} ariaLabel={`${seatName(node.actor)}`} />
               <div className="flex items-center justify-between gap-3">
                 <ActionLegend actions={actions} />
                 <span className="text-xs text-muted">{t("pf.exploit", { n: exploit.toFixed(1) })}</span>

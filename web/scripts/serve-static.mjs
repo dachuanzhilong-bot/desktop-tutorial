@@ -2,6 +2,7 @@
 //   node scripts/serve-static.mjs [port] [dir]
 import { createServer } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
+import { gzipSync } from "node:zlib";
 import { extname, join, normalize, resolve } from "node:path";
 
 const port = Number(process.argv[2] ?? process.env.PORT ?? 3100);
@@ -18,7 +19,12 @@ const TYPES = {
   ".gz": "application/gzip",
   ".txt": "text/plain; charset=utf-8",
   ".woff2": "font/woff2",
+  ".wasm": "application/wasm",
+  ".bin": "application/octet-stream",
 };
+// what a real static host compresses
+const COMPRESS = new Set([".html", ".js", ".css", ".json", ".webmanifest", ".svg", ".txt", ".wasm", ".bin"]);
+const gz = new Map();
 
 createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
@@ -33,6 +39,17 @@ createServer((req, res) => {
   }
   const headers = { "content-type": TYPES[extname(file)] ?? "application/octet-stream" };
   if (file.endsWith("sw.js")) headers["cache-control"] = "no-cache";
+  else if (p.startsWith("/_next/static/")) headers["cache-control"] = "public, max-age=31536000, immutable";
+  let body = readFileSync(file);
+  if (COMPRESS.has(extname(file)) && /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) {
+    // cache per file *and* modification time: the export is rebuilt while this server may keep running
+    const key = `${file}:${statSync(file).mtimeMs}`;
+    let z = gz.get(key);
+    if (!z) gz.set(key, (z = gzipSync(body)));
+    body = z;
+    headers["content-encoding"] = "gzip";
+    headers.vary = "Accept-Encoding";
+  }
   res.writeHead(200, headers);
-  res.end(readFileSync(file));
+  res.end(body);
 }).listen(port, () => console.log(`serving ${root} on http://localhost:${port}`));

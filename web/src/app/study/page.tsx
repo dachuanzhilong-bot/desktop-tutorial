@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import { HandPanel, FreqBars } from "@/components/HandPanel";
 import { LineBar } from "@/components/LineBar";
 import { StudyTabs } from "@/components/StudyTabs";
@@ -37,6 +37,8 @@ function Study({ store }: { store: SolutionStore }) {
   const m = store.manifest;
   const [nodeId, setNodeId] = useState(0);
   const [mode, setMode] = useState<GridMode>("strategy");
+  // the tab highlight updates at once; the 169 cells follow in the background (keeps taps under ~100 ms on slow phones)
+  const gridMode = useDeferredValue(mode);
   const [selected, setSelected] = useState<number | null>(null);
   const [filter, setFilter] = useState<HandFilterId>("all");
   const [blocker, setBlocker] = useState<number | null>(null);
@@ -170,7 +172,7 @@ function Study({ store }: { store: SolutionStore }) {
           <RangeGrid
             sol={sol}
             actions={actions}
-            mode={mode}
+            mode={gridMode}
             selected={selected}
             onSelect={(c) => {
               haptic.tap();

@@ -8,7 +8,7 @@
 const VERSION = "v3";
 const CORE = `tessera-core-${VERSION}`;
 const DATA = `tessera-data-${VERSION}`;
-const PAGES = ["/", "/study/", "/study/postflop/", "/study/report/", "/solve/", "/builder/", "/practice/", "/stats/", "/analyze/", "/settings/", "/glossary/", "/roadmap/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"];
+const PAGES = ["/", "/study/", "/study/postflop/", "/study/report/", "/solve/", "/builder/", "/icm/", "/practice/", "/stats/", "/analyze/", "/settings/", "/glossary/", "/roadmap/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -34,7 +34,7 @@ self.addEventListener("install", (event) => {
         // postflop flops are large: only the index is precached, each flop is cached the first time it is opened
         await data.add("/postflop/index.json").catch(() => {});
         // the Solve screen runs the WebAssembly solver in a worker: keep both offline
-        await Promise.all(["/wasm/tessera_solver.wasm", "/solver-worker.js"].map((u) => data.add(u).catch(() => {})));
+        await Promise.all(["/wasm/tessera_solver.wasm", "/solver-worker.js", "/data/equity169.bin"].map((u) => data.add(u).catch(() => {})));
       } catch (_) {
         /* offline install: data will be cached on first use */
       }
@@ -95,7 +95,7 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/")) {
     event.respondWith(cacheFirst(req, CORE));
-  } else if (url.pathname.startsWith("/solutions/") || url.pathname.startsWith("/postflop/") || url.pathname.startsWith("/wasm/") || url.pathname === "/solver-worker.js") {
+  } else if (url.pathname.startsWith("/solutions/") || url.pathname.startsWith("/postflop/") || url.pathname.startsWith("/wasm/") || url.pathname.startsWith("/data/") || url.pathname === "/solver-worker.js") {
     event.respondWith(staleWhileRevalidate(req, DATA));
   } else if (req.mode === "navigate" || req.headers.get("accept")?.includes("text/html") || url.pathname.endsWith(".webmanifest")) {
     event.respondWith(networkFirst(req));

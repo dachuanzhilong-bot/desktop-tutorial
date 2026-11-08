@@ -35,3 +35,7 @@ opt-level = 3
 [[bin]]
 name = "gen_postflop"
 path = "src/bin/gen_postflop.rs"
+
+[[bin]]
+name = "export_equity"
+path = "src/bin/export_equity.rs"

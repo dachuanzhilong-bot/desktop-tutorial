@@ -9,6 +9,11 @@
  *   export  { handle, minReach }                                                 -> { bytes, map, exploit }
  *   lock    { handle, node, strategy:Float32Array } / unlock { handle, node }
  *   destroy { handle }
+ *   icmInit { eq:Uint16Array }            load the 169x169 equity table (once)
+ *   icmCreate { cfg:number[] }            -> { handle }
+ *   icmRun { handle, iterations, chunk, restartAt, target, checkEvery }   like `run`
+ *   icmExport { handle }                  -> { data:Float32Array, exploit }
+ *   icmDestroy { handle }
  */
 let ex = null;
 let cancelled = false;
@@ -105,6 +110,52 @@ self.onmessage = async (e) => {
       case "destroy":
         ex.tsr_destroy(m.handle);
         return reply({ type: "destroy-done" });
+      case "icmInit": {
+        const words = Math.ceil(m.eq.byteLength / 4);
+        const p = ex.tsr_alloc_f32(words); // 4-byte aligned, so it is fine to read as u16
+        new Uint8Array(ex.memory.buffer, p, m.eq.byteLength).set(new Uint8Array(m.eq.buffer, m.eq.byteOffset, m.eq.byteLength));
+        ex.tsr_icm_set_equity(p);
+        ex.tsr_free_f32(p, words);
+        return reply({ type: "icm-ready" });
+      }
+      case "icmCreate": {
+        const cfg = put32(m.cfg);
+        const handle = ex.tsr_icm_create(cfg, m.cfg.length);
+        ex.tsr_free_f32(cfg, m.cfg.length);
+        if (handle < 0) return reply({ type: "error", message: handle === -2 ? "equity table not loaded" : "invalid ICM setup" });
+        return reply({ type: "icm-created", handle });
+      }
+      case "icmRun": {
+        cancelled = false;
+        const chunk = Math.max(1, m.chunk || 25);
+        let done = 0;
+        let exploit = -1;
+        while (done < m.iterations && !cancelled) {
+          const n = Math.min(chunk, m.iterations - done);
+          ex.tsr_icm_run(m.handle, n);
+          done += n;
+          if (m.restartAt && done - n < m.restartAt && done >= m.restartAt) ex.tsr_icm_reset_average(m.handle);
+          if (done === m.iterations || done % (m.checkEvery || 200) < chunk) {
+            exploit = ex.tsr_icm_exploit_pct(m.handle);
+            if (m.target && exploit >= 0 && exploit < m.target && done > (m.restartAt || 0)) {
+              self.postMessage({ req: m.req, type: "progress", done, total: m.iterations, exploit });
+              break;
+            }
+          }
+          self.postMessage({ req: m.req, type: "progress", done, total: m.iterations, exploit });
+          await tick();
+        }
+        return reply({ type: "icm-run-done", iterations: done, exploit: ex.tsr_icm_exploit_pct(m.handle), cancelled });
+      }
+      case "icmExport": {
+        const exploit = ex.tsr_icm_exploit_pct(m.handle);
+        const len = ex.tsr_icm_export(m.handle);
+        const data = new Float32Array(ex.memory.buffer, ex.tsr_icm_out_ptr(m.handle), len).slice();
+        return reply({ type: "icm-export-done", data, exploit }, [data.buffer]);
+      }
+      case "icmDestroy":
+        ex.tsr_icm_destroy(m.handle);
+        return reply({ type: "icm-destroy-done" });
       default:
         return reply({ type: "error", message: "unknown request " + m.type });
     }

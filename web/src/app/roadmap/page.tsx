@@ -8,7 +8,7 @@ const PHASES = [
   { k: "roadmap.p3", done: true },
   { k: "roadmap.p4", done: true },
   { k: "roadmap.p5", done: true },
-  { k: "roadmap.p6", done: false },
+  { k: "roadmap.p6", done: true },
 ] as const;
 
 export default function RoadmapPage() {

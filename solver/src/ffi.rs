@@ -243,6 +243,185 @@ pub extern "C" fn tsr_unlock(h: i32, node: u32) {
     with(h, |s| s.unlock(node as usize));
 }
 
+// ------------------------------------------------------------------ ICM push/fold
+
+use crate::cards::NUM_CLASSES;
+use crate::engine::Solver as EngineSolver;
+use crate::equity::{disjoint_counts, EquityTables};
+use crate::icm::{self, IcmGame, IcmSpec, NodeReport};
+
+/// config layout (f32): [n_players, sb, bb, ante, n_payouts, stacks x n, payouts x n_payouts]
+pub fn icm_spec_from_f32(c: &[f32]) -> Result<IcmSpec, String> {
+    if c.len() < 5 {
+        return Err("config too short".into());
+    }
+    let n = c[0] as usize;
+    let np = c[4] as usize;
+    if !(2..=icm::MAX_PLAYERS).contains(&n) || np == 0 || c.len() < 5 + n + np {
+        return Err("bad player / payout count".into());
+    }
+    let spec = IcmSpec { stacks: c[5..5 + n].to_vec(), sb: c[1], bb: c[2], ante: c[3], payouts: c[5 + n..5 + n + np].to_vec() };
+    if spec.stacks.iter().any(|&s| !(s > 0.0)) || spec.bb <= 0.0 || spec.payouts.iter().all(|&p| p <= 0.0) {
+        return Err("stacks and the big blind must be positive and some prize must be paid".into());
+    }
+    Ok(spec)
+}
+
+pub struct IcmSession {
+    solver: ManuallyDrop<EngineSolver<'static>>,
+    game: *mut IcmGame,
+    pub out: Vec<f32>,
+}
+
+impl IcmSession {
+    pub fn new(spec: &IcmSpec, t: &EquityTables) -> IcmSession {
+        let game = Box::into_raw(Box::new(icm::build(spec, t)));
+        // SAFETY: the game outlives the solver; `Drop` drops the solver first.
+        let solver = EngineSolver::new(unsafe { &(*game).game });
+        IcmSession { solver: ManuallyDrop::new(solver), game, out: Vec::new() }
+    }
+
+    pub fn run(&mut self, n: u32) {
+        for _ in 0..n {
+            self.solver.iterate();
+        }
+    }
+
+    pub fn iterations(&self) -> u32 {
+        self.solver.iters
+    }
+
+    pub fn reset_average(&mut self) {
+        self.solver.reset_average();
+    }
+
+    /// sum of every player's best-response gain, in % of the prize pool
+    pub fn exploit_pct(&mut self) -> f32 {
+        self.solver.finalize_avg();
+        let total: f32 = unsafe { &*self.game }.spec.payouts.iter().sum();
+        100.0 * self.solver.br_gaps().iter().sum::<f32>() / total.max(1e-9)
+    }
+
+    /// `[n_players, n_nodes, start_equity x n, then per node: player, facing (-1 = none), reach, weight x169, freq x169, ev_jam/call x169, ev_fold x169]`
+    /// equities and EVs are in % of the prize pool
+    pub fn export(&mut self) -> usize {
+        self.solver.finalize_avg();
+        let g = unsafe { &*self.game };
+        let total: f32 = g.spec.payouts.iter().sum::<f32>().max(1e-9);
+        let ev = self.solver.evaluate();
+        let k = NUM_CLASSES;
+        let mut reports: Vec<NodeReport> = Vec::new();
+        for i in &g.info {
+            if let Some(e) = ev[i.node].as_ref() {
+                reports.push(NodeReport { player: i.player, facing: i.facing, reach: e.reach, weight: e.weight.clone(), freq: e.freq[k..2 * k].to_vec(), ev_act: e.ev[k..2 * k].to_vec(), ev_fold: e.ev[0..k].to_vec() });
+            }
+        }
+        let n = g.spec.stacks.len();
+        let mut out = vec![n as f32, reports.len() as f32];
+        out.extend(g.start_equity.iter().map(|e| 100.0 * e / total));
+        for r in &reports {
+            out.push(r.player as f32);
+            out.push(r.facing.map(|j| j as f32).unwrap_or(-1.0));
+            out.push(r.reach);
+            out.extend_from_slice(&r.weight);
+            out.extend_from_slice(&r.freq);
+            out.extend(r.ev_act.iter().map(|e| 100.0 * e / total));
+            out.extend(r.ev_fold.iter().map(|e| 100.0 * e / total));
+        }
+        self.out = out;
+        self.out.len()
+    }
+}
+
+impl Drop for IcmSession {
+    fn drop(&mut self) {
+        unsafe {
+            ManuallyDrop::drop(&mut self.solver);
+            drop(Box::from_raw(self.game));
+        }
+    }
+}
+
+thread_local! {
+    static EQUITY: RefCell<Option<EquityTables>> = const { RefCell::new(None) };
+    static ICM_SESSIONS: RefCell<Vec<Option<Box<IcmSession>>>> = const { RefCell::new(Vec::new()) };
+}
+
+fn with_icm<R>(h: i32, f: impl FnOnce(&mut IcmSession) -> R) -> Option<R> {
+    ICM_SESSIONS.with(|s| s.borrow_mut().get_mut(h as usize).and_then(|x| x.as_deref_mut()).map(f))
+}
+
+/// `eq`: 169*169 u16 values (equity * 65535), row = hand a, column = hand b
+#[no_mangle]
+pub unsafe extern "C" fn tsr_icm_set_equity(eq: *const u16) {
+    let raw = std::slice::from_raw_parts(eq, NUM_CLASSES * NUM_CLASSES);
+    let table = EquityTables { eq: raw.iter().map(|&v| v as f32 / 65535.0).collect(), n: disjoint_counts(), samples: 0 };
+    EQUITY.with(|e| *e.borrow_mut() = Some(table));
+}
+
+/// handle (>= 0), -1 bad config, -2 equity table not loaded
+#[no_mangle]
+pub unsafe extern "C" fn tsr_icm_create(cfg: *const f32, cfg_len: usize) -> i32 {
+    let spec = match icm_spec_from_f32(std::slice::from_raw_parts(cfg, cfg_len)) {
+        Ok(s) => s,
+        Err(_) => return -1,
+    };
+    let session = match EQUITY.with(|e| e.borrow().as_ref().map(|t| IcmSession::new(&spec, t))) {
+        Some(s) => s,
+        None => return -2,
+    };
+    ICM_SESSIONS.with(|all| {
+        let mut all = all.borrow_mut();
+        if let Some(i) = all.iter().position(|x| x.is_none()) {
+            all[i] = Some(Box::new(session));
+            i as i32
+        } else {
+            all.push(Some(Box::new(session)));
+            (all.len() - 1) as i32
+        }
+    })
+}
+
+#[no_mangle]
+pub extern "C" fn tsr_icm_destroy(h: i32) {
+    ICM_SESSIONS.with(|s| {
+        if let Some(x) = s.borrow_mut().get_mut(h as usize) {
+            *x = None;
+        }
+    });
+}
+
+#[no_mangle]
+pub extern "C" fn tsr_icm_run(h: i32, n: u32) {
+    with_icm(h, |s| s.run(n));
+}
+
+#[no_mangle]
+pub extern "C" fn tsr_icm_iterations(h: i32) -> u32 {
+    with_icm(h, |s| s.iterations()).unwrap_or(0)
+}
+
+#[no_mangle]
+pub extern "C" fn tsr_icm_reset_average(h: i32) {
+    with_icm(h, |s| s.reset_average());
+}
+
+#[no_mangle]
+pub extern "C" fn tsr_icm_exploit_pct(h: i32) -> f32 {
+    with_icm(h, |s| s.exploit_pct()).unwrap_or(-1.0)
+}
+
+/// number of f32 values written; read them at `tsr_icm_out_ptr`
+#[no_mangle]
+pub extern "C" fn tsr_icm_export(h: i32) -> usize {
+    with_icm(h, |s| s.export()).unwrap_or(0)
+}
+
+#[no_mangle]
+pub extern "C" fn tsr_icm_out_ptr(h: i32) -> *const f32 {
+    with_icm(h, |s| s.out.as_ptr()).unwrap_or(std::ptr::null())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -347,5 +526,25 @@ mod tests {
         tsr_destroy(b);
         let bad = [1.0f32];
         assert_eq!(unsafe { tsr_create(bad.as_ptr(), 1, board.as_ptr(), 5, r0.as_ptr(), r1.as_ptr()) }, -1);
+    }
+
+    #[test]
+    fn icm_session_round_trip() {
+        let t = crate::equity::load("cache/equity-60000-20260101.bin").unwrap_or_else(|| crate::equity::compute_equity(20_000, 1, 4));
+        let cfg = [3.0, 0.5, 1.0, 0.0, 3.0, 12.0, 6.0, 12.0, 50.0, 30.0, 20.0];
+        let spec = icm_spec_from_f32(&cfg).unwrap();
+        assert_eq!(spec.stacks, vec![12.0, 6.0, 12.0]);
+        assert!(icm_spec_from_f32(&[1.0, 0.5, 1.0, 0.0, 1.0, 10.0, 1.0]).is_err());
+        let mut s = IcmSession::new(&spec, &t);
+        s.run(400);
+        assert!(s.exploit_pct() < 3.0);
+        let len = s.export();
+        // header + start equity + 5 decision nodes of (3 + 4*169) values
+        assert_eq!(len, 2 + 3 + 5 * (3 + 4 * NUM_CLASSES));
+        assert_eq!(s.out[0], 3.0);
+        assert_eq!(s.out[1], 5.0);
+        let eq_sum: f32 = s.out[2..5].iter().sum();
+        assert!((eq_sum - 100.0).abs() < 0.01, "start equities add up to the whole prize pool: {}", eq_sum);
+        assert!(s.out.iter().all(|v| v.is_finite()));
     }
 }

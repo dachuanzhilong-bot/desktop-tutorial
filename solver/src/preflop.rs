@@ -190,7 +190,7 @@ impl<'a> Builder<'a> {
     }
 
     fn terminal(&mut self, kind: Kind, st: &St, tt: u8) -> usize {
-        self.nodes.push(Node { kind, inv: st.inv, aggressor: None });
+        self.nodes.push(Node { kind, inv: pad_inv(&st.inv), aggressor: None });
         self.meta.push(NodeMeta::default());
         self.term_type.push(tt);
         self.nodes.len() - 1
@@ -290,7 +290,7 @@ impl<'a> Builder<'a> {
             acts.push((kind, size, n));
         }
         let idx = self.nodes.len();
-        self.nodes.push(Node { kind: Kind::Fold { winner: 0 }, inv: st.inv, aggressor: st.last_raiser });
+        self.nodes.push(Node { kind: Kind::Fold { winner: 0 }, inv: pad_inv(&st.inv), aggressor: st.last_raiser });
         self.meta.push(NodeMeta {
             actions: acts.iter().map(|(k, t, _)| (*k as u8, *t)).collect(),
             call_real,
@@ -662,4 +662,11 @@ mod tests {
         // every showdown is heads-up, tree is finite and non-trivial
         assert!(pf.game.nodes.len() > 1000);
     }
+}
+
+/// the engine supports up to `MAXP` players; the preflop game has six
+fn pad_inv(inv: &[f32; 6]) -> [f32; MAXP] {
+    let mut v = [0f32; MAXP];
+    v[..6].copy_from_slice(inv);
+    v
 }

@@ -20,7 +20,7 @@ for (const theme of ["dark", "light"] as const) {
     test.beforeEach(async ({ context }) => {
       await context.addInitScript((th) => localStorage.setItem("tessera.settings.v1", JSON.stringify({ onboarded: true, theme: th })), theme);
     });
-    for (const path of ["/", "/study/", "/study/postflop/", "/study/report/", "/practice/", "/solve/", "/builder/", "/analyze/", "/stats/", "/settings/", "/glossary/", "/roadmap/"]) {
+    for (const path of ["/", "/study/", "/study/postflop/", "/study/report/", "/practice/", "/solve/", "/builder/", "/icm/", "/analyze/", "/stats/", "/settings/", "/glossary/", "/roadmap/"]) {
       test(`${path}`, async ({ page }) => {
         await page.goto(path);
         if (path === "/study/" || path === "/study/postflop/") await page.waitForSelector(".cell");
@@ -47,6 +47,15 @@ for (const theme of ["dark", "light"] as const) {
       await page.getByTestId("ref-select").selectOption("btn-open");
       await page.getByTestId("compare").waitFor();
       await audit(page, `${theme} builder compare`);
+    });
+    test("icm result", async ({ page }) => {
+      await page.goto("/icm/");
+      await page.getByTestId("icm-quick-bubble").click();
+      await page.getByTestId("icm-acc-fast").click();
+      await page.getByTestId("icm-run").click();
+      await page.getByTestId("icm-result").waitFor({ timeout: 60_000 });
+      await page.locator('[data-cls="14"]').click();
+      await audit(page, `${theme} icm result`);
     });
     test("analyze with imported hands", async ({ page }) => {
       await page.goto("/analyze/");

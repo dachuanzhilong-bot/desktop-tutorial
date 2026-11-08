@@ -15,6 +15,7 @@
 | 08 | [postflop-model.md](08-postflop-model.md) | ポストフロップ解のモデル（サンプル抽象化）と検証 |
 | 09 | [solve-and-builder.md](09-solve-and-builder.md) | Solve（WASM）・ノードロック・Range Builder |
 | 10 | [analyze-and-sync.md](10-analyze-and-sync.md) | Analyze（ハンド履歴）・ログイン・クラウド同期 |
+| 11 | [icm.md](11-icm.md) | MTT/ICM プッシュフォールド、性能・アクセシビリティの計測 |
 
 ## 設計上の大原則
 
