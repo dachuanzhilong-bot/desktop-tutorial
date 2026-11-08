@@ -82,5 +82,8 @@ export interface PublicState {
   limped: boolean;
 }
 
-export type SpotType = "rfi" | "limp" | "vsOpen" | "squeeze" | "vs3bet" | "vsSqueeze" | "vs4bet" | "vs5bet";
-export const SPOT_TYPES: SpotType[] = ["rfi", "limp", "vsOpen", "squeeze", "vs3bet", "vsSqueeze", "vs4bet", "vs5bet"];
+export type PreflopSpot = "rfi" | "limp" | "vsOpen" | "squeeze" | "vs3bet" | "vsSqueeze" | "vs4bet" | "vs5bet";
+export type SpotType = PreflopSpot | "postFlop" | "postTurn" | "postRiver";
+export const SPOT_TYPES: PreflopSpot[] = ["rfi", "limp", "vsOpen", "squeeze", "vs3bet", "vsSqueeze", "vs4bet", "vs5bet"];
+/** every column of the stats heat-map */
+export const ALL_SPOT_COLUMNS: SpotType[] = [...SPOT_TYPES, "postFlop", "postTurn", "postRiver"];

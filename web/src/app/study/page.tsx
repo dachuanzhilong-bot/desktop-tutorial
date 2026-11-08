@@ -2,6 +2,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { HandPanel, FreqBars } from "@/components/HandPanel";
 import { LineBar } from "@/components/LineBar";
+import { StudyTabs } from "@/components/StudyTabs";
 import { ActionLegend, GridAction, RangeGrid, GridMode, toneFor } from "@/components/RangeGrid";
 import { SolutionGate } from "@/components/SolutionGate";
 import { GridSkeleton } from "@/components/Skeleton";
@@ -100,6 +101,7 @@ function Study({ store }: { store: SolutionStore }) {
           {t("format.cash6")} · {t("format.stack", { n: m.stack })} · {t(`spot.${spot}` as Key)}
         </p>
       </header>
+      <StudyTabs />
 
       <LineBar steps={steps} players={m.players} currentLabel={`${m.players[node.actor]} ?`} onJump={go} />
 

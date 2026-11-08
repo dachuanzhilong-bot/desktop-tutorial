@@ -7,7 +7,9 @@ import { getRepo } from "@/lib/storage/idb";
 import { useSettings } from "@/lib/settings";
 import { SPOT_TYPES, SpotType } from "@/lib/solution/types";
 import type { Key } from "@/lib/i18n/ja";
-import type { PracticeConfig } from "./types";
+import type { PfScenario } from "@/lib/postflop/loader";
+import { loadIndex } from "@/lib/postflop/loader";
+import type { StartConfig } from "./types";
 
 const SEATS = ["UTG", "HJ", "CO", "BTN", "SB", "BB"];
 const TIMERS = [0, 5, 10, 20];
@@ -48,15 +50,41 @@ function Toggle({ label, desc, on, onChange, icon, testid }: { label: string; de
   );
 }
 
-export function Setup({ onStart, initial }: { onStart: (c: PracticeConfig) => void; initial?: Partial<PracticeFilter> }) {
+export function Setup({
+  onStart,
+  initial,
+  initialMode,
+  initialScenario,
+  initialFlop,
+}: {
+  onStart: (c: StartConfig) => void;
+  initial?: Partial<PracticeFilter>;
+  initialMode?: "spot" | "hand" | "postSpot" | "post";
+  initialScenario?: string;
+  initialFlop?: number;
+}) {
   const { t } = useSettings();
-  const [mode, setMode] = useState<"spot" | "hand">("spot");
+  const [mode, setMode] = useState<"spot" | "hand" | "postSpot" | "post">(initialMode ?? "spot");
+  const [flopFixed, setFlopFixed] = useState<number | null>(initialFlop ?? null);
+  const [flopNames, setFlopNames] = useState<string[]>([]);
+  const [scenarios, setScenarios] = useState<PfScenario[]>([]);
+  const [scenario, setScenario] = useState("");
+  const [hero, setHero] = useState<0 | 1 | null>(null);
+  const [streets, setStreets] = useState<number[]>([0, 1, 2]);
+  const isPost = mode === "postSpot" || mode === "post";
   const [filter, setFilter] = useState<PracticeFilter>({ ...DEFAULT_FILTER, ...initial });
   const [rng, setRng] = useState(false);
   const [timer, setTimer] = useState(0);
   const [due, setDue] = useState(0);
 
   useEffect(() => {
+    loadIndex()
+      .then((ix) => {
+        setScenarios(ix.scenarios);
+        setFlopNames(ix.flops);
+        setScenario(initialScenario && ix.scenarios.some((x) => x.id === initialScenario) ? initialScenario : ix.scenarios[0]?.id ?? "");
+      })
+      .catch(() => {});
     getRepo()
       .allSrs()
       .then((all) => setDue(all.filter((s) => s.due <= Date.now()).length))
@@ -74,7 +102,7 @@ export function Setup({ onStart, initial }: { onStart: (c: PracticeConfig) => vo
       </header>
 
       <section aria-label={t("practice.mode")} className="grid grid-cols-2 gap-2.5">
-        {(["spot", "hand"] as const).map((m) => (
+        {(["spot", "hand", "postSpot", "post"] as const).filter((m) => scenarios.length > 0 || !m.startsWith("post")).map((m) => (
           <button
             key={m}
             type="button"
@@ -89,6 +117,59 @@ export function Setup({ onStart, initial }: { onStart: (c: PracticeConfig) => vo
         ))}
       </section>
 
+      {isPost && (
+        <section className="space-y-3" aria-label={t("practice.conditions")}>
+          <h2 className="text-sm font-bold text-muted">{t("practice.conditions")}</h2>
+          <div>
+            <p className="mb-1.5 text-sm font-semibold">{t("practice.scenario")}</p>
+            <div className="flex flex-wrap gap-1.5">
+              {scenarios.map((s) => (
+                <Chip key={s.id} on={scenario === s.id} testid={`pscenario-${s.id}`} onClick={() => setScenario(s.id)}>
+                  {s.title}
+                </Chip>
+              ))}
+            </div>
+          </div>
+          {flopFixed !== null && flopNames[flopFixed] && (
+            <div className="flex items-center justify-between rounded-xl border border-accent/60 bg-accent/10 px-3 py-2 text-sm">
+              <span>
+                {t("pf.flop")}: <b>{flopNames[flopFixed]}</b>
+              </span>
+              <button type="button" onClick={() => setFlopFixed(null)} aria-label={t("common.reset")} className="grid h-8 w-8 place-items-center rounded-full border border-line text-muted">
+                ✕
+              </button>
+            </div>
+          )}
+          <div>
+            <p className="mb-1.5 text-sm font-semibold">{t("practice.seatPost")}</p>
+            <div className="flex flex-wrap gap-1.5">
+              <Chip on={hero === null} onClick={() => setHero(null)}>
+                {t("common.any")}
+              </Chip>
+              <Chip on={hero === 0} testid="hero-oop" onClick={() => setHero(0)}>
+                {t("pf.oop")}
+              </Chip>
+              <Chip on={hero === 1} testid="hero-ip" onClick={() => setHero(1)}>
+                {t("pf.ip")}
+              </Chip>
+            </div>
+          </div>
+          {mode === "postSpot" && (
+            <div>
+              <p className="mb-1.5 text-sm font-semibold">{t("practice.streets")}</p>
+              <div className="flex flex-wrap gap-1.5">
+                {[0, 1, 2].map((s) => (
+                  <Chip key={s} on={streets.includes(s)} testid={`street-${s}`} onClick={() => setStreets((cur) => (cur.includes(s) && cur.length > 1 ? cur.filter((x) => x !== s) : cur.includes(s) ? cur : [...cur, s]))}>
+                    {t(`pf.street.${s}` as Key)}
+                  </Chip>
+                ))}
+              </div>
+            </div>
+          )}
+        </section>
+      )}
+
+      {!isPost && (
       <section className="space-y-3" aria-label={t("practice.conditions")}>
         <h2 className="text-sm font-bold text-muted">{t("practice.conditions")}</h2>
         <div>
@@ -130,6 +211,7 @@ export function Setup({ onStart, initial }: { onStart: (c: PracticeConfig) => vo
         </div>
         {mode === "spot" && <Toggle label={t("practice.mixedOnly")} on={filter.mixedOnly} onChange={(v) => setFilter({ ...filter, mixedOnly: v })} />}
       </section>
+      )}
 
       <section className="space-y-2.5">
         <Toggle label={t("practice.rng")} desc={t("practice.rngDesc")} on={rng} onChange={setRng} icon={<IconDice width={22} height={22} />} testid="toggle-rng" />
@@ -153,7 +235,11 @@ export function Setup({ onStart, initial }: { onStart: (c: PracticeConfig) => vo
       <button
         type="button"
         data-testid="start-practice"
-        onClick={() => onStart({ mode, filter, rng, timer })}
+        onClick={() =>
+          isPost
+            ? onStart({ type: "post", config: { kind: mode === "post" ? "through" : "spot", scenario, hero, streets, rng, timer, flop: flopFixed } })
+            : onStart({ type: "pre", config: { mode: mode as "spot" | "hand", filter, rng, timer } })
+        }
         className="min-h-14 w-full rounded-2xl bg-accent text-lg font-extrabold text-accent-ink shadow-lg active:scale-[0.98]"
       >
         {t("practice.begin")}

@@ -135,6 +135,8 @@ export default function SettingsPage() {
           <b className="text-ink">{t("settings.model")}</b>
           <br />
           {t("settings.modelText", { solver: info.solver ?? "–", iters: (info.iterations ?? 0) + (info.polish ?? 0), gap: info.brGainMax?.toFixed(4) ?? "–" })}
+          <br />
+          {t("settings.modelPost")}
         </p>
         <div className="flex flex-wrap gap-2">
           <button type="button" onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))} className="min-h-11 rounded-xl border border-line px-4 text-sm font-semibold">

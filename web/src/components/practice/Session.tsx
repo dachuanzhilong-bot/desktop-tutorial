@@ -21,6 +21,9 @@ import { cryptoRandom, weightedPick } from "@/lib/util/rng";
 import { haptic } from "@/lib/util/haptics";
 import type { Key } from "@/lib/i18n/ja";
 import { AnswerInfo, ResultPanel } from "./ResultPanel";
+import type { PostConfig } from "@/components/postflop/PostSession";
+import { loadIndex } from "@/lib/postflop/loader";
+import { postflopLink } from "@/lib/postflop/link";
 import { SessionSummary } from "./Summary";
 import type { PracticeConfig } from "./types";
 
@@ -39,7 +42,7 @@ type Phase = "loading" | "animating" | "asking" | "answered" | "handEnd" | "summ
 
 const STEP_MS = 520;
 
-export function Session({ store, config, onExit }: { store: SolutionStore; config: PracticeConfig; onExit: () => void }) {
+export function Session({ store, config, onExit, onPostflop }: { store: SolutionStore; config: PracticeConfig; onExit: () => void; onPostflop?: (c: PostConfig) => void }) {
   const { t, settings } = useSettings();
   const reduce = useReducedMotion();
   const m = store.manifest;
@@ -48,7 +51,8 @@ export function Session({ store, config, onExit }: { store: SolutionStore; confi
   const [phase, setPhase] = useState<Phase>("loading");
   const [round, setRound] = useState<Round | null>(null);
   const [shown, setShown] = useState(0);
-  const [answer, setAnswer] = useState<(AnswerInfo & { heroAfter: PublicState; nextNode: number | null }) | null>(null);
+  const [answer, setAnswer] = useState<(AnswerInfo & { heroAfter: PublicState; nextNode: number | null; term: Terminal | -2 | null }) | null>(null);
+  const [postIds, setPostIds] = useState<string[]>([]);
   const [results, setResults] = useState<Result[]>([]);
   const [pane, setPane] = useState<"result" | "explain">("result");
   const [hintIdx, setHintIdx] = useState<number | null>(null);
@@ -59,6 +63,9 @@ export function Session({ store, config, onExit }: { store: SolutionStore; confi
   const nodes = useMemo(() => candidateNodes(m, config.filter), [m, config.filter]);
 
   useEffect(() => {
+    loadIndex()
+      .then((ix) => setPostIds(ix.scenarios.map((x) => x.id)))
+      .catch(() => {});
     getRepo()
       .allSrs()
       .then((all) => {
@@ -195,7 +202,7 @@ export function Session({ store, config, onExit }: { store: SolutionStore; confi
       if (j.grade === "best" || j.grade === "correct") haptic.good();
       else haptic.bad();
       setResults((r) => [...r, { grade: j.grade, score, evLoss: j.evLoss }]);
-      setAnswer({ j, score, ms, timeout, hint: hintUsed.current, before, endText: config.mode === "hand" ? endText : null, heroAfter, nextNode });
+      setAnswer({ j, score, ms, timeout, hint: hintUsed.current, before, endText: config.mode === "hand" ? endText : null, heroAfter, nextNode, term: action.child === -2 ? -2 : action.child < 0 ? action.term : null });
       setPane("result");
       setPhase("answered");
       // persist (local-first)
@@ -240,7 +247,19 @@ export function Session({ store, config, onExit }: { store: SolutionStore; confi
     return () => window.clearTimeout(id);
   }, [phase, config.timer, round, m, choose]);
 
+  // a heads-up flop that exists in the postflop solutions can be played on
+  const link = useMemo(() => {
+    if (config.mode !== "hand" || !onPostflop || !round) return null;
+    if (phase === "answered" && answer && answer.term === Terminal.Flop) return postflopLink(answer.heroAfter, round.heroSeat, round.hand, postIds, config.rng, config.timer);
+    if (phase === "handEnd" && round.endedWith === Terminal.Flop && round.queue.length) return postflopLink(round.queue[round.queue.length - 1].after, round.heroSeat, round.hand, postIds, config.rng, config.timer);
+    return null;
+  }, [config, onPostflop, round, phase, answer, postIds]);
+
   const next = useCallback(async () => {
+    if (link && onPostflop && (phase === "answered" || phase === "handEnd")) {
+      onPostflop(link);
+      return;
+    }
     if (phase === "answered" && answer && round && config.mode === "hand" && answer.nextNode !== null) {
       setPhase("loading");
       const out = await playOutOpponents(store, answer.nextNode, round.heroSeat, rnd);
@@ -257,7 +276,7 @@ export function Session({ store, config, onExit }: { store: SolutionStore; confi
       return;
     }
     if (phase === "answered" || phase === "handEnd") startNew();
-  }, [phase, answer, round, config, store, m, rnd, startNew]);
+  }, [phase, answer, round, config, store, m, rnd, startNew, link, onPostflop]);
 
   // ---------------------------------------------------------------- keyboard
   useEffect(() => {
@@ -426,7 +445,7 @@ export function Session({ store, config, onExit }: { store: SolutionStore; confi
             state={answer.before}
             onNext={next}
             onTogglePane={() => setPane((p) => (p === "result" ? "explain" : "result"))}
-            nextLabel={config.mode === "hand" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")}
+            nextLabel={link ? t("practice.toFlop") : config.mode === "hand" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")}
           />
         )}
 
@@ -435,8 +454,8 @@ export function Session({ store, config, onExit }: { store: SolutionStore; confi
             <p className="mb-3 font-bold">
               {round.endedWith === Terminal.Fold ? t("term.fold") : round.endedWith === Terminal.Flop ? t("term.flop") : round.endedWith === Terminal.FlopMulti ? t("term.flopMulti") : round.endedWith === Terminal.AllIn ? t("term.allin") : t("term.pruned")}
             </p>
-            <button type="button" onClick={next} autoFocus className="min-h-14 w-full rounded-2xl bg-accent text-lg font-extrabold text-accent-ink">
-              {t("practice.nextHand")}
+            <button type="button" onClick={next} autoFocus data-testid="hand-end-next" className="min-h-14 w-full rounded-2xl bg-accent text-lg font-extrabold text-accent-ink">
+              {link ? t("practice.toFlop") : t("practice.nextHand")}
             </button>
           </div>
         )}

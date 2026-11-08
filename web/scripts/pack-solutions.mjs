@@ -27,3 +27,23 @@ for (const id of readdirSync(src, { withFileTypes: true }).filter((d) => d.isDir
   console.log(`packed ${id}: ${files.length} files`);
 }
 writeFileSync(join(dst, "index.json"), JSON.stringify(index));
+
+// ---- postflop: out/postflop/<scenario>/<n>.bin  ->  public/postflop/<scenario>/<n>.bin.gz  (+ index.json as is)
+const pfSrc = resolve(process.argv[3] ?? "../solver/out/postflop");
+if (existsSync(join(pfSrc, "index.json"))) {
+  const pfDst = resolve("public/postflop");
+  mkdirSync(pfDst, { recursive: true });
+  let files = 0;
+  let bytes = 0;
+  for (const sc of readdirSync(pfSrc, { withFileTypes: true }).filter((d) => d.isDirectory())) {
+    mkdirSync(join(pfDst, sc.name), { recursive: true });
+    for (const f of readdirSync(join(pfSrc, sc.name)).filter((x) => x.endsWith(".bin"))) {
+      const gz = gzipSync(readFileSync(join(pfSrc, sc.name, f)), { level: 9 });
+      writeFileSync(join(pfDst, sc.name, f + ".gz"), gz);
+      files++;
+      bytes += gz.length;
+    }
+  }
+  writeFileSync(join(pfDst, "index.json"), readFileSync(join(pfSrc, "index.json")));
+  console.log(`packed postflop: ${files} files, ${(bytes / 1e6).toFixed(2)} MB gzip`);
+}

@@ -6,7 +6,7 @@ import { IconFlame } from "@/components/icons";
 import { Skeleton } from "@/components/Skeleton";
 import { useSettings } from "@/lib/settings";
 import { SEATS } from "@/lib/solution/tree";
-import { SPOT_TYPES } from "@/lib/solution/types";
+import { ALL_SPOT_COLUMNS } from "@/lib/solution/types";
 import { getRepo } from "@/lib/storage/idb";
 import { dailySeries, heatmap, studyStreak, summarize, todayCount, weakSpots } from "@/lib/storage/stats";
 import type { Attempt } from "@/lib/storage/types";
@@ -145,11 +145,11 @@ export default function StatsPage() {
             <h2 className="font-bold">{t("stats.heatmap")}</h2>
             <p className="mb-2 text-xs text-muted">{t("stats.heatmapHint")}</p>
             <div className="-mx-1 overflow-x-auto px-1">
-              <table className="w-full min-w-[34rem] border-separate border-spacing-1 text-center text-xs" data-testid="heatmap">
+              <table className="w-full min-w-[44rem] border-separate border-spacing-1 text-center text-xs" data-testid="heatmap">
                 <thead>
                   <tr>
                     <th scope="col" />
-                    {SPOT_TYPES.map((s) => (
+                    {ALL_SPOT_COLUMNS.map((s) => (
                       <th key={s} scope="col" className="px-1 pb-1 font-semibold text-muted">
                         {t(`spot.${s}` as Key)}
                       </th>
@@ -162,7 +162,7 @@ export default function StatsPage() {
                       <th scope="row" className="pr-1 text-left font-bold">
                         {seat}
                       </th>
-                      {SPOT_TYPES.map((s) => {
+                      {ALL_SPOT_COLUMNS.map((s) => {
                         const c = heat.find((h) => h.seat === si && h.spot === s);
                         return (
                           <td key={s} className="h-9 rounded-md" style={{ background: c ? lossColor(c.avgLoss) : "var(--surface-2)", opacity: c ? 1 : 0.5 }} title={c ? `${c.avgLoss.toFixed(2)}bb · ${c.n}` : t("stats.noDataCell")}>

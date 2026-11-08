@@ -17,8 +17,8 @@ export interface SrsItem {
   updated: number;
 }
 
-export function updateSrs(prev: SrsItem | undefined, nodeId: number, hand: number, grade: Grade, now: number): SrsItem {
-  const key = `${nodeId}:${hand}`;
+export function updateSrs(prev: SrsItem | undefined, nodeId: number, hand: number, grade: Grade, now: number, keyOverride?: string): SrsItem {
+  const key = keyOverride ?? `${nodeId}:${hand}`;
   const base: SrsItem = prev ?? { key, nodeId, hand, box: 0, due: now, seen: 0, lapses: 0, lastGrade: grade, updated: now };
   let box = base.box;
   let lapses = base.lapses;

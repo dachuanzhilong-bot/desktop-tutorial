@@ -96,6 +96,8 @@ export interface Question {
   rngAction: number | null;
   /** call price vs pot for the explanation (null when no chips are needed) */
   potOdds: { call: number; pot: number; need: number } | null;
+  /** postflop: one-hand solution used for the frequency bars (the chart `sol` is the class aggregate) */
+  bars?: { sol: NodeSolution; h: number };
 }
 
 /** action order used to lay frequencies along a roll: raises first, then call, then fold */

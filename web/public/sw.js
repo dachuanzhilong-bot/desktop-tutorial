@@ -5,10 +5,10 @@
  *  - navigations: network-first with a short timeout, falling back to the cache, then to "/"
  *  Bump VERSION to drop old caches.
  */
-const VERSION = "v1";
+const VERSION = "v2";
 const CORE = `tessera-core-${VERSION}`;
 const DATA = `tessera-data-${VERSION}`;
-const PAGES = ["/", "/study/", "/practice/", "/stats/", "/settings/", "/glossary/", "/roadmap/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"];
+const PAGES = ["/", "/study/", "/study/postflop/", "/study/report/", "/practice/", "/stats/", "/settings/", "/glossary/", "/roadmap/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -31,6 +31,8 @@ self.addEventListener("install", (event) => {
         const data = await caches.open(DATA);
         await Promise.all(idx.solutions.flatMap((s) => s.files).map((u) => data.add(u).catch(() => {})));
         await data.put("/solutions/index.json", new Response(JSON.stringify(idx), { headers: { "content-type": "application/json" } }));
+        // postflop flops are large: only the index is precached, each flop is cached the first time it is opened
+        await data.add("/postflop/index.json").catch(() => {});
       } catch (_) {
         /* offline install: data will be cached on first use */
       }
@@ -91,7 +93,7 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   if (url.pathname.startsWith("/_next/static/") || url.pathname.startsWith("/icons/")) {
     event.respondWith(cacheFirst(req, CORE));
-  } else if (url.pathname.startsWith("/solutions/")) {
+  } else if (url.pathname.startsWith("/solutions/") || url.pathname.startsWith("/postflop/")) {
     event.respondWith(staleWhileRevalidate(req, DATA));
   } else if (req.mode === "navigate" || req.headers.get("accept")?.includes("text/html") || url.pathname.endsWith(".webmanifest")) {
     event.respondWith(networkFirst(req));

@@ -51,20 +51,20 @@ function ExplainLines({ q, a, actions, state }: { q: Question; a: AnswerInfo; ac
           loss: a.j.evLoss.toFixed(2),
         })}
       </li>
-      {q.sol.eqr && callIdx >= 0 && (
+      {q.sol.eqr && !q.bars && callIdx >= 0 && (
         <li>
           <Term id="eqr">EQR</Term>: {t("explain.eqr", { eqr: q.sol.eqr[q.hand].toFixed(2) })}
         </li>
       )}
       {q.roll !== null && q.rngAction !== null && <li>{t("explain.rng", { roll: Math.floor(q.roll * 100) + 1, action: actions[q.rngAction].label })}</li>}
-      <li>{t("explain.range", { w: Math.round(q.sol.weight[q.hand] * 100) })}</li>
+      <li>{t("explain.range", { w: Math.round((q.bars ? q.bars.sol.weight[q.bars.h] : q.sol.weight[q.hand]) * 100) })}</li>
     </ul>
   );
 }
 
 function PotOdds({ q }: { q: Question }) {
   const { t } = useSettings();
-  return <li data-pot-odds>{q.potOdds ? t("explain.potOdds", { call: fmtBB(q.potOdds.call), pot: fmtBB(q.potOdds.pot), need: Math.round(q.potOdds.need * 100), eq: Math.round(q.sol.equity[q.hand] * 100) }) : t("explain.noCall")}</li>;
+  return <li data-pot-odds>{q.potOdds ? t("explain.potOdds", { call: fmtBB(q.potOdds.call), pot: fmtBB(q.potOdds.pot), need: Math.round(q.potOdds.need * 100), eq: Math.round((q.bars ? q.bars.sol.equity[q.bars.h] : q.sol.equity[q.hand]) * 100) }) : t("explain.noCall")}</li>;
 }
 
 function Mixed({ q, actions }: { q: Question; actions: GridAction[] }) {
@@ -155,7 +155,7 @@ export function ResultPanel({
                 </>
               )}
             </p>
-            <FreqBars sol={q.sol} h={q.hand} actions={actions} best={j.bestIndex} />
+            <FreqBars sol={(q.bars ?? { sol: q.sol, h: q.hand }).sol} h={(q.bars ?? { sol: q.sol, h: q.hand }).h} actions={actions} best={j.bestIndex} />
           </div>
           <div role="img" aria-label={t("practice.rangePos")} inert>
             <div>

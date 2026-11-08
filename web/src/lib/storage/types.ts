@@ -6,7 +6,7 @@ export interface Attempt {
   id?: number;
   ts: number;
   sessionId: string;
-  mode: "spot" | "hand";
+  mode: "spot" | "hand" | "post" | "postSpot";
   solution: string;
   nodeId: number;
   hand: number;

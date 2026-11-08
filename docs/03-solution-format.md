@@ -64,10 +64,36 @@ record:
 最初に非フォールドの行動をした人で分ける: `root`（全員フォールドの先頭ライン）、`utg-open`、…、`sb-limp`。
 例: UTGオープンへのHJの判断を見るには `utg-open` だけで足りる。
 
+## ポストフロップ: `TSP1` v2（1フロップ=1ファイル）
+
+```
+/postflop/
+  index.json                         フロップ一覧・シナリオ・集計統計（プレーンJSON、数KB）
+  <scenario>/<flopIndex>.bin.gz      例: srp-btn-bb/3.bin.gz  （gzip、1つ約0.15〜0.3MB）
+```
+バイナリ（リトルエンディアン）:
+```
+"TSP1" | u8 version=2 | u8 nBoard(3) | u8 board[nBoard] | f32 pot | f32 stack | u16 nNodes
+node × nNodes (DFS順):
+  u8 street(0 flop,1 turn,2 river) | f32 inv0 | f32 inv1      ← ポストフロップで各自が入れた額
+  u8 kind(0 decision,1 chance) | u8 actor(0 OOP,1 IP | 255) | f32 reach | u8 nEdges
+  edge × nEdges:  u8 kind | f32 amount | i32 code
+        decision: kind 0 fold / 1 check・call / 2 bet・raise / 3 all-in、amount=そのストリートの自分の総投入額
+        chance  : kind=カード(rank*4+suit, suit 0..3=c,d,h,s)
+        code    : >=0 子ノード / -1 フォールドで終了 / -2 書き出し対象外(稀なライン) / -3 ショーダウン / -4 オールインのランアウト
+  decision のみ続けて:
+    u8 bitmap[166]            このノードのレンジにいるコンボ(1326bit)
+    u8 weight[n]  u8 eq[n]    レンジ重み×255 / 対 相手レンジの生エクイティ×255
+    u8 freq[nA][n]            頻度×255（ハンドごとに合計255）
+    i16 best[n]               最善アクションのEV(bb)×64
+    u8 loss[nA][n]            最善との差: 1/64bb刻み(〜3.1bb)、それ以上は1bb刻み(〜58bb)
+```
+- コンボ番号は `a<b` の順に 0..1325（`a=rank*4+suit`）。ボードと重なるコンボはレンジに入らない。
+- EV(action) = `best − loss`。ハンド単位で「その手でこのノードに来た条件付き」の期待値（初期ポットの取り分を含む）。
+- 1フロップ(全ライン)で約0.15〜0.3MB(gzip)、2シナリオ×16フロップで計7.2MB。PWAでは `index.json` のみ事前キャッシュし、各フロップは開いたときにキャッシュする。
+
 ## 前方互換
 - `format` を上げて互換を管理する。ローダーは未知の `format` を拒否する。
-- ポストフロップ(Phase 3以降)は同じ思想で拡張する予定:
-  - ノードキーに「ボード＋ライン」を持たせ、**フロップごとに1ファイル**（1,755種類の同型フロップ）。
-  - ハンドは1,326コンボ単位（スート別の内訳が意味を持つ）。頻度は `u8`、EVは `i16`、エクイティは `u8`。
-  - 集計レポート用に、フロップごとの要約（ベット頻度・チェック頻度・EQ等）だけの別ファイルを持つ。
+- ポストフロップは上記 `TSP1` で実装済み（Phase 3）。集計レポート用の要約は `index.json` の `stats` に入っている。
+  - 同型(スート置換)で1,755種に縮約する案は、計算量の都合で未実装。
 - Solve（Phase 4）の結果は同じ形式で書き出し、IndexedDB/Supabase Storage に保存して Study で開く。

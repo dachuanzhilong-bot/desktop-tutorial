@@ -139,6 +139,7 @@ pub struct Preflop {
     pub game: Game,
     pub meta: Vec<NodeMeta>,
     pub cfg: Config,
+    #[allow(dead_code)]
     classes: Vec<ClassDef>,
     /// per node: terminal type for `terms` (0 fold, 1 flop, 2 all-in); decision nodes: 255
     pub term_type: Vec<u8>,
@@ -150,6 +151,7 @@ struct Builder<'a> {
     meta: Vec<NodeMeta>,
     term_type: Vec<u8>,
     class_ids: HashMap<i32, usize>,
+    #[allow(dead_code)]
     classes: Vec<ClassDef>,
 }
 
@@ -466,7 +468,7 @@ pub fn report(pf: &Preflop, ev: &[Option<NodeEval>]) -> String {
 
 // ------------------------------------------------------------------ export
 
-fn quantize_freq(f: &[f32]) -> Vec<u8> {
+pub fn quantize_freq(f: &[f32]) -> Vec<u8> {
     // largest remainder so that the u8 values sum to exactly 255
     let total: f32 = f.iter().sum();
     let na = f.len();

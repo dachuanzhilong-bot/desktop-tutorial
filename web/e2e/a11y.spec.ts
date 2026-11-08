@@ -19,10 +19,11 @@ for (const theme of ["dark", "light"] as const) {
     test.beforeEach(async ({ context }) => {
       await context.addInitScript((th) => localStorage.setItem("tessera.settings.v1", JSON.stringify({ onboarded: true, theme: th })), theme);
     });
-    for (const path of ["/", "/study/", "/practice/", "/stats/", "/settings/", "/glossary/", "/roadmap/"]) {
+    for (const path of ["/", "/study/", "/study/postflop/", "/study/report/", "/practice/", "/stats/", "/settings/", "/glossary/", "/roadmap/"]) {
       test(`${path}`, async ({ page }) => {
         await page.goto(path);
-        if (path === "/study/") await page.waitForSelector(".cell");
+        if (path === "/study/" || path === "/study/postflop/") await page.waitForSelector(".cell");
+        if (path === "/study/report/") await page.waitForSelector("[data-testid=rep-bars] li");
         if (path === "/practice/") await page.waitForSelector('[data-testid="start-practice"]');
         await audit(page, `${theme} ${path}`);
       });
@@ -33,6 +34,17 @@ for (const theme of ["dark", "light"] as const) {
       await page.locator('[data-cls="14"]').click();
       await page.getByRole("tab", { name: "EV" }).click();
       await audit(page, `${theme} study EV`);
+    });
+    test("postflop practice question and result", async ({ page }) => {
+      await page.goto("/practice/");
+      await page.getByTestId("mode-postSpot").click();
+      await page.getByTestId("start-practice").click();
+      await page.locator('[data-testid^="action-"]').first().waitFor({ timeout: 30_000 });
+      await audit(page, `${theme} postflop question`);
+      await page.locator('[data-testid^="action-"]').first().click();
+      await page.getByTestId("result").waitFor();
+      await page.waitForTimeout(500);
+      await audit(page, `${theme} postflop result`);
     });
     test("practice question and result", async ({ page }) => {
       await page.goto("/practice/");
