@@ -35,6 +35,8 @@ export const DEFAULT_SETTINGS: Settings = {
 };
 
 export const STORAGE_KEY = "tessera.settings.v1";
+/** epoch ms of the last change made on this device (0 = never): cloud sync uses it to pick the newer side */
+export const UPDATED_KEY = "tessera.settings.updated";
 
 const dicts: Record<Lang, Record<Key, string>> = { ja, en };
 
@@ -49,6 +51,8 @@ type TFn = (key: Key, params?: Record<string, string | number>) => string;
 interface Ctx {
   settings: Settings;
   set: (patch: Partial<Settings>) => void;
+  /** settings that arrived from the cloud: applied without counting as a local change */
+  applyRemote: (data: Record<string, unknown>, updated: number) => void;
   t: TFn;
   ready: boolean;
 }
@@ -106,9 +110,24 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     return () => mq.removeEventListener("change", on);
   }, [settings]);
 
-  const set = useCallback((patch: Partial<Settings>) => setSettings((s) => ({ ...s, ...patch })), []);
+  const set = useCallback((patch: Partial<Settings>) => {
+    try {
+      localStorage.setItem(UPDATED_KEY, String(Date.now()));
+    } catch {
+      /* ignore */
+    }
+    setSettings((s) => ({ ...s, ...patch }));
+  }, []);
+  const applyRemote = useCallback((data: Record<string, unknown>, updated: number) => {
+    try {
+      localStorage.setItem(UPDATED_KEY, String(updated));
+    } catch {
+      /* ignore */
+    }
+    setSettings((s) => ({ ...DEFAULT_SETTINGS, ...s, ...(data as Partial<Settings>) }));
+  }, []);
   const t = useCallback<TFn>((key, params) => translate(settings.lang, key, params), [settings.lang]);
-  const value = useMemo(() => ({ settings, set, t, ready }), [settings, set, t, ready]);
+  const value = useMemo(() => ({ settings, set, applyRemote, t, ready }), [settings, set, applyRemote, t, ready]);
   return <SettingsContext.Provider value={value}>{children}</SettingsContext.Provider>;
 }
 

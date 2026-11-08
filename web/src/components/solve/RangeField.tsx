@@ -84,7 +84,7 @@ export function RangeField({ label, text, onText, saved, testId }: { label: stri
         />
       </label>
       {parsed.errors.length > 0 && (
-        <p role="alert" className="text-xs text-[color:var(--raise-1)]">
+        <p role="alert" className="text-xs text-[color:var(--g-blunder)]">
           {t("solve.parseErr", { list: parsed.errors.join(", ") })}
         </p>
       )}

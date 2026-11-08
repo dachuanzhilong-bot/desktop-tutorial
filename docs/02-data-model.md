@@ -93,12 +93,8 @@ create policy "own rows" on public.attempts for all using (user_id = auth.uid())
 -- (他のテーブルも同じ形のポリシー)
 ```
 
-### 同期アルゴリズム（Phase 5）
-1. ログイン後、端末の `attempts` のうち未送信分（`syncedAt` なし）を `upsert ... on conflict do nothing` で送る。
-2. サーバーの `ts > lastPullTs` を取得して端末に追加（`ts:nodeId:hand` で重複排除）。
-3. `srs`: `updated` の新しい方が勝つ（Last-Writer-Wins。項目単位なので衝突しても影響は小さい）。
-4. 設定: `user_settings.updated` が新しい方を採用。
-5. 失敗時は指数バックオフで再試行。オフラインでも通常どおり記録され、復帰後に送られる。
+### 同期アルゴリズム（Phase 5, 実装済み）
+実装済みの仕様は [10-analyze-and-sync.md](10-analyze-and-sync.md)、テーブル定義は `supabase/schema.sql`（このページのSQLから、`attempts.mode` に `post`/`postSpot` を追加、`srs_items` に `node_id`/`hand` を追加、`range_presets` を `(user_id, id text)` キーに変更している）。
 
 > 秘密鍵はクライアントに置かない。使うのは `anon` キー＋RLSのみ。`service_role` キーは使わない。
 

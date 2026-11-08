@@ -7,7 +7,7 @@ const PHASES = [
   { k: "roadmap.p2", done: true },
   { k: "roadmap.p3", done: true },
   { k: "roadmap.p4", done: true },
-  { k: "roadmap.p5", done: false },
+  { k: "roadmap.p5", done: true },
   { k: "roadmap.p6", done: false },
 ] as const;
 

@@ -1,6 +1,8 @@
 import type { Grade } from "../practice/grading";
 import type { SrsItem } from "../practice/srs";
 import type { SpotType } from "../solution/types";
+import type { HandAnalysis } from "../analyze/match";
+import type { NormHand } from "../analyze/normalize";
 
 export interface Attempt {
   id?: number;
@@ -21,6 +23,8 @@ export interface Attempt {
   rng: boolean;
   timeout: boolean;
   hint: boolean;
+  /** came from the server (cloud sync): never uploaded again */
+  remote?: boolean;
 }
 
 /** a finished (or cancelled) custom solve, kept on this device */
@@ -51,6 +55,16 @@ export interface SavedRange {
   text: string;
 }
 
+/** an imported hand history with its analysis (re-analysable when the solution changes) */
+export interface StoredHand {
+  id: string;
+  site: string;
+  ts: number;
+  importedAt: number;
+  hand: NormHand;
+  analysis: HandAnalysis;
+}
+
 export interface Repo {
   addAttempt(a: Attempt): Promise<void>;
   allAttempts(): Promise<Attempt[]>;
@@ -68,6 +82,10 @@ export interface Repo {
   putRange(r: SavedRange): Promise<void>;
   listRanges(): Promise<SavedRange[]>;
   deleteRange(id: string): Promise<void>;
+  putHands(list: StoredHand[]): Promise<void>;
+  listHands(): Promise<StoredHand[]>;
+  deleteHand(id: string): Promise<void>;
+  clearHands(): Promise<void>;
 }
 
 export interface ExportBlob {
@@ -79,4 +97,6 @@ export interface ExportBlob {
   meta: Record<string, unknown>;
   /** named ranges travel with the export; solves are big and can be recomputed, so they stay on the device */
   ranges?: SavedRange[];
+  /** imported hand histories (with analysis) */
+  hands?: StoredHand[];
 }

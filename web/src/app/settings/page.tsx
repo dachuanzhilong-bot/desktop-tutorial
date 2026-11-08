@@ -1,4 +1,5 @@
 "use client";
+import { SyncPanel } from "@/components/sync/SyncPanel";
 import Link from "next/link";
 import { useState } from "react";
 import { TOUR_EVENT } from "@/components/Onboarding";
@@ -48,6 +49,8 @@ export default function SettingsPage() {
   return (
     <div className="space-y-4">
       <h1 className="text-2xl font-extrabold">{t("settings.title")}</h1>
+
+      <SyncPanel />
 
       <Row title={t("settings.language")}>
         <Seg value={settings.lang} label={t("settings.language")} onChange={(v) => set({ lang: v })} options={[{ v: "ja", label: "日本語" }, { v: "en", label: "English" }]} />

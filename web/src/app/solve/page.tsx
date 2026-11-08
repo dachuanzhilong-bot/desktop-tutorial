@@ -430,7 +430,7 @@ export default function SolvePage() {
           </div>
         )}
         {error && (
-          <p role="alert" className="text-sm text-[color:var(--raise-1)]" data-testid="solve-error">
+          <p role="alert" className="text-sm text-[color:var(--g-blunder)]" data-testid="solve-error">
             {error}
           </p>
         )}

@@ -1,5 +1,6 @@
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test, Page } from "@playwright/test";
+import { H_BAD_3BET, H_CO_OPEN } from "../src/lib/__tests__/fixtures/hands";
 
 /** Automated WCAG 2.1 A/AA audit (axe-core). Covers colour contrast in both themes and both palettes. */
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
@@ -19,7 +20,7 @@ for (const theme of ["dark", "light"] as const) {
     test.beforeEach(async ({ context }) => {
       await context.addInitScript((th) => localStorage.setItem("tessera.settings.v1", JSON.stringify({ onboarded: true, theme: th })), theme);
     });
-    for (const path of ["/", "/study/", "/study/postflop/", "/study/report/", "/practice/", "/solve/", "/builder/", "/stats/", "/settings/", "/glossary/", "/roadmap/"]) {
+    for (const path of ["/", "/study/", "/study/postflop/", "/study/report/", "/practice/", "/solve/", "/builder/", "/analyze/", "/stats/", "/settings/", "/glossary/", "/roadmap/"]) {
       test(`${path}`, async ({ page }) => {
         await page.goto(path);
         if (path === "/study/" || path === "/study/postflop/") await page.waitForSelector(".cell");
@@ -46,6 +47,12 @@ for (const theme of ["dark", "light"] as const) {
       await page.getByTestId("ref-select").selectOption("btn-open");
       await page.getByTestId("compare").waitFor();
       await audit(page, `${theme} builder compare`);
+    });
+    test("analyze with imported hands", async ({ page }) => {
+      await page.goto("/analyze/");
+      await page.getByTestId("hh-file").setInputFiles({ name: "h.txt", mimeType: "text/plain", buffer: Buffer.from([H_CO_OPEN, H_BAD_3BET].join("\n\n")) });
+      await page.getByTestId("hh-hand").first().waitFor();
+      await audit(page, `${theme} analyze list`);
     });
     test("study with a selected hand, EV mode", async ({ page }) => {
       await page.goto("/study/");

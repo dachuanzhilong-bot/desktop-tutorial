@@ -228,7 +228,7 @@ export default function BuilderPage() {
           className="w-full rounded-xl border border-line bg-surface-2 p-3 font-mono text-sm"
         />
         {textErr.length > 0 && (
-          <p role="alert" className="text-sm text-[color:var(--raise-1)]">
+          <p role="alert" className="text-sm text-[color:var(--g-blunder)]">
             {t("solve.parseErr", { list: textErr.join(", ") })}
           </p>
         )}

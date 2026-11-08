@@ -6,11 +6,15 @@ import { Session } from "@/components/practice/Session";
 import { Setup } from "@/components/practice/Setup";
 import type { StartConfig } from "@/components/practice/types";
 import { PostSession } from "@/components/postflop/PostSession";
+import { DEFAULT_FILTER } from "@/lib/practice/sampler";
 import type { PracticeFilter } from "@/lib/practice/sampler";
+import { getRepo } from "@/lib/storage/idb";
 import { SPOT_TYPES, SpotType } from "@/lib/solution/types";
 
 /** `/practice/#seat=3&spot=vs3bet` pre-fills the conditions (used by the weak-spot shortcuts) */
 interface Preset {
+  /** `#set=<id>`: a question list prepared by Analyze */
+  set?: string;
   filter: Partial<PracticeFilter>;
   mode?: "spot" | "hand" | "postSpot" | "post";
   scenario?: string;
@@ -27,6 +31,7 @@ function parseHash(): Preset {
   const mode = p.get("mode");
   const flop = p.get("flop");
   return {
+    set: p.get("set") ?? undefined,
     filter: out,
     mode: mode && ["spot", "hand", "postSpot", "post"].includes(mode) ? (mode as Preset["mode"]) : undefined,
     scenario: p.get("scenario") ?? undefined,
@@ -39,7 +44,18 @@ export default function PracticePage() {
   const [run, setRun] = useState(0);
   const [initial, setInitial] = useState<Preset | null>(null);
   useImmersive(config !== null);
-  useEffect(() => setInitial(parseHash()), []);
+  useEffect(() => {
+    const preset = parseHash();
+    if (!preset.set) return setInitial(preset);
+    // a question list from Analyze: start right away
+    getRepo()
+      .getMeta<{ title: string; items: { nodeId: number; hand: number }[] }>(`practiceSet:${preset.set}`)
+      .then((s) => {
+        if (s?.items.length) setConfig({ type: "pre", config: { mode: "spot", filter: { ...DEFAULT_FILTER }, rng: false, timer: 0, fixed: s.items, title: s.title } });
+        else setInitial({ ...preset, set: undefined });
+      })
+      .catch(() => setInitial({ ...preset, set: undefined }));
+  }, []);
 
   return (
     <SolutionGate grid={false}>

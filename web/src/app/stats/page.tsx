@@ -1,4 +1,5 @@
 "use client";
+import { ReviewTabs } from "@/components/analyze/ReviewTabs";
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { LineChart, Ring } from "@/components/Charts";
@@ -79,6 +80,7 @@ export default function StatsPage() {
         <h1 className="text-2xl font-extrabold">{t("stats.title")}</h1>
         <p className="text-sm text-muted">{t("stats.subtitle")}</p>
       </header>
+      <ReviewTabs />
 
       <section className="grid grid-cols-[auto_1fr] items-center gap-4 rounded-3xl border border-line bg-surface p-4">
         <Ring value={today} max={settings.dailyGoal} label={t("stats.goalHands", { n: today, goal: settings.dailyGoal })}>

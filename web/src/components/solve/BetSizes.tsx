@@ -37,7 +37,7 @@ export function BetSizes({ cfg, startStreet, onChange }: { cfg: SolveConfig; sta
                 {t("solve.raiseOn")}
               </button>
             </div>
-            {cfg.bets[street].length === 0 && !cfg.allowAllin && <p className="text-xs text-[color:var(--raise-1)]">{t("solve.betsWarn")}</p>}
+            {cfg.bets[street].length === 0 && !cfg.allowAllin && <p className="text-xs text-[color:var(--g-blunder)]">{t("solve.betsWarn")}</p>}
           </div>
         ),
       )}

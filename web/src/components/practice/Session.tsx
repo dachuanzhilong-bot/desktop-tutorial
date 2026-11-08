@@ -75,8 +75,26 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
   }, []);
 
   // ---------------------------------------------------------------- rounds
+  const fixedOrder = useRef<number[]>([]);
+  const fixedPos = useRef(0);
   const startSpot = useCallback(async () => {
     setPhase("loading");
+    if (config.fixed?.length) {
+      // a fixed question list: shuffle once per pass
+      if (fixedPos.current >= fixedOrder.current.length) {
+        fixedOrder.current = config.fixed.map((_, i) => i).sort(() => rnd() - 0.5);
+        fixedPos.current = 0;
+      }
+      const item = config.fixed[fixedOrder.current[fixedPos.current++]];
+      const sol = await store.node(item.nodeId);
+      const q = buildQuestion(m, item.nodeId, sol, item.hand, rnd, config.rng);
+      setRound({ heroSeat: m.nodes[item.nodeId].actor, hand: item.hand, cards: q.cards, queue: stepsTo(m, item.nodeId), startState: initialState(m), q, endedWith: null });
+      setShown(0);
+      setAnswer(null);
+      setPane("result");
+      setPhase("animating");
+      return;
+    }
     if (!nodes.length) return setPhase("empty");
     for (let tries = 0; tries < 12; tries++) {
       const nodeId = pickNode(m, nodes, config.filter, rnd);
@@ -359,6 +377,11 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
         </div>
         <span className="w-11" />
       </div>
+      {config.title && (
+        <p className="-mt-1 text-center text-xs font-semibold text-muted" data-testid="session-title">
+          {config.title}
+        </p>
+      )}
 
       {/* time limit bar */}
       {config.timer > 0 && asking && (

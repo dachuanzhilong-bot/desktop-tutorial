@@ -6,6 +6,10 @@ export interface PracticeConfig {
   rng: boolean;
   /** seconds per decision, 0 = off */
   timer: number;
+  /** a fixed list of questions (e.g. the mistakes found by Analyze): asked in random order, then again */
+  fixed?: { nodeId: number; hand: number }[];
+  /** shown in the session header when `fixed` is used */
+  title?: string;
 }
 
 import type { PostConfig } from "@/components/postflop/PostSession";

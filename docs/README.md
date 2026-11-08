@@ -14,6 +14,7 @@
 | 07 | [preflop-model.md](07-preflop-model.md) | プリフロップ解の近似モデルと、既知の限界・検証結果 |
 | 08 | [postflop-model.md](08-postflop-model.md) | ポストフロップ解のモデル（サンプル抽象化）と検証 |
 | 09 | [solve-and-builder.md](09-solve-and-builder.md) | Solve（WASM）・ノードロック・Range Builder |
+| 10 | [analyze-and-sync.md](10-analyze-and-sync.md) | Analyze（ハンド履歴）・ログイン・クラウド同期 |
 
 ## 設計上の大原則
 

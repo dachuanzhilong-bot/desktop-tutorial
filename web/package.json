@@ -10,7 +10,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "e2e": "npm run build && playwright test --trace off",
+    "e2e": "node scripts/e2e.mjs",
     "solutions:pack": "node scripts/pack-solutions.mjs",
     "icons": "node scripts/make-icons.mjs",
     "wasm": "bash scripts/build-wasm.sh",

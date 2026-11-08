@@ -1,5 +1,5 @@
 import type { SrsItem } from "../practice/srs";
-import type { Attempt, ExportBlob, Repo, SavedRange, SavedSolve } from "./types";
+import type { Attempt, ExportBlob, Repo, SavedRange, SavedSolve, StoredHand } from "./types";
 
 export class MemoryRepo implements Repo {
   private attempts: Attempt[] = [];
@@ -8,6 +8,7 @@ export class MemoryRepo implements Repo {
   private seq = 1;
   private solves = new Map<string, SavedSolve>();
   private ranges = new Map<string, SavedRange>();
+  private hands = new Map<string, StoredHand>();
 
   async addAttempt(a: Attempt) {
     this.attempts.push({ ...a, id: this.seq++ });
@@ -28,7 +29,7 @@ export class MemoryRepo implements Repo {
     this.meta.set(key, value);
   }
   async exportAll(): Promise<ExportBlob> {
-    return { app: "tessera", version: 1, exportedAt: Date.now(), attempts: await this.allAttempts(), srs: await this.allSrs(), meta: Object.fromEntries(this.meta), ranges: await this.listRanges() };
+    return { app: "tessera", version: 1, exportedAt: Date.now(), attempts: await this.allAttempts(), srs: await this.allSrs(), meta: Object.fromEntries(this.meta), ranges: await this.listRanges(), hands: await this.listHands() };
   }
   async importAll(b: ExportBlob) {
     for (const a of b.attempts) await this.addAttempt({ ...a, id: undefined });
@@ -38,6 +39,7 @@ export class MemoryRepo implements Repo {
     }
     for (const [k, v] of Object.entries(b.meta)) this.meta.set(k, v);
     for (const r of b.ranges ?? []) await this.putRange(r);
+    await this.putHands(b.hands ?? []);
   }
   async clear() {
     this.attempts = [];
@@ -45,6 +47,7 @@ export class MemoryRepo implements Repo {
     this.meta.clear();
     this.solves.clear();
     this.ranges.clear();
+    this.hands.clear();
   }
   async putSolve(s: SavedSolve) {
     this.solves.set(s.id, s);
@@ -66,5 +69,17 @@ export class MemoryRepo implements Repo {
   }
   async deleteRange(id: string) {
     this.ranges.delete(id);
+  }
+  async putHands(list: StoredHand[]) {
+    for (const h of list) this.hands.set(h.id, h);
+  }
+  async listHands() {
+    return [...this.hands.values()].sort((a, b) => b.ts - a.ts);
+  }
+  async deleteHand(id: string) {
+    this.hands.delete(id);
+  }
+  async clearHands() {
+    this.hands.clear();
   }
 }

@@ -11,3 +11,11 @@ web/playwright-report/
 web/next-env.d.ts
 *.tsbuildinfo
 .DS_Store
+
+# local secrets / config
+.env
+.env.local
+.env.*.local
+web/.env
+web/.env.local
+web/.env.*.local
