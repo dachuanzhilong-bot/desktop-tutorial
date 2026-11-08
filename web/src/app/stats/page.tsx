@@ -6,6 +6,7 @@ import { LineChart, Ring } from "@/components/Charts";
 import { IconFlame } from "@/components/icons";
 import { Skeleton } from "@/components/Skeleton";
 import { useSettings } from "@/lib/settings";
+import { useNow } from "@/lib/util/hooks";
 import { SEATS } from "@/lib/solution/tree";
 import { ALL_SPOT_COLUMNS } from "@/lib/solution/types";
 import { getRepo } from "@/lib/storage/idb";
@@ -34,7 +35,7 @@ export default function StatsPage() {
   }, []);
   useEffect(load, [load]);
 
-  const now = Date.now();
+  const now = useNow();
   const sum = useMemo(() => summarize(list ?? []), [list]);
   const series = useMemo(() => dailySeries(list ?? [], 30, now), [list, now]);
   const heat = useMemo(() => heatmap(list ?? []), [list]);

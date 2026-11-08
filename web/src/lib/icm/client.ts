@@ -7,7 +7,7 @@ export interface IcmProgress {
   exploit: number;
 }
 
-type Pending = { resolve: (v: any) => void; reject: (e: Error) => void; onProgress?: (p: IcmProgress) => void };
+type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; onProgress?: (p: IcmProgress) => void };
 
 /** Promise API for the ICM push/fold solver running in /solver-worker.js (the same WebAssembly module as Solve). */
 export class IcmClient {
@@ -33,10 +33,10 @@ export class IcmClient {
     };
   }
 
-  private call<T = any>(msg: Record<string, unknown>, transfer: Transferable[] = [], onProgress?: Pending["onProgress"]): Promise<T> {
+  private call<T = unknown>(msg: Record<string, unknown>, transfer: Transferable[] = [], onProgress?: Pending["onProgress"]): Promise<T> {
     const req = this.next++;
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(req, { resolve, reject, onProgress });
+      this.pending.set(req, { resolve: resolve as (v: unknown) => void, reject, onProgress });
       this.worker.postMessage({ req, ...msg }, transfer);
     });
   }

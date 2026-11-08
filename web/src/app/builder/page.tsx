@@ -1,18 +1,23 @@
 "use client";
 import Link from "next/link";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useRouter } from "next/navigation";
+import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { IconUndo } from "@/components/icons";
 import { RangeCells } from "@/components/ranges/RangeCells";
 import { SolveTabs } from "@/components/solve/SolveTabs";
 import { Term } from "@/components/Term";
 import { ALL_CLASSES, NUM_CLASSES } from "@/lib/poker/hands";
 import { RANGE_PRESETS, availablePresets, presetRange } from "@/lib/ranges/presets";
+import { editorReducer, initEditor } from "@/lib/ranges/editor";
 import { compareRanges, emptyRange, formatRange, parseRange, rangeCombos, rangePercent } from "@/lib/ranges/range";
-import { loadDraft, saveDraft } from "@/lib/solve/draft";
+import { saveDraft } from "@/lib/solve/draft";
 import { useSolutionStore } from "@/lib/solution/context";
 import { useSettings } from "@/lib/settings";
 import { getRepo } from "@/lib/storage/idb";
 import type { SavedRange } from "@/lib/storage/types";
 import { haptic } from "@/lib/util/haptics";
+import { useHash } from "@/lib/util/hooks";
+import { newId } from "@/lib/util/id";
 
 const BRUSHES = [1, 0.75, 0.5, 0.25];
 
@@ -26,20 +31,18 @@ const SHORTCUTS: { id: string; key: "builder.sc.pairs" | "builder.sc.suited" | "
 export default function BuilderPage() {
   const { t } = useSettings();
   const { store } = useSolutionStore();
-  const [range, setRange] = useState<Float32Array>(emptyRange);
-  const [text, setText] = useState("");
-  const [textErr, setTextErr] = useState<string[]>([]);
+  const router = useRouter();
+  const [ed, dispatch] = useReducer(editorReducer, undefined, () => initEditor());
+  const { present: range, text, textErr } = ed;
   const [brush, setBrush] = useState(1);
   const [tool, setTool] = useState<"paint" | "erase">("paint");
   const [name, setName] = useState("");
   const [saved, setSaved] = useState<SavedRange[]>([]);
   const [note, setNote] = useState("");
   const [refId, setRefId] = useState("");
-  const [ref, setRef] = useState<Float32Array | null>(null);
+  const [loadedRef, setLoadedRef] = useState<{ id: string; range: Float32Array } | null>(null);
+  const ref = refId && loadedRef?.id === refId ? loadedRef.range : null;
   const [overlay, setOverlay] = useState(true);
-  const dragValue = useRef(0);
-  const live = useRef(range);
-  live.current = range;
 
   const refresh = useCallback(() => {
     getRepo()
@@ -47,38 +50,46 @@ export default function BuilderPage() {
       .then(setSaved)
       .catch(() => {});
   }, []);
+  useEffect(refresh, [refresh]);
 
+  // deep link: #text=<range> (e.g. from Study) opens that range
+  const hash = useHash();
+  const [seenHash, setSeenHash] = useState("");
+  if (hash !== seenHash) {
+    setSeenHash(hash);
+    const initial = new URLSearchParams(hash).get("text");
+    if (initial) dispatch({ type: "set", range: parseRange(initial).range });
+  }
+
+  const apply = useCallback((r: Float32Array) => dispatch({ type: "set", range: r }), []);
+  const undo = useCallback(() => dispatch({ type: "undo" }), []);
+  const redo = useCallback(() => dispatch({ type: "redo" }), []);
+
+  // Ctrl/⌘+Z, Ctrl/⌘+Shift+Z, Ctrl+Y (text fields keep their own undo)
   useEffect(() => {
-    refresh();
-    const p = new URLSearchParams(location.hash.replace(/^#/, ""));
-    const initial = p.get("text");
-    if (initial) apply(parseRange(initial).range);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [refresh]);
+    const onKey = (e: KeyboardEvent) => {
+      if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
+      const el = e.target as HTMLElement | null;
+      if (el && (el.tagName === "TEXTAREA" || el.tagName === "INPUT" || el.isContentEditable)) return;
+      const k = e.key.toLowerCase();
+      if (k === "z" && !e.shiftKey) undo();
+      else if ((k === "z" && e.shiftKey) || k === "y") redo();
+      else return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [undo, redo]);
 
-  const apply = useCallback((r: Float32Array) => {
-    setRange(r);
-    setText(formatRange(r));
-    setTextErr([]);
-  }, []);
-
-  // ---- painting
+  // ---- painting (one drag = one undo step)
   const onPaint = useCallback(
     (cls: number, phase: "start" | "move") => {
-      const cur = live.current;
-      if (phase === "start") {
-        dragValue.current = tool === "erase" ? 0 : Math.abs(cur[cls] - brush) < 0.001 ? 0 : brush;
-        haptic.tap();
-      }
-      if (Math.abs(cur[cls] - dragValue.current) < 0.0005) return;
-      const next = Float32Array.from(cur);
-      next[cls] = dragValue.current;
-      live.current = next;
-      setRange(next);
+      if (phase === "start") haptic.tap();
+      dispatch({ type: "paint", cls, phase, brush, erase: tool === "erase" });
     },
     [brush, tool],
   );
-  const onPaintEnd = useCallback(() => setText(formatRange(live.current)), []);
+  const onPaintEnd = useCallback(() => dispatch({ type: "strokeEnd" }), []);
 
   const fill = (test: (c: (typeof ALL_CLASSES)[number]) => boolean) => {
     const v = tool === "erase" ? 0 : brush;
@@ -93,14 +104,12 @@ export default function BuilderPage() {
 
   // ---- comparison
   useEffect(() => {
-    if (!refId || !store) {
-      setRef(null);
-      return;
-    }
     const preset = RANGE_PRESETS.find((p) => p.id === refId);
-    if (!preset) return;
+    if (!preset || !store) return;
     let alive = true;
-    presetRange(store, preset).then((r) => alive && setRef(r));
+    presetRange(store, preset)
+      .then((r) => alive && r && setLoadedRef({ id: refId, range: r }))
+      .catch(() => {});
     return () => {
       alive = false;
     };
@@ -110,7 +119,7 @@ export default function BuilderPage() {
   // ---- save / load
   const save = async () => {
     const nm = name.trim() || `${t("solve.tab.builder")} ${new Date().toLocaleDateString()}`;
-    await getRepo().putRange({ id: `r${Date.now().toString(36)}`, ts: Date.now(), name: nm, text: formatRange(range) });
+    await getRepo().putRange({ id: newId("r"), ts: Date.now(), name: nm, text: formatRange(range) });
     setName("");
     setNote(t("builder.saved"));
     refresh();
@@ -125,7 +134,7 @@ export default function BuilderPage() {
   };
   const use = (seat: "oop" | "ip") => {
     saveDraft(seat === "oop" ? { oopText: formatRange(range) } : { ipText: formatRange(range) });
-    location.href = "/solve/";
+    router.push("/solve/");
   };
 
   return (
@@ -186,6 +195,18 @@ export default function BuilderPage() {
         <p className="text-lg font-extrabold" data-testid="builder-stats" aria-live="polite">
           {t("builder.stats", { combos: combos.toFixed(combos % 1 ? 1 : 0), pct: pct.toFixed(1) })}
         </p>
+        <div className="flex gap-1.5" role="group" aria-label={t("builder.history")}>
+          <button type="button" data-testid="builder-undo" onClick={undo} disabled={!ed.past.length} aria-keyshortcuts="Control+Z Meta+Z" className="flex min-h-11 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-sm font-semibold disabled:opacity-40">
+            <IconUndo width={18} height={18} aria-hidden />
+            {t("builder.undo")}
+          </button>
+          <button type="button" data-testid="builder-redo" onClick={redo} disabled={!ed.future.length} aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y" className="flex min-h-11 items-center gap-1.5 rounded-xl border border-line bg-surface px-3 text-sm font-semibold disabled:opacity-40">
+            <IconUndo width={18} height={18} aria-hidden className="-scale-x-100" />
+            {t("builder.redo")}
+          </button>
+        </div>
+      </div>
+      <div className="flex flex-wrap items-center gap-2">
         <div className="flex flex-wrap gap-1.5" role="group" aria-label={t("builder.shortcuts")}>
           {SHORTCUTS.map((s) => (
             <button key={s.id} type="button" onClick={() => fill(s.test)} className="min-h-10 rounded-full border border-line bg-surface px-3 text-sm font-semibold">
@@ -221,7 +242,7 @@ export default function BuilderPage() {
           id="range-text"
           data-testid="range-text"
           value={text}
-          onChange={(e) => setText(e.target.value)}
+          onChange={(e) => dispatch({ type: "text", text: e.target.value })}
           rows={3}
           spellCheck={false}
           placeholder={t("builder.textHint")}
@@ -236,12 +257,7 @@ export default function BuilderPage() {
           <button
             type="button"
             data-testid="range-import"
-            onClick={() => {
-              const r = parseRange(text);
-              setRange(r.range);
-              setTextErr(r.errors);
-              if (!r.errors.length) setText(formatRange(r.range));
-            }}
+            onClick={() => dispatch({ type: "import" })}
             className="min-h-11 rounded-xl bg-accent px-4 font-bold text-accent-ink"
           >
             {t("builder.import")}

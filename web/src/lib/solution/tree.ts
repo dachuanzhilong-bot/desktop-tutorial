@@ -1,3 +1,4 @@
+import type { Key } from "../i18n/ja";
 import { ActionKind, Terminal } from "./types";
 import type { ActionMeta, Manifest, NodeMeta, PublicState, SpotType } from "./types";
 
@@ -78,7 +79,7 @@ export function stateAt(m: Manifest, id: number): PublicState {
 }
 
 /** short label of an action, e.g. "Fold", "Call", "Raise", "All-in" */
-export function actionLabel(a: ActionMeta, actor: number, state: PublicState, t: (k: any) => string): string {
+export function actionLabel(a: ActionMeta, actor: number, state: PublicState, t: (k: Key) => string): string {
   switch (a.kind) {
     case ActionKind.Fold:
       return t("act.fold");
@@ -119,7 +120,7 @@ export function isTerminalAction(a: ActionMeta) {
 }
 
 /** human readable line, e.g. "UTG 2.5 · HJ fold · CO fold" */
-export function lineText(m: Manifest, id: number, t: (k: any) => string): string {
+export function lineText(m: Manifest, id: number, t: (k: Key) => string): string {
   return history(m, id)
     .map((h) => `${m.players[h.actor]} ${actionLabel(h.action, h.actor, h.before, t)}${h.action.kind >= ActionKind.Raise || (h.action.kind === ActionKind.Call && h.action.to > 1) ? " " + fmtBB(h.action.to) : ""}`)
     .join(" · ");

@@ -63,13 +63,18 @@ function PostflopStudy() {
   const [error, setError] = useState<string | null>(null);
   const [scenario, setScenario] = useState<string>("");
   const [flopIdx, setFlopIdx] = useState(0);
-  const [flop, setFlop] = useState<PfFlop | null>(null);
+  /** the last flop that finished loading, with the request it answers */
+  const [loaded, setLoaded] = useState<{ key: string; flop: PfFlop } | null>(null);
+  const flopKey = `${scenario}#${flopIdx}`;
+  const flop = loaded?.key === flopKey ? loaded.flop : null;
   const [nodeId, setNodeId] = useState(0);
   const [solveId, setSolveId] = useState<string | null | undefined>(undefined);
 
   useEffect(() => {
     const p = new URLSearchParams(location.hash.replace(/^#/, ""));
     const sid = p.get("solve");
+    // the deep link (#solve=… or #s=…&f=…&n=…) is only known in the browser, after hydration
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of the URL hash
     setSolveId(sid);
     if (sid) return;
     loadIndex()
@@ -80,20 +85,19 @@ function PostflopStudy() {
         setFlopIdx(Math.min(Number(p.get("f") ?? 0) || 0, ix.flops.length - 1));
         setNodeId(Number(p.get("n") ?? 0) || 0);
       })
-      .catch((e) => setError(String(e?.message ?? e)));
+      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
   useEffect(() => {
     if (!scenario) return;
     let alive = true;
-    setFlop(null);
     loadFlop(scenario, flopIdx)
-      .then((f) => alive && setFlop(f))
-      .catch((e) => alive && setError(String(e?.message ?? e)));
+      .then((f) => alive && setLoaded({ key: flopKey, flop: f }))
+      .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
     return () => {
       alive = false;
     };
-  }, [scenario, flopIdx]);
+  }, [scenario, flopIdx, flopKey]);
 
   useEffect(() => {
     if (!scenario) return;

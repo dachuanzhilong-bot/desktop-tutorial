@@ -5,7 +5,7 @@ const HOST = "https://e2e.supabase.test";
 const CORS = { "access-control-allow-origin": "*", "access-control-allow-headers": "*", "access-control-allow-methods": "GET,POST,OPTIONS", "access-control-expose-headers": "*" };
 
 function fakeSupabase(page: Page) {
-  const tables: Record<string, any[]> = { attempts: [], srs_items: [], range_presets: [], user_settings: [] };
+  const tables: Record<string, Record<string, unknown>[]> = { attempts: [], srs_items: [], range_presets: [], user_settings: [] };
   const log: string[] = [];
   return page.route(`${HOST}/**`, async (route) => {
     const req = route.request();
@@ -21,7 +21,7 @@ function fakeSupabase(page: Page) {
     const table = url.pathname.replace("/rest/v1/", "");
     if (!tables[table]) return json(404, {});
     if (req.method() === "POST") {
-      tables[table].push(...(body as any[]));
+      tables[table].push(...(body as Record<string, unknown>[]));
       return json(201, null);
     }
     return json(200, tables[table]);

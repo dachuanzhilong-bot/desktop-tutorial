@@ -14,6 +14,7 @@ import { parseHandHistory } from "@/lib/analyze/parse";
 import type { Key } from "@/lib/i18n/ja";
 import { cardOf } from "@/lib/postflop/combos";
 import { saveDraft } from "@/lib/solve/draft";
+import { newId } from "@/lib/util/id";
 import { depthOf, nearestDepth } from "@/lib/solution/loader";
 import type { SolutionStore } from "@/lib/solution/loader";
 import { useSolutionStore } from "@/lib/solution/context";
@@ -40,7 +41,6 @@ export default function AnalyzePage() {
 function Analyze({ store }: { store: SolutionStore }) {
   const { t } = useSettings();
   const router = useRouter();
-  const m = store.manifest;
   const { getStore } = useSolutionStore();
   const [hands, setHands] = useState<StoredHand[] | null>(null);
   const [busy, setBusy] = useState<{ done: number; total: number } | null>(null);
@@ -103,7 +103,7 @@ function Analyze({ store }: { store: SolutionStore }) {
     await importTexts(texts);
   };
 
-  const list = hands ?? [];
+  const list = useMemo(() => hands ?? [], [hands]);
   const summary = useMemo(() => summarize(list), [list]);
   const weak = useMemo(() => weakSpots(list), [list]);
   const view = useMemo(() => filterHands(list, filter), [list, filter]);
@@ -116,7 +116,7 @@ function Analyze({ store }: { store: SolutionStore }) {
       setNote(t("analyze.setNone"));
       return;
     }
-    const id = `a${Date.now().toString(36)}`;
+    const id = newId("a");
     await getRepo().setMeta(`practiceSet:${id}`, { title: `${t("analyze.setTitle")} · ${depthOf(solution)}bb`, solution, items });
     router.push(`/practice/#set=${id}`);
   };

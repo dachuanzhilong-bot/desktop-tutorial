@@ -126,6 +126,7 @@ function RangeGridInner({ sol, actions, mode, selected, marker, onSelect, onLong
   };
 
   return (
+    // eslint-disable-next-line jsx-a11y/no-noninteractive-element-interactions -- event delegation for the 169 cell <button>s inside (drag-paint, roving arrow-key focus)
     <div
       ref={root}
       role="group"

@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { actionForRoll, gradeAnswer, isGood } from "../practice/grading";
 import { BOX_INTERVAL_MIN, mixedness, priorityWeight, updateSrs } from "../practice/srs";
+import type { SrsItem } from "../practice/srs";
 import { mulberry32, weightedPick } from "../util/rng";
 
 const stats = (rows: [number, number][]) => rows.map(([freq, ev]) => ({ freq, ev }));
@@ -76,7 +77,7 @@ describe("spaced repetition", () => {
   it("prioritises mistakes and mixed hands, deprioritises mastered ones", () => {
     const miss = updateSrs(undefined, 1, 1, "blunder", t0);
     const mastered = { ...updateSrs(updateSrs(undefined, 1, 2, "best", t0), 1, 2, "best", t0), due: t0 + 1e9 };
-    const w = (item: any, mixed = 0) => priorityWeight({ item, now: t0 + 10, mixedness: mixed, mixedBoost: true });
+    const w = (item: SrsItem | undefined, mixed = 0) => priorityWeight({ item, now: t0 + 10, mixedness: mixed, mixedBoost: true });
     expect(w(miss)).toBeGreaterThan(w(undefined));
     expect(w(undefined, 1)).toBeGreaterThan(w(undefined, 0));
     expect(w(mastered)).toBeLessThan(w(undefined));

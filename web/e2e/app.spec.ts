@@ -156,7 +156,7 @@ test.describe("settings", () => {
 });
 
 test.describe("pwa", () => {
-  test("manifest and icons are valid", async ({ page, request }) => {
+  test("manifest and icons are valid", async ({ request }) => {
     const res = await request.get("/manifest.webmanifest");
     expect(res.ok()).toBe(true);
     const m = await res.json();

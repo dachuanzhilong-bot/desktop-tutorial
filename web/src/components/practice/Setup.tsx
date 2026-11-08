@@ -90,7 +90,7 @@ export function Setup({
       .allSrs()
       .then((all) => setDue(all.filter((s) => s.due <= Date.now()).length))
       .catch(() => {});
-  }, []);
+  }, [initialScenario]);
 
   const toggle = <T,>(list: T[], v: T) => (list.includes(v) ? list.filter((x) => x !== v) : [...list, v]);
   const spotsLabel = useMemo(() => (filter.spots.length ? "" : t("common.any")), [filter.spots, t]);

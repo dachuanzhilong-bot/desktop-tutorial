@@ -3,14 +3,28 @@ import type { Manifest, NodeMeta, NodeSolution, ActionMeta } from "./types";
 
 const K = NUM_CLASSES;
 
+/** manifest.json as written by the solver exporter (solver/src/export.rs) */
+export interface RawManifest {
+  format: number;
+  id: string;
+  players: string[];
+  stack: number;
+  blinds: [number, number];
+  info?: Record<string, unknown>;
+  chunks: string[];
+  /** [actor, reach, chunk, actions[[kind, to, child, term]]] */
+  nodes: [number, number, number, number[][]][];
+}
+
 /** Parse the raw manifest JSON written by the solver exporter into rich node metadata. */
-export function parseManifest(raw: any): Manifest {
-  const nodes: NodeMeta[] = raw.nodes.map((n: any[], id: number) => ({
+export function parseManifest(raw: RawManifest): Manifest {
+  if (!raw || !Array.isArray(raw.nodes) || !Array.isArray(raw.chunks)) throw new Error("invalid solution manifest");
+  const nodes: NodeMeta[] = raw.nodes.map((n, id) => ({
     id,
-    actor: n[0] as number,
-    reach: n[1] as number,
-    chunk: n[2] as number,
-    actions: (n[3] as number[][]).map(
+    actor: n[0],
+    reach: n[1],
+    chunk: n[2],
+    actions: n[3].map(
       (a): ActionMeta => ({ kind: a[0], to: a[1], child: a[2], term: a[3] }),
     ),
     parent: -1,

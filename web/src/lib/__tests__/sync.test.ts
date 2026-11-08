@@ -180,19 +180,21 @@ interface Req {
   url: string;
   method: string;
   headers: Record<string, string>;
-  body: any;
+  body: unknown;
 }
+
+type Row = Record<string, unknown>;
 
 function fakeServer() {
   const reqs: Req[] = [];
-  const tables: Record<string, any[]> = { attempts: [], srs_items: [], range_presets: [], user_settings: [] };
+  const tables: Record<string, Row[]> = { attempts: [], srs_items: [], range_presets: [], user_settings: [] };
   const uniq: Record<string, string[]> = { attempts: ["user_id", "client_id", "ts", "node_id", "hand"], srs_items: ["user_id", "key"], range_presets: ["user_id", "id"], user_settings: ["user_id"] };
-  let auth: any = null;
+  let auth: Row | null = null;
   const json = (status: number, body: unknown) => new Response(body === null ? "" : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
-  const fetchFn = (async (input: any, init: any = {}) => {
+  const fetchFn = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
     const url = new URL(String(input));
     const headers = Object.fromEntries(Object.entries(init.headers ?? {}).map(([k, v]) => [k.toLowerCase(), String(v)]));
-    const body = init.body ? JSON.parse(init.body) : undefined;
+    const body = init.body ? JSON.parse(String(init.body)) : undefined;
     reqs.push({ url: url.pathname + url.search, method: init.method ?? "GET", headers, body });
     if (!headers.apikey) return json(401, { message: "no key" });
     if (url.pathname === "/auth/v1/otp") return json(200, {});
@@ -210,7 +212,7 @@ function fakeServer() {
     if ((init.method ?? "GET") === "POST") {
       const conflict = (url.searchParams.get("on_conflict") ?? "").split(",");
       expect(conflict).toEqual(uniq[table]);
-      for (const r of body as any[]) {
+      for (const r of body as Row[]) {
         const i = rows.findIndex((x) => conflict.every((c) => x[c] === r[c]));
         if (i < 0) rows.push({ id: rows.length + 1, ...r });
         else if (/merge-duplicates/.test(headers.prefer)) rows[i] = { ...rows[i], ...r };
@@ -299,7 +301,7 @@ describe("Supabase over fetch", () => {
     expect(srv.reqs.filter((r) => r.method === "GET" && r.url.startsWith("/rest/v1/attempts")).length).toBeGreaterThanOrEqual(2);
 
     // running the same upload again does not duplicate anything on the server
-    const state = await a.repo.getMeta<any>("sync.state.user-1");
+    const state = await a.repo.getMeta<Record<string, unknown>>("sync.state.user-1");
     await a.repo.setMeta("sync.state.user-1", { ...state, pushedAttemptId: 0 });
     await syncOnce(a.repo, backend, session.userId, a.io);
     expect(srv.tables.attempts).toHaveLength(1203);

@@ -9,23 +9,15 @@ import type { IcmProgress } from "@/lib/icm/client";
 import { IcmInput, IcmSolution, parsePayouts, PAYOUT_PRESETS, POSITIONS, rangePercent } from "@/lib/icm/model";
 import type { Key } from "@/lib/i18n/ja";
 import { classInfo } from "@/lib/poker/hands";
+import { DEFAULT_ICM_DRAFT, ICM_DRAFT_SCHEMA } from "@/lib/icm/draft";
+import type { IcmAccuracy, IcmDraft } from "@/lib/icm/draft";
 import { useSettings } from "@/lib/settings";
+import { readLocal, writeLocal } from "@/lib/storage/local";
 
-type Acc = "fast" | "std" | "high";
+type Acc = IcmAccuracy;
+type Draft = IcmDraft;
 const ITERS: Record<Acc, number> = { fast: 400, std: 1200, high: 3000 };
-const DRAFT = "tessera.icmDraft.v1";
-
-interface Draft {
-  n: number;
-  stacks: string[];
-  hero: number;
-  ante: string;
-  preset: string;
-  payoutText: string;
-  acc: Acc;
-}
-
-const DEFAULT: Draft = { n: 4, stacks: ["15", "9", "22", "12"], hero: 1, ante: "0", preset: "top3", payoutText: "50, 30, 20", acc: "std" };
+const DEFAULT = DEFAULT_ICM_DRAFT;
 
 const QUICK: Record<string, Draft> = {
   ft9: { n: 9, stacks: ["22", "18", "15", "30", "9", "12", "25", "14", "20"], hero: 4, ante: "0.125", preset: "ft9", payoutText: "30, 20, 14, 10, 8, 7, 5, 4, 2", acc: "std" },
@@ -58,26 +50,17 @@ export default function IcmPage() {
   const started = useRef(0);
 
   useEffect(() => {
+    // browser-only state, read once after hydration
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time load of browser-only state after hydration
     setWasmOk(typeof WebAssembly === "object");
-    try {
-      const raw = localStorage.getItem(DRAFT);
-      if (raw) {
-        const v = JSON.parse(raw) as Draft;
-        if (v.n >= 2 && v.n <= 9 && v.stacks?.length === v.n) setD({ ...DEFAULT, ...v });
-      }
-    } catch {
-      /* ignore */
-    }
+    const saved = readLocal(ICM_DRAFT_SCHEMA);
+    if (saved) setD(saved);
     setReady(true);
     return () => clientRef.current?.terminate();
   }, []);
   useEffect(() => {
     if (!ready) return;
-    try {
-      localStorage.setItem(DRAFT, JSON.stringify(d));
-    } catch {
-      /* ignore */
-    }
+    writeLocal(ICM_DRAFT_SCHEMA, d);
   }, [ready, d]);
 
   const positions = POSITIONS[d.n];

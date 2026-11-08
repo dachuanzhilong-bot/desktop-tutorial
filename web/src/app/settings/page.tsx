@@ -6,7 +6,6 @@ import { TOUR_EVENT } from "@/components/Onboarding";
 import { useSolutionStore } from "@/lib/solution/context";
 import { Palette, ThemePref, useSettings } from "@/lib/settings";
 import { getRepo } from "@/lib/storage/idb";
-import type { Key } from "@/lib/i18n/ja";
 
 function Seg<T extends string | number>({ value, options, onChange, label }: { value: T; options: { v: T; label: string }[]; onChange: (v: T) => void; label: string }) {
   return (

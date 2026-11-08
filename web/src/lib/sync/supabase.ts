@@ -21,6 +21,18 @@ export interface Session {
 
 type FetchFn = typeof fetch;
 
+/** the parts of a GoTrue (Supabase Auth) response that are used here */
+interface AuthJson {
+  access_token?: string;
+  refresh_token?: string;
+  expires_at?: number;
+  expires_in?: number;
+  user?: { id?: string; email?: string };
+  msg?: string;
+  error_description?: string;
+  message?: string;
+}
+
 export class AuthError extends Error {}
 
 const SESSION_KEY = "tessera.auth.v1";
@@ -46,9 +58,9 @@ export class SupabaseAuth {
   private async post(path: string, body: unknown) {
     const res = await this.f(`${trim(this.cfg.url)}${path}`, { method: "POST", headers: this.headers(), body: JSON.stringify(body) });
     const text = await res.text();
-    let json: any = null;
+    let json: AuthJson | null = null;
     try {
-      json = text ? JSON.parse(text) : null;
+      json = text ? (JSON.parse(text) as AuthJson) : null;
     } catch {
       /* not json */
     }
@@ -66,15 +78,15 @@ export class SupabaseAuth {
     return this.save(j, email);
   }
 
-  private save(j: any, fallbackEmail: string): Session {
+  private save(j: AuthJson | null, fallbackEmail: string): Session {
+    if (!j?.access_token || !j.user?.id) throw new AuthError("unexpected response from the auth server");
     const s: Session = {
       accessToken: j.access_token,
-      refreshToken: j.refresh_token,
+      refreshToken: j.refresh_token ?? "",
       expiresAt: j.expires_at ? j.expires_at * 1000 : this.now() + (j.expires_in ?? 3600) * 1000,
-      userId: j.user?.id,
-      email: j.user?.email ?? fallbackEmail,
+      userId: j.user.id,
+      email: j.user.email ?? fallbackEmail,
     };
-    if (!s.accessToken || !s.userId) throw new AuthError("unexpected response from the auth server");
     this.store?.setItem(SESSION_KEY, JSON.stringify(s));
     return s;
   }
@@ -123,7 +135,7 @@ export class SupabaseBackend implements SyncBackend {
     private f: FetchFn = (...a) => fetch(...a),
   ) {}
 
-  private async rest(path: string, init: RequestInit & { prefer?: string } = {}): Promise<any> {
+  private async rest<T = unknown>(path: string, init: RequestInit & { prefer?: string } = {}): Promise<T> {
     const headers: Record<string, string> = {
       apikey: this.cfg.anonKey,
       Authorization: `Bearer ${this.session.accessToken}`,
@@ -134,7 +146,7 @@ export class SupabaseBackend implements SyncBackend {
     if (res.status === 401 || res.status === 403) throw new AuthError(`not authorised (${res.status})`);
     if (!res.ok) throw new Error(`${path.split("?")[0]} ${res.status}: ${(await res.text()).slice(0, 200)}`);
     const text = await res.text();
-    return text ? JSON.parse(text) : null;
+    return (text ? JSON.parse(text) : null) as T;
   }
 
   private withUser<T extends object>(rows: T[]) {
@@ -144,7 +156,7 @@ export class SupabaseBackend implements SyncBackend {
   private async pull<T>(table: string, column: string, sinceIso: string, order: string): Promise<T[]> {
     const out: T[] = [];
     for (let offset = 0; ; offset += PAGE) {
-      const page: T[] = await this.rest(`${table}?select=*&${column}=gte.${encodeURIComponent(sinceIso)}&order=${order}&limit=${PAGE}&offset=${offset}`);
+      const page = await this.rest<T[]>(`${table}?select=*&${column}=gte.${encodeURIComponent(sinceIso)}&order=${order}&limit=${PAGE}&offset=${offset}`);
       out.push(...page);
       if (page.length < PAGE) return out;
     }
@@ -176,7 +188,7 @@ export class SupabaseBackend implements SyncBackend {
     await this.rest("user_settings?on_conflict=user_id", { method: "POST", body: JSON.stringify([{ ...row, user_id: this.session.userId }]), prefer: "resolution=merge-duplicates,return=minimal" });
   }
   async pullSettings(): Promise<SettingsRow | null> {
-    const rows: SettingsRow[] = await this.rest(`user_settings?select=data,updated&limit=1`);
+    const rows = await this.rest<SettingsRow[]>(`user_settings?select=data,updated&limit=1`);
     return rows[0] ?? null;
   }
 }

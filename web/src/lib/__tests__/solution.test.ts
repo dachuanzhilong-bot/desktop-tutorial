@@ -3,6 +3,7 @@ import { loadManifest, loadNode, mix, walk } from "./helpers";
 import { classByName } from "../poker/hands";
 import { history, spotType, stateAt } from "../solution/tree";
 import { ActionKind } from "../solution/types";
+import type { SpotType } from "../solution/types";
 
 const m = loadManifest();
 const K = 169;
@@ -58,7 +59,7 @@ describe("public state replay", () => {
     expect(spotType(m, walk(m, "FFFFC"))).toBe("limp");
     expect(spotType(m, walk(m, "RR"))).toBe("vs3bet");
     const kinds = new Set(m.nodes.map((n) => spotType(m, n.id)));
-    for (const k of ["rfi", "vsOpen", "vs3bet", "vs4bet", "limp", "squeeze"]) expect(kinds.has(k as any), `spot type ${k}`).toBe(true);
+    for (const k of ["rfi", "vsOpen", "vs3bet", "vs4bet", "limp", "squeeze"]) expect(kinds.has(k as SpotType), `spot type ${k}`).toBe(true);
   });
 });
 

@@ -1,7 +1,6 @@
 "use client";
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import type { ReactNode } from "react";
-import { FreqBars } from "@/components/HandPanel";
 import { PlayingCard } from "@/components/PlayingCard";
 import { ActionLegend, GridAction, GridMode, RangeGrid } from "@/components/RangeGrid";
 import { Skeleton, GridSkeleton } from "@/components/Skeleton";
@@ -119,7 +118,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
     haptic.tap();
     onNode(id);
     setSelected(null);
-  }, []);
+  }, [onNode]);
 
 
   const seatName = (a: number) => (a === 0 ? oopName : ipName);

@@ -54,6 +54,7 @@ describe("PokerStars parser", () => {
     expect(parseHandHistory(H_OMAHA).skipped[0].reason).toMatch(/No-Limit/);
     expect(parseHandHistory("hello")).toEqual({ hands: [], skipped: [], blocks: 0 });
     expect(r.blocks).toBe(3);
+    expect(parseHandHistory(H_TOURNAMENT)).toMatchObject({ hands: [], skipped: [{ reason: "tournament hands are not supported" }] });
   });
 
   it("resolves player names that contain colons and spaces", () => {

@@ -65,7 +65,9 @@ export default function PracticePage() {
   const { setDepth } = useSolutionStore();
   useImmersive(config !== null);
   useEffect(() => {
+    // the URL hash (presets, question lists from Analyze) is only known in the browser, after hydration
     const preset = parseHash();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of the URL hash
     if (!preset.set) return setInitial(preset);
     // a question list from Analyze: start right away
     getRepo()
@@ -77,7 +79,7 @@ export default function PracticePage() {
         } else setInitial({ ...preset, set: undefined });
       })
       .catch(() => setInitial({ ...preset, set: undefined }));
-  }, []);
+  }, [setDepth]);
 
   return (
     <SolutionGate grid={false}>

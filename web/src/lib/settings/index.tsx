@@ -2,6 +2,8 @@
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { en } from "../i18n/en";
 import { ja, Key } from "../i18n/ja";
+import { DEPTHS, nearestDepth } from "../solution/loader";
+import { bool, int, LocalSchema, num, pick, readLocal, upgrade, writeLocal } from "../storage/local";
 import { setHapticsEnabled } from "../util/haptics";
 
 export type Lang = "ja" | "en";
@@ -37,7 +39,38 @@ export const DEFAULT_SETTINGS: Settings = {
   onboarded: false,
 };
 
+/** the key keeps its historical name; the schema version lives in the stored object (`_v`, see storage/local.ts) */
 export const STORAGE_KEY = "tessera.settings.v1";
+
+export const TEXT_SCALES = [0.9, 1, 1.15, 1.3] as const;
+
+/**
+ * Settings schema history
+ *   1: unversioned object (up to Phase 8)
+ *   2: `_v` added, every field validated on read (unknown fields dropped, wrong types -> default)
+ */
+export const SETTINGS_SCHEMA: LocalSchema<Settings> = {
+  key: STORAGE_KEY,
+  version: 2,
+  migrations: { 1: (d) => d },
+  sanitize: (d) => {
+    const D = DEFAULT_SETTINGS;
+    const depth = num(d.depth, D.depth, 1, 1000);
+    return {
+      lang: pick(d.lang, ["ja", "en"] as const, D.lang),
+      theme: pick(d.theme, ["dark", "light", "system"] as const, D.theme),
+      palette: pick(d.palette, ["standard", "cvd"] as const, D.palette),
+      pattern: bool(d.pattern, D.pattern),
+      labels: bool(d.labels, D.labels),
+      deck4: bool(d.deck4, D.deck4),
+      textScale: num(d.textScale, D.textScale, TEXT_SCALES[0], TEXT_SCALES[TEXT_SCALES.length - 1]),
+      haptics: bool(d.haptics, D.haptics),
+      dailyGoal: int(d.dailyGoal, D.dailyGoal, 1, 1000),
+      depth: (DEPTHS as readonly number[]).includes(depth) ? depth : nearestDepth(depth),
+      onboarded: bool(d.onboarded, D.onboarded),
+    };
+  },
+};
 /** epoch ms of the last change made on this device (0 = never): cloud sync uses it to pick the newer side */
 export const UPDATED_KEY = "tessera.settings.updated";
 
@@ -84,12 +117,10 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
   const [ready, setReady] = useState(false);
 
   useEffect(() => {
-    try {
-      const raw = localStorage.getItem(STORAGE_KEY);
-      if (raw) setSettings({ ...DEFAULT_SETTINGS, ...JSON.parse(raw) });
-    } catch {
-      /* private mode etc. – keep defaults */
-    }
+    // browser storage only exists after hydration (the static HTML is rendered with the defaults)
+    const stored = readLocal(SETTINGS_SCHEMA);
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time load of browser-only state after hydration
+    if (stored) setSettings(stored);
     setReady(true);
   }, []);
 
@@ -97,11 +128,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     if (!ready) return;
     applyToDocument(settings);
     setHapticsEnabled(settings.haptics);
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
-    } catch {
-      /* ignore */
-    }
+    writeLocal(SETTINGS_SCHEMA, settings);
   }, [settings, ready]);
 
   // follow the OS theme while the preference is "system"
@@ -127,7 +154,7 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
-    setSettings((s) => ({ ...DEFAULT_SETTINGS, ...s, ...(data as Partial<Settings>) }));
+    setSettings((s) => upgrade(SETTINGS_SCHEMA, { ...s, ...data }) ?? s);
   }, []);
   const t = useCallback<TFn>((key, params) => translate(settings.lang, key, params), [settings.lang]);
   const value = useMemo(() => ({ settings, set, applyRemote, t, ready }), [settings, set, applyRemote, t, ready]);

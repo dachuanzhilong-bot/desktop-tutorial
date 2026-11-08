@@ -86,13 +86,12 @@ export function normalizeHand(h: ParsedHand): NormHand | Unsupported {
   // chips committed per street per seat (for pot and net result)
   const committed = [0, 0, 0, 0, 0, 0];
   const street = [0, 0, 0, 0, 0, 0];
-  let ante = 0;
   for (const p of h.posts) {
     const s = seatOf.get(p.player);
     if (s === undefined) continue;
     committed[s] += p.amount;
-    if (p.kind === "ante") ante += p.amount;
-    else street[s] += p.amount;
+    // antes are dead money: in the pot but not part of the preflop bet to call
+    if (p.kind !== "ante") street[s] += p.amount;
   }
   const folded = new Array(6).fill(false);
   const actions: NormAction[] = [];

@@ -56,9 +56,11 @@ export function Onboarding() {
     if (d && !d.open) d.showModal();
   }, []);
 
+  // first launch: show the tour (step is still 0, so only the dialog has to open)
   useEffect(() => {
-    if (ready && !settings.onboarded && typeof window !== "undefined") open();
-  }, [ready, settings.onboarded, open]);
+    const d = ref.current;
+    if (ready && !settings.onboarded && d && !d.open) d.showModal();
+  }, [ready, settings.onboarded]);
 
   useEffect(() => {
     const h = () => open();
@@ -108,11 +110,19 @@ export function Onboarding() {
             </button>
           )}
           {last ? (
-            <button type="button" autoFocus onClick={() => finish(true)} className="min-h-12 flex-[2] rounded-xl bg-accent px-4 font-bold text-accent-ink">
+            <button
+              type="button"
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- initial focus inside the modal dialog
+              autoFocus
+              onClick={() => finish(true)} className="min-h-12 flex-[2] rounded-xl bg-accent px-4 font-bold text-accent-ink">
               {t("onb.start")}
             </button>
           ) : (
-            <button type="button" autoFocus onClick={() => setStep(step + 1)} className="min-h-12 flex-[2] rounded-xl bg-accent px-4 font-bold text-accent-ink">
+            <button
+              type="button"
+              // eslint-disable-next-line jsx-a11y/no-autofocus -- keeps focus in the dialog when the step changes
+              autoFocus
+              onClick={() => setStep(step + 1)} className="min-h-12 flex-[2] rounded-xl bg-accent px-4 font-bold text-accent-ink">
               {t("common.next")}
             </button>
           )}

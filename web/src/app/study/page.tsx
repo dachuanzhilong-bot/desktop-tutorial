@@ -11,6 +11,7 @@ import { Histogram } from "@/components/Charts";
 import { Term } from "@/components/Term";
 import { ALL_CLASSES, HAND_FILTERS, HandFilterId, holdsRank, matchesFilter, RANK_CHARS } from "@/lib/poker/hands";
 import { useSettings } from "@/lib/settings";
+import { useLatest } from "@/lib/util/hooks";
 import type { SolutionStore } from "@/lib/solution/loader";
 import { useNodeSolution, useSolutionStore } from "@/lib/solution/context";
 import { DEPTHS } from "@/lib/solution/loader";
@@ -49,11 +50,9 @@ function Study({ store }: { store: SolutionStore }) {
 
   // deep link: #d=40&n=123 (depth, node). Another depth starts at the node given, or at the root, once that solution has loaded.
   const { depth, setDepth } = useSolutionStore();
-  const depthRef = useRef(depth);
-  depthRef.current = depth;
+  const depthRef = useLatest(depth);
   const wanted = useRef<{ d: number | null; n: number | null } | null>(null);
-  const nodeCount = useRef(m.nodes.length);
-  nodeCount.current = m.nodes.length;
+  const nodeCount = useLatest(m.nodes.length);
   useEffect(() => {
     const apply = () => {
       const d = /d=(\d+)/.exec(location.hash);

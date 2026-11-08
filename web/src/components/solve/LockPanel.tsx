@@ -1,5 +1,5 @@
 "use client";
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { GridAction } from "@/components/RangeGrid";
 import { COMBOS_OF_CLASS, NC } from "@/lib/postflop/combos";
 import type { DenseNode } from "@/lib/postflop/decode";
@@ -67,7 +67,12 @@ export function LockPanel({ d, actions, selected, inFilter, seat, locked, busy, 
   const hands = useMemo(() => targetHands(d, target, selected, inFilter), [d, target, selected, inFilter]);
   const base = useMemo(() => averageMix(d, na, hands), [d, na, hands]);
   const [mix, setMix] = useState<number[]>(base);
-  useEffect(() => setMix(base), [base]);
+  // another node / target / hand selection starts from that spot's current mix (reset while rendering, not in an effect)
+  const [mixBase, setMixBase] = useState(base);
+  if (mixBase !== base) {
+    setMixBase(base);
+    setMix(base);
+  }
 
   const sum = mix.reduce((s, x) => s + x, 0);
   const chip = (on: boolean) => `min-h-10 rounded-full border px-3 text-sm font-semibold ${on ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`;

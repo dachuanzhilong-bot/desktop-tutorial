@@ -5,6 +5,7 @@ import { Ring } from "@/components/Charts";
 import { CrashProbe } from "@/components/CrashProbe";
 import { IconFlame, IconBolt, IconGrid, IconTarget } from "@/components/icons";
 import { useSettings } from "@/lib/settings";
+import { useNow } from "@/lib/util/hooks";
 import { SEATS } from "@/lib/solution/tree";
 import { getRepo } from "@/lib/storage/idb";
 import { studyStreak, todayCount, weakSpots } from "@/lib/storage/stats";
@@ -17,7 +18,7 @@ export default function Home() {
   useEffect(() => {
     getRepo().allAttempts().then(setList).catch(() => {});
   }, []);
-  const now = Date.now();
+  const now = useNow();
   const today = todayCount(list, now);
   const streak = studyStreak(list, now);
   const weak = useMemo(() => weakSpots(list, 3, 2), [list]);

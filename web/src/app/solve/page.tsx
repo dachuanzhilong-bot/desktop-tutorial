@@ -1,5 +1,6 @@
 "use client";
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PlayingCard } from "@/components/PlayingCard";
 import { BetSizes } from "@/components/solve/BetSizes";
@@ -18,6 +19,8 @@ import { SolverClient } from "@/lib/solve/client";
 import type { Exported, Progress } from "@/lib/solve/client";
 import { costHint, DEFAULT_SOLVE, SolveConfig } from "@/lib/solve/config";
 import { loadDraft, saveDraft } from "@/lib/solve/draft";
+import type { SolveAccuracy } from "@/lib/solve/draft";
+import { newId } from "@/lib/util/id";
 import { useSolutionStore } from "@/lib/solution/context";
 import { fmtBB } from "@/lib/solution/tree";
 import { useSettings } from "@/lib/settings";
@@ -25,7 +28,7 @@ import { getRepo } from "@/lib/storage/idb";
 import type { SavedRange, SavedSolve } from "@/lib/storage/types";
 
 type Phase = "idle" | "building" | "running" | "done" | "locking";
-type Acc = "draft" | "std" | "high";
+type Acc = SolveAccuracy;
 
 /** iterations per accuracy level for a solve that starts on the [flop, turn, river] */
 const ITERS: Record<Acc, [number, number, number]> = { draft: [60, 150, 300], std: [250, 600, 1000], high: [600, 2000, 4000] };
@@ -47,6 +50,7 @@ const DEFAULT_BOARD = parseBoard("Ks 7d 2c");
 export default function SolvePage() {
   const { t } = useSettings();
   const { store } = useSolutionStore();
+  const router = useRouter();
   const clientRef = useRef<SolverClient | null>(null);
 
   const [board, setBoard] = useState<number[]>(DEFAULT_BOARD);
@@ -77,7 +81,6 @@ export default function SolvePage() {
   const [ready, setReady] = useState(false);
   const [wasmOk, setWasmOk] = useState(true);
   const defaultsApplied = useRef(false);
-  const runStart = useRef(0);
 
   const busy = phase === "building" || phase === "running" || phase === "locking";
   const startStreet = Math.max(0, Math.min(2, board.length - 3));
@@ -100,16 +103,18 @@ export default function SolvePage() {
   }, []);
 
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- browser capabilities and the stored draft exist only after hydration
     setWasmOk(typeof WebAssembly === "object");
-    const d = loadDraft() as Record<string, any>;
-    if (Array.isArray(d.board) && d.board.length >= 3) setBoard(d.board);
-    if (typeof d.oopText === "string" && d.oopText) setOopText(d.oopText);
-    if (typeof d.ipText === "string" && d.ipText) setIpText(d.ipText);
-    if (typeof d.oopName === "string") setOopName(d.oopName);
-    if (typeof d.ipName === "string") setIpName(d.ipName);
+    // the draft (validated + migrated by SOLVE_DRAFT_SCHEMA) only exists in browser storage, so it is read after hydration
+    const d = loadDraft();
+    if (d.board) setBoard(d.board);
+    if (d.oopText) setOopText(d.oopText);
+    if (d.ipText) setIpText(d.ipText);
+    if (d.oopName !== undefined) setOopName(d.oopName);
+    if (d.ipName !== undefined) setIpName(d.ipName);
     if (d.pot) setPot(String(d.pot));
     if (d.stack) setStack(String(d.stack));
-    if (d.cfg) setCfg({ ...DEFAULT_SOLVE, ...d.cfg });
+    if (d.cfg) setCfg(d.cfg);
     if (d.acc) setAcc(d.acc);
     if (d.iterations) setIterations(d.iterations);
     if (d.target) setTarget(d.target);
@@ -127,14 +132,6 @@ export default function SolvePage() {
     saveDraft({ board, oopText, ipText, oopName, ipName, pot: Number(pot) || 0, stack: Number(stack) || 0, cfg, acc, iterations, target });
   }, [ready, board, oopText, ipText, oopName, ipName, pot, stack, cfg, acc, iterations, target]);
 
-  // first visit: BB defends against a BTN open
-  useEffect(() => {
-    if (!ready || !store || defaultsApplied.current) return;
-    defaultsApplied.current = true;
-    void applyPresets("bb-call-btn", "btn-open");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [ready, store]);
-
   const applyPresets = async (oopId: string, ipId: string) => {
     if (!store) return;
     const [a, b] = await Promise.all([oopId, ipId].map((id) => presetRange(store, RANGE_PRESETS.find((p) => p.id === id)!)));
@@ -142,6 +139,14 @@ export default function SolvePage() {
     if (a) setOopText((cur) => cur || formatRange(a));
     if (b) setIpText((cur) => cur || formatRange(b));
   };
+
+  // first visit: BB defends against a BTN open
+  useEffect(() => {
+    if (!ready || !store || defaultsApplied.current) return;
+    defaultsApplied.current = true;
+    void applyPresets("bb-call-btn", "btn-open");
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- runs once per store; applyPresets is recreated every render
+  }, [ready, store]);
 
   const have = useMemo(() => new Set((store ? availablePresets(store) : RANGE_PRESETS).map((p) => p.id)), [store]);
   const can3bp = have.has("bb-3bet-btn") && have.has("btn-call-3bet");
@@ -178,10 +183,12 @@ export default function SolvePage() {
     setIterations(iterFor(a, board.length));
     setTarget(TARGET[a]);
   };
-  useEffect(() => {
+  const [itersForLen, setItersForLen] = useState(board.length);
+  if (itersForLen !== board.length) {
+    // a different first street needs a different iteration count (adjusted while rendering, not in an effect)
+    setItersForLen(board.length);
     setIterations(iterFor(acc, board.length));
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [board.length]);
+  }
 
   const fullCfg: SolveConfig = useMemo(() => ({ ...cfg, pot: Number(pot) || 0, stack: Number(stack) || 0 }), [cfg, pot, stack]);
   const hint = costHint(board.length, fullCfg);
@@ -221,14 +228,13 @@ export default function SolvePage() {
       const n = await c.create({ board, cfg: fullCfg, ranges: [oopR, ipR] });
       setNodes(n);
       setPhase("running");
-      runStart.current = Date.now();
       const r = await c.run({ iterations, restartAt: Math.floor(iterations * 0.5), target, onProgress });
       const exp = await c.export(0.004);
       publish(exp, r.iterations, r.cancelled, null);
       setLastExploit(exp.exploit);
       setPhase("done");
-    } catch (e: any) {
-      setError(t("solve.error", { msg: String(e?.message ?? e) }));
+    } catch (e) {
+      setError(t("solve.error", { msg: e instanceof Error ? e.message : String(e) }));
       setPhase("idle");
     }
   };
@@ -243,7 +249,6 @@ export default function SolvePage() {
     setError(null);
     setPhase("locking");
     setProgress(null);
-    runStart.current = Date.now();
     try {
       if (strategy) {
         const ok = await c.lock(tree, strategy);
@@ -262,8 +267,8 @@ export default function SolvePage() {
       publish(exp, r.iterations, r.cancelled, exp.map.indexOf(tree));
       setLastExploit(exp.exploit);
       setSavedId(null);
-    } catch (e: any) {
-      setError(t("solve.error", { msg: String(e?.message ?? e) }));
+    } catch (e) {
+      setError(t("solve.error", { msg: e instanceof Error ? e.message : String(e) }));
     }
     setPhase("done");
   };
@@ -276,7 +281,7 @@ export default function SolvePage() {
       .catch(() => {});
   const save = async () => {
     if (!result) return null;
-    const id = savedId ?? `s${Date.now().toString(36)}`;
+    const id = savedId ?? newId("s");
     const auto = `${board.map((c) => cardText(c)).join(" ")} · ${oopName} vs ${ipName}`;
     await getRepo().putSolve({
       id,
@@ -298,8 +303,6 @@ export default function SolvePage() {
     void refreshMine();
     return id;
   };
-
-  const seatOf = (a: number) => (a === 0 ? oopName : ipName);
 
   return (
     <div className="space-y-5">
@@ -430,7 +433,7 @@ export default function SolvePage() {
             </div>
             <p className="mt-1 text-sm text-muted">
               {progress ? t("solve.progress", { done: progress.done, total: progress.total, x: (lastExploit ?? progress.exploit) >= 0 ? (lastExploit ?? progress.exploit).toFixed(2) : "…" }) : phase === "locking" ? t("solve.lock.running") : t("solve.running")}
-              {progress && progress.done > 0 && progress.done < progress.total ? ` · ${t("solve.eta", { s: fmtTime(((Date.now() - runStart.current) / progress.done) * (progress.total - progress.done) / 1000) })}` : ""}
+              {progress?.elapsed && progress.done > 0 && progress.done < progress.total ? ` · ${t("solve.eta", { s: fmtTime(((progress.elapsed / progress.done) * (progress.total - progress.done)) / 1000) })}` : ""}
               {nodes > 0 ? ` · ${t("solve.nodes", { n: nodes.toLocaleString() })}` : ""}
             </p>
           </div>
@@ -460,7 +463,7 @@ export default function SolvePage() {
                 data-testid="solve-open-study"
                 onClick={async () => {
                   const id = await save();
-                  if (id) location.href = `/study/postflop/#solve=${id}`;
+                  if (id) router.push(`/study/postflop/#solve=${id}`);
                 }}
                 className="min-h-11 rounded-xl border border-accent px-4 font-bold text-accent-text"
               >

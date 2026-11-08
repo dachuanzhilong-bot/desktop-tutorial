@@ -1,4 +1,4 @@
-import { existsSync, readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -22,7 +22,7 @@ const load = (scenario: string, flop: number) => {
   if (!cache.has(k)) cache.set(k, decodeFlop(new Uint8Array(gunzipSync(readFileSync(path.join(DIR, scenario, `${flop}.bin.gz`))))));
   return cache.get(k)!;
 };
-const scenarioOf = (id: string) => index.scenarios.find((s: any) => s.id === id);
+const scenarioOf = (id: string) => index.scenarios.find((s: { id: string }) => s.id === id);
 
 describe("postflop solution files", () => {
   it("has the expected scenarios and a sensible number of flops", () => {

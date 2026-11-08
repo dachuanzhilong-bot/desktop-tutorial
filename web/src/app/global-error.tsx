@@ -22,6 +22,8 @@ export default function GlobalError({ error, retry }: { error: unknown; retry: (
             <button type="button" onClick={() => retry()} style={{ ...btn, background: "#e9b949", color: "#1b1400", border: "none" }}>
               もう一度 / Try again
             </button>
+            {/* a full page load on purpose: the app shell itself failed, so client-side navigation cannot be trusted */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
             <a href="/" style={{ ...btn, display: "grid", placeItems: "center", color: "#eaf3ee", textDecoration: "none" }}>
               ホーム / Home
             </a>

@@ -99,7 +99,7 @@ export function ResultPanel({
   onTogglePane: () => void;
   nextLabel: string;
 }) {
-  const { t, settings } = useSettings();
+  const { t } = useSettings();
   const j = a.j;
   const loss = j.evLoss;
   const swipe = (dx: number) => {
@@ -178,6 +178,7 @@ export function ResultPanel({
         <button type="button" onClick={onTogglePane} data-testid="explain-toggle" className="min-h-14 rounded-2xl border border-line font-bold text-muted">
           {pane === "result" ? t("practice.explain") : t("common.back")}
         </button>
+        {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the answer buttons this replaces are gone: move focus here instead of losing it (the result is announced by a live region) */}
         <button type="button" onClick={onNext} autoFocus data-testid="next-hand" className="min-h-14 rounded-2xl bg-accent text-lg font-extrabold text-accent-ink active:scale-[0.98]">
           {nextLabel}
         </button>

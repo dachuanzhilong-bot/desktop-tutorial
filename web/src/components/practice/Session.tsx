@@ -12,6 +12,7 @@ import { candidateNodes, pickHand, pickNode } from "@/lib/practice/sampler";
 import { Result, sessionStats } from "@/lib/practice/session";
 import { srsKey, updateSrs, SrsItem } from "@/lib/practice/srs";
 import { useSettings } from "@/lib/settings";
+import { sessionIdOf } from "@/lib/util/hooks";
 import type { SolutionStore } from "@/lib/solution/loader";
 import { actionLabel, applyAction, fmtBB, initialState, spotType, stateAt } from "@/lib/solution/tree";
 import { ActionKind, PublicState, Terminal } from "@/lib/solution/types";
@@ -19,7 +20,6 @@ import { getRepo } from "@/lib/storage/idb";
 import type { Attempt } from "@/lib/storage/types";
 import { cryptoRandom, weightedPick } from "@/lib/util/rng";
 import { haptic } from "@/lib/util/haptics";
-import type { Key } from "@/lib/i18n/ja";
 import { AnswerInfo, ResultPanel } from "./ResultPanel";
 import type { PostConfig } from "@/components/postflop/PostSession";
 import { loadIndex } from "@/lib/postflop/loader";
@@ -59,7 +59,7 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
   const hintUsed = useRef(false);
   const askedAt = useRef(0);
   const srs = useRef<Map<string, SrsItem>>(new Map());
-  const sessionId = useRef(`s-${Date.now().toString(36)}`);
+  const sessionId = useRef("");
   const nodes = useMemo(() => candidateNodes(m, config.filter), [m, config.filter]);
 
   useEffect(() => {
@@ -138,18 +138,29 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
   const startNew = useCallback(() => (config.mode === "spot" ? startSpot() : startHand()), [config.mode, startSpot, startHand]);
 
   useEffect(() => {
+    // kick off loading the first question when the session mounts (the rest is async)
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time start of an async flow
     startNew();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per mounted session (a new session remounts via key)
   }, []);
 
   // ---------------------------------------------------------------- animation of the opponents' actions
   useEffect(() => {
     if (phase !== "animating" || !round) return;
-    if (shown >= round.queue.length) {
-      setPhase(round.q ? "asking" : "handEnd");
-      return;
-    }
-    const id = window.setTimeout(() => setShown((s) => s + 1), reduce ? 0 : STEP_MS);
+    const done = shown >= round.queue.length;
+    const id = window.setTimeout(
+      () => {
+        if (!done) return setShown((s) => s + 1);
+        // the opponents have acted: the hero's turn starts now (timer and hint reset)
+        if (round.q) {
+          askedAt.current = performance.now();
+          hintUsed.current = false;
+          setHintIdx(null);
+        }
+        setPhase(round.q ? "asking" : "handEnd");
+      },
+      done || reduce ? 0 : STEP_MS,
+    );
     return () => window.clearTimeout(id);
   }, [phase, shown, round, reduce]);
 
@@ -194,14 +205,6 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
     }));
   }, [round, actions, m, hintIdx]);
 
-  useEffect(() => {
-    if (phase === "asking") {
-      askedAt.current = performance.now();
-      hintUsed.current = false;
-      setHintIdx(null);
-    }
-  }, [phase, round]);
-
   const choose = useCallback(
     (i: number, timeout = false) => {
       if (phase !== "asking" || !round?.q) return;
@@ -227,7 +230,7 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
       const now = Date.now();
       const attempt: Attempt = {
         ts: now,
-        sessionId: sessionId.current,
+        sessionId: sessionIdOf(sessionId, "s"),
         mode: config.mode,
         solution: m.id,
         nodeId: q.nodeId,
@@ -477,6 +480,7 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
             <p className="mb-3 font-bold">
               {round.endedWith === Terminal.Fold ? t("term.fold") : round.endedWith === Terminal.Flop ? t("term.flop") : round.endedWith === Terminal.FlopMulti ? t("term.flopMulti") : round.endedWith === Terminal.AllIn ? t("term.allin") : t("term.pruned")}
             </p>
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the answer buttons this replaces are gone: move focus here instead of losing it (the result is announced by a live region) */}
             <button type="button" onClick={next} autoFocus data-testid="hand-end-next" className="min-h-14 w-full rounded-2xl bg-accent text-lg font-extrabold text-accent-ink">
               {link ? t("practice.toFlop") : t("practice.nextHand")}
             </button>

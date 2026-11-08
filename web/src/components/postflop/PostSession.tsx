@@ -18,6 +18,7 @@ import { judge, Question } from "@/lib/practice/engine";
 import { Result, sessionStats } from "@/lib/practice/session";
 import { updateSrs, SrsItem } from "@/lib/practice/srs";
 import { useSettings } from "@/lib/settings";
+import { sessionIdOf } from "@/lib/util/hooks";
 import { ActionKind } from "@/lib/solution/types";
 import { fmtBB, SEATS } from "@/lib/solution/tree";
 import type { SpotType } from "@/lib/solution/types";
@@ -73,7 +74,7 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
   const hintUsed = useRef(false);
   const askedAt = useRef(0);
   const srs = useRef<Map<string, SrsItem>>(new Map());
-  const sessionId = useRef(`p-${Date.now().toString(36)}`);
+  const sessionId = useRef("");
 
   useEffect(() => {
     getRepo()
@@ -135,18 +136,29 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
   }, [index, config]);
 
   useEffect(() => {
+    // the first hand starts as soon as the flop index has loaded
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- start of an async flow once its data exists
     if (index) start();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per loaded index
   }, [index]);
 
   // animation of the opponent's moves and the dealt cards
   useEffect(() => {
     if (phase !== "animating" || !round) return;
-    if (shown >= round.steps.length) {
-      setPhase(round.q ? "asking" : "handEnd");
-      return;
-    }
-    const id = window.setTimeout(() => setShown((s) => s + 1), reduce ? 0 : STEP_MS);
+    const done = shown >= round.steps.length;
+    const id = window.setTimeout(
+      () => {
+        if (!done) return setShown((s) => s + 1);
+        // the opponents have acted: the hero's turn starts now (timer and hint reset)
+        if (round.q) {
+          askedAt.current = performance.now();
+          hintUsed.current = false;
+          setHintIdx(null);
+        }
+        setPhase(round.q ? "asking" : "handEnd");
+      },
+      done || reduce ? 0 : STEP_MS,
+    );
     return () => window.clearTimeout(id);
   }, [phase, shown, round, reduce]);
 
@@ -222,14 +234,6 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
     }));
   }, [round, actions, hintIdx]);
 
-  useEffect(() => {
-    if (phase === "asking") {
-      askedAt.current = performance.now();
-      hintUsed.current = false;
-      setHintIdx(null);
-    }
-  }, [phase, round]);
-
   const choose = useCallback(
     (i: number, timeout = false) => {
       if (phase !== "asking" || !round?.q || !sc) return;
@@ -250,7 +254,7 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
       const seatName = node.actor === 0 ? sc.oop : sc.ip;
       const attempt: Attempt = {
         ts: now,
-        sessionId: sessionId.current,
+        sessionId: sessionIdOf(sessionId, "p"),
         mode: config.kind === "spot" ? "postSpot" : "post",
         solution: `post:${config.scenario}/${round.flopIdx}`,
         nodeId: q.nodeId,
@@ -463,6 +467,7 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
         {phase === "handEnd" && round && (
           <div className="rounded-3xl border border-line bg-surface p-4 text-center shadow-xl" data-testid="hand-end">
             <p className="mb-3 font-bold">{round.ended === "fold" ? t("pf.end.fold") : round.ended === "showdown" ? t("pf.end.showdown") : round.ended === "allin" ? t("pf.end.allin") : t("pf.end.pruned")}</p>
+            {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the answer buttons this replaces are gone: move focus here instead of losing it (the result is announced by a live region) */}
             <button type="button" onClick={next} autoFocus className="min-h-14 w-full rounded-2xl bg-accent text-lg font-extrabold text-accent-ink">
               {t("practice.nextHand")}
             </button>

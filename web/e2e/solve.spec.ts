@@ -68,6 +68,42 @@ test.describe("range builder", () => {
     await expect(page.getByTestId("saved-ranges")).toContainText("my range");
   });
 
+  test("undo / redo: buttons and keyboard, one drag = one step", async ({ page }) => {
+    await page.goto("/builder/");
+    await expect(page.locator(".cell")).toHaveCount(169);
+    const undo = page.getByTestId("builder-undo");
+    const redo = page.getByTestId("builder-redo");
+    await expect(undo).toBeDisabled();
+    await expect(redo).toBeDisabled();
+
+    await page.locator('[data-cls="0"]').scrollIntoViewIfNeeded();
+    const a = await centre(page, 0);
+    const b = await centre(page, 4);
+    await page.mouse.move(a.x, a.y);
+    await page.mouse.down();
+    await page.mouse.move(b.x, b.y, { steps: 8 });
+    await page.mouse.up();
+    await page.getByTestId("builder-clear").click();
+    await expect(page.getByTestId("builder-stats")).toContainText("0コンボ");
+
+    await undo.click();
+    await expect(page.getByTestId("range-text")).toHaveValue("AA,ATs+");
+    await undo.click();
+    await expect(page.getByTestId("range-text")).toHaveValue("");
+    await expect(undo).toBeDisabled();
+    await redo.click();
+    await expect(page.getByTestId("range-text")).toHaveValue("AA,ATs+");
+
+    // keyboard (outside text fields): Ctrl+Z / Ctrl+Shift+Z
+    await page.locator("h1").click();
+    await page.keyboard.press("Control+Z");
+    await expect(page.getByTestId("range-text")).toHaveValue("");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(page.getByTestId("range-text")).toHaveValue("AA,ATs+");
+    await page.keyboard.press("Control+Shift+Z");
+    await expect(page.getByTestId("builder-stats")).toContainText("0コンボ");
+  });
+
   test("sends the range to the Solve screen", async ({ page }) => {
     await page.goto("/builder/");
     await page.getByTestId("range-text").fill("AA,KK");

@@ -31,8 +31,8 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
 
   const players = useMemo(() => [...new Set(sol.nodes.filter((n) => n.reach > 1e-6).map((n) => n.player))].sort((a, b) => a - b), [sol]);
 
-  const next = useCallback(() => {
-    const who = player === "all" ? players[Math.floor(cryptoRandom() * players.length)] : player;
+  const next = useCallback((forPlayer: number | "all" = player) => {
+    const who = forPlayer === "all" ? players[Math.floor(cryptoRandom() * players.length)] : forPlayer;
     const pick = pickIcmQuestion(sol, who, cryptoRandom);
     setAnswer(null);
     if (!pick) {
@@ -44,9 +44,10 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
     setQ({ ...pick, cards: randomCombo(pick.hand, cryptoRandom) });
   }, [sol, player, players]);
 
-  useEffect(() => {
-    if (active) next();
-  }, [active, player, next]);
+  const pickPlayer = (p: number | "all") => {
+    setPlayer(p);
+    if (active) next(p);
+  };
 
   const answerWith = useCallback(
     (act: boolean) => {
@@ -87,18 +88,18 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
       {!active ? (
         <>
           <p className="text-sm text-muted">{t("icm.drill.intro")}</p>
-          <button type="button" data-testid="icm-drill-start" onClick={() => (setLog([]), setActive(true))} className="min-h-12 w-full rounded-xl bg-accent font-bold text-accent-ink">
+          <button type="button" data-testid="icm-drill-start" onClick={() => (setLog([]), setActive(true), next())} className="min-h-12 w-full rounded-xl bg-accent font-bold text-accent-ink">
             {t("icm.drill.start")}
           </button>
         </>
       ) : (
         <div className="space-y-3">
           <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4" role="group" aria-label={t("icm.drill.pos")}>
-            <button type="button" aria-pressed={player === "all"} onClick={() => setPlayer("all")} className={`${chip(player === "all")} whitespace-nowrap`}>
+            <button type="button" aria-pressed={player === "all"} onClick={() => pickPlayer("all")} className={`${chip(player === "all")} whitespace-nowrap`}>
               {t("icm.drill.all")}
             </button>
             {players.map((p) => (
-              <button key={p} type="button" aria-pressed={player === p} data-testid={`icm-drill-pos-${p}`} onClick={() => setPlayer(p)} className={`${chip(player === p)} whitespace-nowrap`}>
+              <button key={p} type="button" aria-pressed={player === p} data-testid={`icm-drill-pos-${p}`} onClick={() => pickPlayer(p)} className={`${chip(player === p)} whitespace-nowrap`}>
                 {positions[p]}
                 {p === hero ? " ★" : ""}
               </button>
@@ -134,7 +135,7 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
                   </div>
                   <p className="text-sm">{t("icm.drill.mix", { act, pct: Math.round(answer.actFreq * 100) })}</p>
                   <p className="text-xs text-muted">{t("icm.drill.ev", { act, evAct: answer.evAct.toFixed(2), evFold: answer.evFold.toFixed(2) })}</p>
-                  <button type="button" data-testid="icm-drill-next" onClick={next} className="min-h-12 w-full rounded-xl bg-accent font-bold text-accent-ink">
+                  <button type="button" data-testid="icm-drill-next" onClick={() => next()} className="min-h-12 w-full rounded-xl bg-accent font-bold text-accent-ink">
                     {t("icm.drill.next")}
                   </button>
                 </div>

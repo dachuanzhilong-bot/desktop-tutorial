@@ -38,7 +38,7 @@ describe.each(DEPTHS)("preflop solution at %dbb", (depth) => {
     expect(m.stack).toBe(depth);
     expect(m.players).toEqual(["UTG", "HJ", "CO", "BTN", "SB", "BB"]);
     expect(m.nodes.length).toBeGreaterThan(100);
-    expect(Number((m.info as any).brGainMax)).toBeLessThan(0.05);
+    expect(Number(m.info.brGainMax)).toBeLessThan(0.05);
     // every raise fits in the stack
     for (const n of m.nodes) for (const a of n.actions) expect(a.to).toBeLessThanOrEqual(depth + 1e-3);
   });

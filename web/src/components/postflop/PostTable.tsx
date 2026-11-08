@@ -94,7 +94,7 @@ export function PostTableMini({ board, heroCards, pot, potLabel, lastAction, her
   return (
     <div className="felt flex items-center justify-between gap-2 rounded-2xl px-3 py-2" role="group" aria-label={`Table, ${potLabel} ${fmtBB(pot)}bb`} data-testid="post-table-mini">
       <div className="flex gap-1" aria-label="board">
-        {board.map((c, i) => (
+        {board.map((c) => (
           <PlayingCard key={c} card={cardOf(c)} size="sm" />
         ))}
       </div>

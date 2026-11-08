@@ -6,6 +6,8 @@ export interface Progress {
   total: number;
   /** exploitability in % of the starting pot, -1 when not measured yet */
   exploit: number;
+  /** ms since this run started (for the remaining-time estimate) */
+  elapsed?: number;
 }
 
 export interface Exported {
@@ -32,7 +34,7 @@ export interface RunResult {
   cancelled: boolean;
 }
 
-type Pending = { resolve: (v: any) => void; reject: (e: Error) => void; onProgress?: (p: Progress) => void };
+type Pending = { resolve: (v: unknown) => void; reject: (e: Error) => void; onProgress?: (p: Progress) => void };
 
 /** Promise API around /solver-worker.js (the Rust solver compiled to WebAssembly). */
 export class SolverClient {
@@ -59,10 +61,10 @@ export class SolverClient {
     };
   }
 
-  private call<T = any>(msg: Record<string, unknown>, transfer: Transferable[] = [], onProgress?: Pending["onProgress"]): Promise<T> {
+  private call<T = unknown>(msg: Record<string, unknown>, transfer: Transferable[] = [], onProgress?: Pending["onProgress"]): Promise<T> {
     const req = this.next++;
     return new Promise<T>((resolve, reject) => {
-      this.pending.set(req, { resolve, reject, onProgress });
+      this.pending.set(req, { resolve: resolve as (v: unknown) => void, reject, onProgress });
       this.worker.postMessage({ req, ...msg }, transfer);
     });
   }
@@ -88,10 +90,11 @@ export class SolverClient {
   }
 
   run(o: RunOptions): Promise<RunResult> {
+    const t0 = performance.now();
     return this.call<RunResult>(
       { type: "run", handle: this.handle, iterations: o.iterations, chunk: o.chunk ?? 20, restartAt: o.restartAt ?? 0, target: o.target ?? 0, checkEvery: o.checkEvery ?? 60 },
       [],
-      o.onProgress,
+      o.onProgress && ((p) => o.onProgress!({ ...p, elapsed: performance.now() - t0 })),
     );
   }
 

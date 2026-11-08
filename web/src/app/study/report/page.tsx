@@ -6,7 +6,7 @@ import { Skeleton } from "@/components/Skeleton";
 import { StudyTabs } from "@/components/StudyTabs";
 import type { Key } from "@/lib/i18n/ja";
 import { cardOf, parseBoard } from "@/lib/postflop/combos";
-import { FlopStats, loadIndex, PfIndex } from "@/lib/postflop/loader";
+import { loadIndex, PfIndex } from "@/lib/postflop/loader";
 import { textureOf } from "@/lib/postflop/texture";
 import { GROUPS, GroupBy, groupAverages, Metric, METRICS, metricOf } from "@/lib/postflop/report";
 import { useSettings } from "@/lib/settings";

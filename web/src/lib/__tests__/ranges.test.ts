@@ -4,6 +4,7 @@ import { compareRanges, expandToCombos, expandToken, formatRange, parseRange, ra
 import { RANGE_PRESETS, findNode } from "../ranges/presets";
 import { loadManifest, loadNode } from "./helpers";
 import { ActionKind } from "../solution/types";
+import type { SolutionStore } from "../solution/loader";
 
 const names = (r: ArrayLike<number>) => ALL_CLASSES.filter((c) => r[c.id] > 0).map((c) => c.name);
 
@@ -70,7 +71,7 @@ describe("range text format", () => {
 describe("range presets from the preflop solution", () => {
   const m = loadManifest();
   it("every preset line exists in the solution and yields a plausible range", async () => {
-    const store = { manifest: m, node: async (id: number) => loadNode(m, id) } as any;
+    const store = { manifest: m, node: async (id: number) => loadNode(m, id) } as unknown as SolutionStore;
     const { presetRange } = await import("../ranges/presets");
     const pct: Record<string, number> = {};
     for (const p of RANGE_PRESETS) {

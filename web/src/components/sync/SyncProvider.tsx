@@ -1,6 +1,7 @@
 "use client";
 import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { UPDATED_KEY, useSettings } from "@/lib/settings";
+import { useLatest } from "@/lib/util/hooks";
 import { getRepo } from "@/lib/storage/idb";
 import { loadState, syncOnce } from "@/lib/sync/engine";
 import type { SyncReport } from "@/lib/sync/engine";
@@ -30,18 +31,15 @@ export function SyncProvider({ children }: { children: ReactNode }) {
   const cfg = useMemo(() => supabaseConfig(), []);
   const auth = useMemo(() => (cfg ? new SupabaseAuth(cfg) : null), [cfg]);
   const { settings, applyRemote, ready } = useSettings();
-  const settingsRef = useRef(settings);
-  settingsRef.current = settings;
-  const applyRef = useRef(applyRemote);
-  applyRef.current = applyRemote;
+  const settingsRef = useLatest(settings);
+  const applyRef = useLatest(applyRemote);
 
   const [email, setEmail] = useState<string | null>(null);
   const [status, setStatus] = useState<Status>("idle");
   const [lastSync, setLastSync] = useState(0);
   const [report, setReport] = useState<SyncReport | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const lastSyncRef = useRef(0);
-  lastSyncRef.current = lastSync;
+  const lastSyncRef = useLatest(lastSync);
   const busy = useRef(false);
   const backoff = useRef(0);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -77,13 +75,15 @@ export function SyncProvider({ children }: { children: ReactNode }) {
     } finally {
       busy.current = false;
     }
-  }, [cfg, auth]);
+  }, [cfg, auth, settingsRef, applyRef]);
 
   // restore the session and the last sync time
   useEffect(() => {
     if (!ready || !auth) return;
     const s = auth.stored();
     if (!s) return;
+    // the stored sign-in lives in browser storage: restored once after hydration
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time load of browser-only state
     setEmail(s.email);
     getRepo()
       .getMeta<{ lastSync: number }>(`sync.state.${s.userId}`)
@@ -112,7 +112,7 @@ export function SyncProvider({ children }: { children: ReactNode }) {
       document.removeEventListener("visibilitychange", onVisible);
       window.removeEventListener("online", onOnline);
     };
-  }, [email, syncNow]);
+  }, [email, syncNow, lastSyncRef]);
   const value = useMemo<Ctx>(
     () => ({
       configured: !!cfg,
