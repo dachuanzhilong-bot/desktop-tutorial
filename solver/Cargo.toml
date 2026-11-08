@@ -1,0 +1,31 @@
+[package]
+name = "tessera-solver"
+version = "0.1.0"
+edition = "2021"
+description = "Dependency-free CFR solver core for Tessera (poker GTO study app)"
+license = "MIT"
+publish = false
+
+# No external crates on purpose: see docs/04-solver-selection.md
+[dependencies]
+
+[lib]
+name = "tessera_solver"
+path = "src/lib.rs"
+
+[[bin]]
+name = "gen_preflop"
+path = "src/bin/gen_preflop.rs"
+
+[[bin]]
+name = "gen_pushfold"
+path = "src/bin/gen_pushfold.rs"
+
+[profile.release]
+opt-level = 3
+lto = true
+codegen-units = 1
+panic = "abort"
+
+[profile.test]
+opt-level = 3

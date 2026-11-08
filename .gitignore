@@ -1,0 +1,13 @@
+# solver
+solver/target/
+solver/cache/
+solver/out/
+# web
+web/node_modules/
+web/.next/
+web/out/
+web/test-results/
+web/playwright-report/
+web/next-env.d.ts
+*.tsbuildinfo
+.DS_Store

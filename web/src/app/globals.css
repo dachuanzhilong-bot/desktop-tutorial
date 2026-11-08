@@ -1,0 +1,319 @@
+@import "tailwindcss";
+
+/* ------------------------------------------------------------------ tokens */
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b1311;
+  --surface: #121d19;
+  --surface-2: #1a2823;
+  --line: #2b3d36;
+  --ink: #eaf3ee;
+  --muted: #a3b8ad;
+  --accent: #e9b949;
+  --accent-ink: #1b1400;
+  --accent-text: #f0c04f;
+  --focus: #8fd3ff;
+  --felt-1: #14594a;
+  --felt-2: #0b3a30;
+  --rail: #2a1f17;
+  --rail-hi: #4a392b;
+  --cell-empty: #16221e;
+  --shadow: 0 8px 30px rgb(0 0 0 / 0.45);
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f7f5;
+  --surface: #ffffff;
+  --surface-2: #eaf0ed;
+  --line: #cdd9d3;
+  --ink: #14201b;
+  --muted: #4a5d54;
+  --accent: #e9b949;
+  --accent-ink: #1b1400;
+  --accent-text: #7a4f00;
+  --focus: #0b57d0;
+  --felt-1: #1c6b59;
+  --felt-2: #0f4a3d;
+  --rail: #3a2b20;
+  --rail-hi: #5a4636;
+  --cell-empty: #dfe8e3;
+  --shadow: 0 8px 24px rgb(20 40 30 / 0.16);
+}
+
+/* action colours – fixed semantics: raise = red, call = green, fold = blue (all pass AA with white text) */
+:root {
+  --raise-1: #c2373f;
+  --raise-2: #9c2230;
+  --allin: #6d1530;
+  --call: #1d7a4a;
+  --fold: #2d5fb8;
+  --pat: rgb(255 255 255 / 0.26);
+}
+:root[data-palette="cvd"] {
+  --raise-1: #b04800;
+  --raise-2: #8a3800;
+  --allin: #5c2500;
+  --call: #00785a;
+  --fold: #0a5f96;
+}
+
+/* patterns (optional, on top of colour) */
+:root[data-pattern="on"] {
+  --pat-raise: repeating-linear-gradient(135deg, var(--pat) 0 3px, transparent 3px 7px);
+  --pat-call: radial-gradient(circle at 50% 50%, var(--pat) 0 1.4px, transparent 1.7px) 0 0 / 6px 6px;
+  --pat-fold: none;
+}
+:root[data-pattern="off"] {
+  --pat-raise: none;
+  --pat-call: none;
+  --pat-fold: none;
+}
+
+/* four-colour deck */
+:root {
+  --suit-s: #111111;
+  --suit-h: #c8202b;
+  --suit-d: #1b5fd0;
+  --suit-c: #1b7a33;
+}
+
+@theme inline {
+  --color-bg: var(--bg);
+  --color-surface: var(--surface);
+  --color-surface-2: var(--surface-2);
+  --color-line: var(--line);
+  --color-ink: var(--ink);
+  --color-muted: var(--muted);
+  --color-accent: var(--accent);
+  --color-accent-ink: var(--accent-ink);
+  --color-accent-text: var(--accent-text);
+  --color-raise: var(--raise-1);
+  --color-raise2: var(--raise-2);
+  --color-call: var(--call);
+  --color-fold: var(--fold);
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", "Hiragino Sans", "Hiragino Kaku Gothic ProN", "Noto Sans JP", "Yu Gothic UI", Meiryo, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+
+/* ------------------------------------------------------------------ base */
+html {
+  font-size: calc(16px * var(--text-scale, 1));
+  -webkit-text-size-adjust: 100%;
+  accent-color: var(--accent);
+  scrollbar-color: var(--line) transparent;
+  scrollbar-width: thin;
+}
+body {
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+  min-height: 100dvh;
+  overscroll-behavior-y: none;
+  -webkit-tap-highlight-color: transparent;
+  font-variant-numeric: tabular-nums;
+}
+:focus-visible {
+  outline: 3px solid var(--focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+button,
+[role="button"] {
+  touch-action: manipulation;
+  cursor: pointer;
+}
+button:disabled {
+  cursor: not-allowed;
+}
+::selection {
+  background: color-mix(in oklab, var(--accent) 45%, transparent);
+}
+
+dialog:modal {
+  overscroll-behavior: contain;
+}
+dialog::backdrop {
+  overflow: hidden;
+  overscroll-behavior: contain;
+  background: rgb(4 10 8 / 0.6);
+  backdrop-filter: blur(2px);
+}
+
+.safe-b {
+  padding-bottom: max(env(safe-area-inset-bottom), 0px);
+}
+.sr-only-live {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+
+/* ------------------------------------------------------------------ range grid */
+.grid13 {
+  display: grid;
+  grid-template-columns: repeat(13, minmax(0, 1fr));
+  gap: 2px;
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-user-select: none;
+}
+.cell {
+  position: relative;
+  aspect-ratio: 1 / 1;
+  overflow: hidden;
+  border-radius: 4px;
+  background: var(--cell-empty);
+  display: block;
+  padding: 0;
+  border: 0;
+  color: #fff;
+  font-weight: 700;
+  line-height: 1;
+  -webkit-touch-callout: none;
+}
+.cell[data-dim="true"] {
+  opacity: 0.28;
+}
+.cell[data-selected="true"] {
+  outline: 3px solid var(--accent);
+  outline-offset: -1px;
+  z-index: 2;
+}
+.cell[data-marker="true"] {
+  outline: 3px solid #fff;
+  outline-offset: -1px;
+  box-shadow: 0 0 0 2px var(--accent);
+  z-index: 3;
+}
+.cell .fill {
+  position: absolute;
+  inset: auto 0 0 0;
+  display: flex;
+  flex-direction: row;
+}
+.cell .seg {
+  height: 100%;
+  min-width: 0;
+}
+.seg[data-k="fold"] {
+  background-color: var(--fold);
+  background-image: var(--pat-fold);
+}
+.seg[data-k="call"] {
+  background-color: var(--call);
+  background-image: var(--pat-call);
+}
+.seg[data-k="raise1"] {
+  background-color: var(--raise-1);
+  background-image: var(--pat-raise);
+}
+.seg[data-k="raise2"] {
+  background-color: var(--raise-2);
+  background-image: var(--pat-raise);
+}
+.seg[data-k="allin"] {
+  background-color: var(--allin);
+  background-image: var(--pat-raise);
+}
+.cell .lbl {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: clamp(8px, 2.5vw, 12px);
+  text-shadow: 0 1px 2px rgb(0 0 0 / 0.65);
+  letter-spacing: -0.02em;
+  pointer-events: none;
+}
+.cell[data-empty="true"] .lbl {
+  color: var(--muted);
+  text-shadow: none;
+  font-weight: 600;
+}
+
+/* ------------------------------------------------------------------ table */
+.felt {
+  background: radial-gradient(120% 120% at 50% 40%, var(--felt-1), var(--felt-2) 70%);
+  box-shadow: inset 0 0 0 3px var(--rail), inset 0 0 0 5px var(--rail-hi), inset 0 10px 40px rgb(0 0 0 / 0.35);
+}
+
+/* suit colours (four-colour deck is the default; two-colour switches via data attr on the card) */
+.card[data-deck="4"] [data-suit="s"] { color: var(--suit-s); }
+.card[data-deck="4"] [data-suit="h"] { color: var(--suit-h); }
+.card[data-deck="4"] [data-suit="d"] { color: var(--suit-d); }
+.card[data-deck="4"] [data-suit="c"] { color: var(--suit-c); }
+.card[data-deck="2"] [data-suit="s"], .card[data-deck="2"] [data-suit="c"] { color: var(--suit-s); }
+.card[data-deck="2"] [data-suit="h"], .card[data-deck="2"] [data-suit="d"] { color: var(--suit-h); }
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/* skeleton */
+.skeleton {
+  background: linear-gradient(90deg, var(--surface-2) 25%, color-mix(in oklab, var(--surface-2) 70%, var(--ink) 8%) 50%, var(--surface-2) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.4s infinite linear;
+  border-radius: 8px;
+}
+@keyframes shimmer {
+  to {
+    background-position: -200% 0;
+  }
+}
+
+/* popover tooltips for glossary terms */
+[popover].tip {
+  position: fixed;
+  inset: auto 12px max(16px, env(safe-area-inset-bottom)) 12px;
+  margin: 0 auto;
+  max-width: 28rem;
+  width: auto;
+  background: var(--surface);
+  color: var(--ink);
+  border: 1px solid var(--line);
+  border-radius: 14px;
+  padding: 14px 16px;
+  box-shadow: var(--shadow);
+}
+
+.no-scrollbar {
+  scrollbar-width: none;
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* grade tones (text on surface, AA) */
+:root, :root[data-theme="dark"] {
+  --g-best: #f0c04f;
+  --g-correct: #7ee0a8;
+  --g-inaccurate: #f2c14b;
+  --g-mistake: #ff9a5c;
+  --g-blunder: #ff7d84;
+}
+:root[data-theme="light"] {
+  --g-best: #7a4f00;
+  --g-correct: #136c3c;
+  --g-inaccurate: #7d5600;
+  --g-mistake: #a03f00;
+  --g-blunder: #b3202a;
+}
+
+/* the small number inside a chart cell is drawn by CSS: it is already part of the cell's aria-label,
+   so it must not count as extra visible text (WCAG 2.5.3 label in name) */
+.cell .pct::after {
+  content: attr(data-v);
+  font-size: 0.64em;
+  font-weight: 600;
+}

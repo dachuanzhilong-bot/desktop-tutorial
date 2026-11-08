@@ -1,0 +1,36 @@
+{
+  "name": "tessera-web",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Tessera \u2013 poker GTO study app (Next.js, PWA, local-first)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "e2e": "npm run build && playwright test --trace off",
+    "solutions:pack": "node scripts/pack-solutions.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "verify": "npm run typecheck && npm test && npm run e2e"
+  },
+  "dependencies": {
+    "framer-motion": "12.43.0",
+    "next": "16.4.5",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/postcss": "4.3.5",
+    "@types/node": "^22.10.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "^19.2.0",
+    "postcss": "8.5.32",
+    "tailwindcss": "4.3.5",
+    "typescript": "5.9.3",
+    "vitest": "3.2.7"
+  }
+}

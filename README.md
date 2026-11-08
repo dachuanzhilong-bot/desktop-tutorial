@@ -1,5 +1,83 @@
-# Welcome to GitHub Desktop!
+# Tessera — ポーカーGTO学習アプリ
 
-This is your README. READMEs are where you can communicate what your project is and how to use it.
+テキサスホールデムのGTO（均衡戦略）を **調べる(Study) → 練習する(Practice) → 成績で振り返る(Stats)** ためのPWA。
+スマホ片手で使えて、オフラインでも練習できる。名前・ロゴ・UI・解データはすべてオリジナル（他社の資産は一切使っていません）。
 
-Write your name on line 6, save it, and then head back to GitHub Desktop.
+> **現在: Phase 2（MVP）完了。** プリフロップ（6-max 100bb）のStudy / Practice / 成績 / PWA。
+> ポストフロップ・Solve・Range Builder・Analyze・ログイン/同期・MTT は次のフェーズ（[ロードマップ](docs/05-roadmap.md)）。
+
+## 起動方法
+
+```bash
+# Webアプリ（Node 22+）
+cd web
+npm ci
+npm run dev            # http://localhost:3000   （開発。Service Workerは本番ビルドでのみ有効）
+
+npm run build          # 静的書き出し → web/out/（どの静的ホスティングにも置ける）
+node scripts/serve-static.mjs 3100   # out/ を http://localhost:3100 で配信（PWA/オフラインの確認用）
+
+# テスト
+npm run typecheck && npm test        # Vitest（ロジック・解データの検証）
+npm run e2e                          # ビルド → Playwright（モバイル/デスクトップ、axeアクセシビリティ監査込み）
+
+# ソルバー（Rust 1.7x+, 依存crateなし）
+cd solver
+cargo test --release                 # 既知の均衡テスト（Kuhn / クレアボヤント / HUプッシュフォールド / エクイティ表）
+cargo run --release --bin gen_pushfold                                   # HUプッシュ/フォールド表
+RUSTFLAGS="-C target-cpu=native" cargo run --release --bin gen_preflop -- --out out/cash6max-100bb   # 解の再生成(約15分)
+cd ../web && npm run solutions:pack  # public/solutions/ にgzipで梱包
+```
+解データ（約0.17MB）はリポジトリに含まれているので、ソルバーを動かさなくてもアプリは動きます。
+
+## 機能（Phase 2 時点）
+
+| 領域 | できること |
+|------|-----------|
+| **Study** | アクションラインをたどって局面を移動（URLの `#n=` で共有）／13×13レンジ表を **戦略・EV・エクイティ・レンジの濃さ** で切替／タップでハンド詳細（頻度・EV・エクイティ・EQR・スート別）、長押しで頻度ポップアップ／ハンド種別（ペア・スーテッドA・スーテッドコネクター等）とブロッカーのフィルター／レンジ幅とアクション内訳／エクイティ分布グラフ／相手(レイザー)とのレンジ比較 |
+| **Practice** | **スポット練習**と**ハンド通しプレイ**（相手は解の頻度どおりに動く）／出題条件（席・局面の種類・ハンド範囲・混合ハンドのみ）／EV損失(bb)で **最善/正解/不正確/ミス/大ミス** の5段階とハンドごとのスコア、セッション合計とストリーク／解説（ポットオッズ・混合頻度・EV差・EQR）／間隔反復（ミス・混合ハンド優先）／**RNGモード**／**時間制限**（時間切れ=自動フォールド）／卓・チップ・カードのアニメーション |
+| **成績** | 正解率・平均EV損失・スコア推移(30日)・判定の内訳／席×局面のヒートマップ／苦手スポット→ワンタップで練習／1日の目標リング・連続学習日数／書き出し・読み込み(JSON) |
+| **操作性** | 主要ボタンは画面下／右スワイプ=次のハンド、左=解説／ボタン押下と正誤で振動／`F` `C` `R` `A`・数字キー・`Enter`・`E` |
+| **見た目** | ダーク中心＋ライト／フェルトの卓／4色デッキ／レイズ=赤・コール=緑・フォールド=青（色覚配慮パレットと模様の切替あり）／文字サイズ4段階／スケルトン表示 |
+| **その他** | 日本語(初期)/英語、用語集(ツールチップ+一覧)、3分オンボーディング、PWA（機内モードでも練習可） |
+
+## 品質の裏付け
+
+- **ソルバー**: 既知の均衡と照合（[04](docs/04-solver-selection.md)）— Kuhn（値 −1/18・混合頻度）、クレアボヤント半ストリート（ブラフ頻度 b/(1+b)、MDF）、HUプッシュ/フォールド（10bbで SB58%/BB37%）、役の出現率、AA–KK=81.9% など。
+- **プリフロップ解**: 6,000反復、各プレイヤーの best-response gain は最大 **0.0002bb**。出力データに対する自動テストで、オープン幅の単調性・AA/72oの扱い・フォールドEVの会計・「プレイされる頻度30%以上のアクションはEV最適」（主要ラインで最大0.031bb）を確認。
+- **アクセシビリティ**: axe-core（WCAG 2.1 A/AA）をE2Eで全ページ×ダーク/ライト×色覚配慮パレットに実行して違反ゼロ。配色のコントラストは4.5:1以上を計算で検証。
+- **オフライン**: E2Eで「初回訪問→機内モード→練習を開始し回答まで」を確認。
+
+## ソルバーの選定（要約。詳細は [docs/04](docs/04-solver-selection.md)）
+
+`b-inary/postflop-solver`（Cargo.tomlで **AGPL-3.0-or-later** を確認、2023年10月に開発停止）と `TexasSolver`（**AGPL-3.0**）は、ブラウザに配信するアプリに組み込むとアプリ全体のソース公開義務（AGPL §13）が及ぶため採用しない。
+加えて、この開発環境では crate のダウンロード(`static.crates.io`)と GitHub の clone が遮断されていて、依存ごとビルドできない。
+→ **依存なし(std のみ)の自作 CFR+ ソルバー**（`solver/`）を採用。Phase 4 でそのまま WebAssembly にする。
+
+## 構成
+
+```
+docs/      設計書（画面遷移・データモデル・解データ形式・ソルバー選定・ロードマップ・UX・プリフロップモデル）
+solver/    Rust製ソルバー（エンジン / プリフロップ木 / 検証用ゲーム / 生成CLI）
+web/       Next.js 16 (App Router, 静的書き出し) + TypeScript + Tailwind 4 + Framer Motion
+  public/solutions/   事前計算した解 (gzip)    public/sw.js   Service Worker
+  src/lib/            解のデコード・ツリー再生・採点・SRS・保存・集計・i18n
+  e2e/                Playwright (機能 / PWA / axe)
+```
+
+## 残っている課題（正直なリスト）
+
+1. **プリフロップ解は近似モデル**（[07](docs/07-preflop-model.md)）。ポストフロップを解かず、EQR(エクイティ実現率)モデルで代用しているため、細部は商用ソルバーと一致しない（例: SBがリンプ寄り、BBのディフェンスが広め）。Phase 3 でフロップの実解からEQRを校正する。
+2. 対応範囲: 6-max 100bb のみ。20/40/200bb・HU・9-max・MTT/ICM は未生成（木生成はパラメータ化済み）。4人以上のポット、複数のレイズサイズは未対応。
+3. 低頻度のライン（到達確率 <1%）は収束が粗い（頻度の高いアクションでもEV差が最大0.14bb）。
+4. 計測していない項目: 100ms以内の操作反応は設計上は同期処理だが、実機計測は未実施（Phase 6）。スクリーンリーダー(VoiceOver/TalkBack)での手動確認も未実施。
+5. 振動(Haptics)は Vibration API のため iOS Safari では動かない。
+6. ライセンスファイル未作成（下の質問を参照）。名称 "Tessera" は仮で、商標調査が必要。
+7. ログイン・クラウド同期は未実装（設計は [02](docs/02-data-model.md)）。記録は端末内(IndexedDB)のみ。書き出し/読み込みでバックアップ可能。
+
+## 確認したいこと（推奨案つき）
+
+1. **ライセンス**: 自作ソルバー(`solver/`)とアプリ本体を **MIT** にしてよいか？ → 推奨: MIT。AGPLのコードを一切含めていないので自由に選べます。
+2. **名称**: "Tessera" で進めてよいか？ → 推奨: 開発中はこのまま、公開前に商標・ドメイン調査。変更は `app.name` と `manifest.ts` の2か所。
+3. **Phase 3 の範囲**: 代表フロップを **約50種**（ベットサイズ 33%/75%/オールイン）から始め、集計レポートは1,755種のうち計算済みのものだけを対象にしてよいか？ → 推奨: はい。残りはSolve(Phase 4)で都度計算。
+4. **Supabase**: Phase 5 で使うプロジェクトのURL/anonキーはいつ用意できるか？ → 推奨: Phase 4 の終わりまでに（それまではローカル保存のみで問題なし）。
