@@ -5,7 +5,7 @@
  *  - navigations: network-first with a short timeout, falling back to the cache, then to "/"
  *  Bump VERSION to drop old caches.
  */
-const VERSION = "v3";
+const VERSION = "v4";
 const CORE = `tessera-core-${VERSION}`;
 const DATA = `tessera-data-${VERSION}`;
 const PAGES = ["/", "/study/", "/study/postflop/", "/study/report/", "/solve/", "/builder/", "/icm/", "/practice/", "/stats/", "/analyze/", "/settings/", "/glossary/", "/roadmap/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"];

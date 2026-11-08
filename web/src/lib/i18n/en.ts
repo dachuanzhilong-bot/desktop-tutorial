@@ -596,7 +596,7 @@ export const en: Record<Key, string> = {
   "analyze.clear": "Delete all imported hands",
   "analyze.clearAsk": "Delete all imported hands?",
   "analyze.stackNote": "Stack {n}bb",
-  "analyze.limits": "Supported: PokerStars, cash games, No-Limit Hold'em, 2-6 players, effective stack 15-250bb (graded against the nearest depth's solution). Only preflop decisions are graded.",
+  "analyze.limits": "Supported: PokerStars (GGPoker is experimental), cash games, No-Limit Hold'em, 2-6 players, effective stack 15-250bb (graded against the nearest depth's solution). Only preflop decisions are graded.",
   "sync.title": "Account and cloud sync",
   "sync.notConfigured": "Cloud sync is not configured in this build. Your practice records stay on this device (back them up with export / import).",
   "sync.intro": "Sign in to sync your practice records, spaced repetition, saved ranges and settings across devices. Everything works without it.",
@@ -698,4 +698,8 @@ export const en: Record<Key, string> = {
   "depth.hint": "Effective stack (bb) of the preflop solution. Only 100bb has been tuned: the other depths are rougher approximations (especially 20-40bb and 200bb). Postflop solutions exist for 100bb only.",
   "depth.option": "{n}bb",
   "depth.loading": "Loading…",
+  "gl.pushfold.t": "Push / fold",
+  "gl.pushfold.d": "With a short stack the only choices are fold or jam (all-in), and the player facing a jam can only call or fold. The ICM solver works on this game.",
+  "gl.bubble.t": "Bubble factor",
+  "gl.bubble.d": "Under ICM, losing chips hurts more than winning the same chips helps. The ratio is the bubble factor (1.0 = chip EV; the bigger it is, the tighter the calls). It is large just before the money and when prizes are steep.",
 };

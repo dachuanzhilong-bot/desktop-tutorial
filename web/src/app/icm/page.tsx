@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IcmDrill } from "@/components/icm/IcmDrill";
+import { Term } from "@/components/Term";
 import { RangeCells } from "@/components/ranges/RangeCells";
 import { SolveTabs } from "@/components/solve/SolveTabs";
 import { IcmClient } from "@/lib/icm/client";
@@ -135,6 +136,11 @@ export default function IcmPage() {
       <header>
         <h1 className="text-2xl font-extrabold">{t("icm.title")}</h1>
         <p className="text-sm text-muted">{t("icm.subtitle")}</p>
+        <p className="mt-1 flex flex-wrap gap-x-3 text-sm">
+          <Term id="icm" />
+          <Term id="pushfold" />
+          <Term id="bubble" />
+        </p>
       </header>
       <SolveTabs />
       {!wasmOk && (

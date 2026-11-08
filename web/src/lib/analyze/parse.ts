@@ -1,5 +1,7 @@
 /**
- * PokerStars cash-game hand-history parser (No-Limit Hold'em).
+ * PokerStars cash-game hand-history parser (No-Limit Hold'em). GGPoker writes the same layout with a
+ * "Poker Hand #HD…" header, so those hands are read by the same code (experimental: only checked against
+ * synthetic hands written from the documented format, not against real GGPoker files).
  *
  * Understands: blinds/antes, all actions (incl. "and is all-in"), uncalled bets, board per street, shown hands and
  * collected pots, real-money and play-money formats, Zoom ("PokerStars Zoom Hand"), CRLF/BOM, many hands per file.
@@ -27,7 +29,7 @@ export interface ParsedPlayer {
 }
 
 export interface ParsedHand {
-  site: "pokerstars";
+  site: "pokerstars" | "ggpoker";
   id: string;
   /** milliseconds since the epoch (the time zone of the file is unknown, so this is approximate) */
   ts: number;
@@ -62,7 +64,7 @@ export interface Skipped {
 export interface ParseResult {
   hands: ParsedHand[];
   skipped: Skipped[];
-  /** how many "PokerStars Hand #" blocks the text contained (0 = not a PokerStars history) */
+  /** how many "PokerStars Hand #" / "Poker Hand #" blocks the text contained (0 = not a supported history) */
   blocks: number;
 }
 
@@ -72,8 +74,8 @@ const CARD = String.raw`[2-9TJQKA][cdhs]`;
 
 function splitHands(text: string): string[] {
   const t = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
-  const parts = t.split(/\n(?=PokerStars (?:Zoom )?Hand #)/);
-  return parts.map((p) => p.trim()).filter((p) => /^PokerStars (?:Zoom )?Hand #/.test(p));
+  const parts = t.split(/\n(?=(?:PokerStars|Poker) (?:Zoom )?Hand #)/);
+  return parts.map((p) => p.trim()).filter((p) => /^(?:PokerStars|Poker) (?:Zoom )?Hand #/.test(p));
 }
 
 function parseDate(s: string | undefined): number {
@@ -83,10 +85,11 @@ function parseDate(s: string | undefined): number {
 
 function parseOne(block: string): ParsedHand | Skipped {
   const lines = block.split("\n").map((l) => l.trimEnd());
-  const head = /^PokerStars (?:Zoom )?Hand #(\d+):\s*(.*)$/.exec(lines[0]);
+  const head = /^(PokerStars|Poker) (?:Zoom )?Hand #([A-Z]*\d+):\s*(.*)$/.exec(lines[0]);
   if (!head) return { id: null, reason: "no hand header" };
-  const id = head[1];
-  const rest = head[2];
+  const site: ParsedHand["site"] = head[1] === "Poker" ? "ggpoker" : "pokerstars";
+  const id = head[2];
+  const rest = head[3];
   if (/Tournament/i.test(rest) || /^Tournament/.test(lines[0])) return { id, reason: "tournament hands are not supported" };
   if (!/Hold'em No Limit/i.test(rest)) return { id, reason: "only No-Limit Hold'em is supported" };
   const stakes = new RegExp(String.raw`\((${MONEY})\/(${MONEY})(?: ([A-Z]{3}))?\)`).exec(rest);
@@ -117,7 +120,7 @@ function parseOne(block: string): ParsedHand | Skipped {
   };
 
   const out: ParsedHand = {
-    site: "pokerstars",
+    site,
     id,
     ts,
     sb,

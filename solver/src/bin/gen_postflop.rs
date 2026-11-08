@@ -72,6 +72,7 @@ fn main() {
     let river_cards: usize = arg(&args, "--river-cards", 2);
     let avg_from: f32 = arg(&args, "--avg-from", 0.5);
     let only_flop: i32 = arg(&args, "--only-flop", -1);
+    let from_flop: usize = arg(&args, "--from-flop", 0);
 
     let sol = solution_io::load(&pre).expect("preflop solution");
     let mut tasks: Vec<(usize, usize)> = Vec::new();
@@ -79,7 +80,7 @@ fn main() {
         if !only.is_empty() && !only.split(',').any(|x| x == sc.id) {
             continue;
         }
-        for fi in 0..n_flops.min(FLOPS.len()) {
+        for fi in from_flop..n_flops.min(FLOPS.len()) {
             if only_flop >= 0 && fi as i32 != only_flop {
                 continue;
             }

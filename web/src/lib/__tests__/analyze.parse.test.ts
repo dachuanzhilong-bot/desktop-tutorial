@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { parseHandHistory } from "../analyze/parse";
 import { normalizeHand, NormHand } from "../analyze/normalize";
 import { classByName } from "../poker/hands";
-import { FILE_CRLF_BOM, H_ALLIN, H_BAD_3BET, H_CO_OPEN, H_HEADS_UP, H_ODD_NAMES, H_OMAHA, H_TOURNAMENT } from "./fixtures/hands";
+import { FILE_CRLF_BOM, H_ALLIN, H_GG, H_BAD_3BET, H_CO_OPEN, H_HEADS_UP, H_ODD_NAMES, H_OMAHA, H_TOURNAMENT } from "./fixtures/hands";
 
 const one = (t: string) => {
   const r = parseHandHistory(t);
@@ -63,6 +63,19 @@ describe("PokerStars parser", () => {
     expect(h.actions.filter((a) => a.player === "p l a y e r")).toHaveLength(1);
     expect(h.players.find((p) => p.name === "Sitter")!.sittingOut).toBe(true);
     expect(h.players.find((p) => p.name === "Hal")!.stack).toBe(50);
+  });
+});
+
+describe("GGPoker layout (experimental)", () => {
+  it("reads a Poker Hand # header and mixes with PokerStars hands", () => {
+    const r = parseHandHistory([H_GG, H_CO_OPEN].join("\n\n"));
+    expect(r.skipped).toEqual([]);
+    expect(r.hands.map((h) => [h.site, h.id])).toEqual([["ggpoker", "HD2300000009"], ["pokerstars", "230000000001"]]);
+    const n = normalizeHand(r.hands[0]);
+    if ("reason" in n) throw new Error(n.reason);
+    expect(n.heroSeat).toBe(2);
+    expect(n.heroClass).toBe(classByName("AKo"));
+    expect(n.heroNet).toBeCloseTo(1.25, 2); // 2.25 collected - (2.5 put in - 1.5 returned)
   });
 });
 

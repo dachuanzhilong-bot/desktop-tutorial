@@ -188,3 +188,27 @@ Uncalled bet ($5.50) returned to Hero
 Hero collected $6 from pot
 *** SUMMARY ***
 Total pot $6 | Rake $0`;
+
+/** the GGPoker layout (header "Poker Hand #HD…", Rush & Cash table name), written from the documented format */
+export const H_GG = `Poker Hand #HD2300000009: Hold'em No Limit ($0.50/$1) - 2024/03/06 20:15:01
+Table 'RushAndCash99' 6-max Seat #4 is the button
+Seat 1: 1a2b3c4d ($100 in chips)
+Seat 2: 5e6f7a8b ($105.50 in chips)
+Seat 3: Hero ($98 in chips)
+Seat 4: 9c0d1e2f ($120 in chips)
+Seat 5: 3a4b5c6d ($99 in chips)
+Seat 6: 7e8f9a0b ($150 in chips)
+3a4b5c6d: posts small blind $0.50
+7e8f9a0b: posts big blind $1
+*** HOLE CARDS ***
+Dealt to Hero [Ah Kd]
+1a2b3c4d: folds
+5e6f7a8b: folds
+Hero: raises $1.50 to $2.50
+9c0d1e2f: folds
+3a4b5c6d: folds
+7e8f9a0b: folds
+Uncalled bet ($1.50) returned to Hero
+Hero collected $2.25 from pot
+*** SUMMARY ***
+Total pot $2.25 | Rake $0.25`;

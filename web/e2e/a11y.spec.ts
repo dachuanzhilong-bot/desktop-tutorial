@@ -6,6 +6,7 @@ import { H_BAD_3BET, H_CO_OPEN } from "../src/lib/__tests__/fixtures/hands";
 const TAGS = ["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"];
 
 async function audit(page: Page, label: string) {
+  await page.waitForTimeout(350); // colour transitions (theme applied after hydration) must have finished
   const res = await new AxeBuilder({ page }).withTags(TAGS).analyze();
   const bad = res.violations.map((v) => `${v.id} (${v.impact}): ${v.nodes.length} node(s) e.g. ${v.nodes[0]?.html.slice(0, 120)}`);
   expect(bad, `${label}\n${bad.join("\n")}`).toEqual([]);
