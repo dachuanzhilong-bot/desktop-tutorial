@@ -23,6 +23,34 @@ export interface Attempt {
   hint: boolean;
 }
 
+/** a finished (or cancelled) custom solve, kept on this device */
+export interface SavedSolve {
+  id: string;
+  ts: number;
+  title: string;
+  board: number[];
+  /** SolveConfig as it was solved */
+  cfg: unknown;
+  oopName: string;
+  ipName: string;
+  oopText: string;
+  ipText: string;
+  exploit: number;
+  iterations: number;
+  /** TSP1 file */
+  bytes: Uint8Array;
+  /** exported node id -> solver tree node (for node-locking after a reload the tree is rebuilt, so only informative) */
+  nodes: number;
+}
+
+/** a named range made in the Range Builder (weights as PIO-style text) */
+export interface SavedRange {
+  id: string;
+  ts: number;
+  name: string;
+  text: string;
+}
+
 export interface Repo {
   addAttempt(a: Attempt): Promise<void>;
   allAttempts(): Promise<Attempt[]>;
@@ -33,6 +61,13 @@ export interface Repo {
   exportAll(): Promise<ExportBlob>;
   importAll(blob: ExportBlob): Promise<void>;
   clear(): Promise<void>;
+  putSolve(s: SavedSolve): Promise<void>;
+  listSolves(): Promise<SavedSolve[]>;
+  getSolve(id: string): Promise<SavedSolve | undefined>;
+  deleteSolve(id: string): Promise<void>;
+  putRange(r: SavedRange): Promise<void>;
+  listRanges(): Promise<SavedRange[]>;
+  deleteRange(id: string): Promise<void>;
 }
 
 export interface ExportBlob {
@@ -42,4 +77,6 @@ export interface ExportBlob {
   attempts: Attempt[];
   srs: SrsItem[];
   meta: Record<string, unknown>;
+  /** named ranges travel with the export; solves are big and can be recomputed, so they stay on the device */
+  ranges?: SavedRange[];
 }

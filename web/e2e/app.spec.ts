@@ -171,7 +171,7 @@ test.describe("pwa", () => {
     });
     // wait until the install step finished caching the solution files
     await expect
-      .poll(async () => page.evaluate(async () => (await (await caches.open("tessera-data-v2")).keys()).length), { timeout: 20_000 })
+      .poll(async () => page.evaluate(async () => (await (await caches.open("tessera-data-v3")).keys()).length), { timeout: 20_000 })
       .toBeGreaterThanOrEqual(8);
     await page.reload(); // now controlled by the SW
     await context.setOffline(true);
@@ -180,6 +180,16 @@ test.describe("pwa", () => {
     await expect(page.locator('[data-testid^="action-"]').first()).toBeVisible({ timeout: 20_000 });
     await page.locator('[data-testid^="action-"]').first().click();
     await expect(page.getByTestId("result")).toBeVisible();
+
+    // the WebAssembly solver and its worker are cached too: Solve works without a network
+    await page.goto("/solve/");
+    await page.getByRole("button", { name: "クリア" }).click();
+    for (const c of ["Ks", "7d", "2c", "9h", "3s"]) await page.getByTestId(`pick-${c}`).click();
+    await page.getByTestId("range-oop-text").fill("QQ,JJ,AQs");
+    await page.getByTestId("range-ip-text").fill("AA,KK,77,A5s");
+    await page.getByTestId("acc-draft").click();
+    await page.getByTestId("solve-run").click();
+    await expect(page.getByTestId("solve-result")).toBeVisible({ timeout: 45_000 });
     await context.setOffline(false);
   });
 });

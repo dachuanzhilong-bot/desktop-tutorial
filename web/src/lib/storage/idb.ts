@@ -1,9 +1,9 @@
 import type { SrsItem } from "../practice/srs";
 import { MemoryRepo } from "./memory";
-import type { Attempt, ExportBlob, Repo } from "./types";
+import type { Attempt, ExportBlob, Repo, SavedRange, SavedSolve } from "./types";
 
 const DB_NAME = "tessera";
-const DB_VERSION = 1;
+const DB_VERSION = 2;
 
 function open(): Promise<IDBDatabase> {
   return new Promise((resolve, reject) => {
@@ -16,6 +16,9 @@ function open(): Promise<IDBDatabase> {
       }
       if (!db.objectStoreNames.contains("srs")) db.createObjectStore("srs", { keyPath: "key" });
       if (!db.objectStoreNames.contains("meta")) db.createObjectStore("meta");
+      // v2: custom solves + named ranges
+      if (!db.objectStoreNames.contains("solves")) db.createObjectStore("solves", { keyPath: "id" });
+      if (!db.objectStoreNames.contains("ranges")) db.createObjectStore("ranges", { keyPath: "id" });
     };
     req.onsuccess = () => resolve(req.result);
     req.onerror = () => reject(req.error);
@@ -62,7 +65,7 @@ export class IdbRepo implements Repo {
     const s = await this.store("meta");
     const keys = (await wrap(s.getAllKeys())) as string[];
     for (const k of keys) meta[k] = await this.getMeta(k);
-    return { app: "tessera", version: 1, exportedAt: Date.now(), attempts: await this.allAttempts(), srs: await this.allSrs(), meta };
+    return { app: "tessera", version: 1, exportedAt: Date.now(), attempts: await this.allAttempts(), srs: await this.allSrs(), meta, ranges: await this.listRanges() };
   }
   async importAll(b: ExportBlob) {
     if (b.app !== "tessera") throw new Error("not a Tessera export");
@@ -71,9 +74,33 @@ export class IdbRepo implements Repo {
     const cur = new Map((await this.allSrs()).map((x) => [x.key, x]));
     for (const s of b.srs) if (!cur.has(s.key) || cur.get(s.key)!.updated < s.updated) await this.putSrs(s);
     for (const [k, v] of Object.entries(b.meta)) await this.setMeta(k, v);
+    for (const r of b.ranges ?? []) await this.putRange(r);
+  }
+  async putSolve(s: SavedSolve) {
+    await wrap((await this.store("solves", "readwrite")).put(s));
+  }
+  async listSolves() {
+    const all = (await wrap((await this.store("solves")).getAll())) as SavedSolve[];
+    return all.sort((a, b) => b.ts - a.ts);
+  }
+  async getSolve(id: string) {
+    return (await wrap((await this.store("solves")).get(id))) as SavedSolve | undefined;
+  }
+  async deleteSolve(id: string) {
+    await wrap((await this.store("solves", "readwrite")).delete(id));
+  }
+  async putRange(r: SavedRange) {
+    await wrap((await this.store("ranges", "readwrite")).put(r));
+  }
+  async listRanges() {
+    const all = (await wrap((await this.store("ranges")).getAll())) as SavedRange[];
+    return all.sort((a, b) => b.ts - a.ts);
+  }
+  async deleteRange(id: string) {
+    await wrap((await this.store("ranges", "readwrite")).delete(id));
   }
   async clear() {
-    for (const n of ["attempts", "srs", "meta"]) await wrap((await this.store(n, "readwrite")).clear());
+    for (const n of ["attempts", "srs", "meta", "solves", "ranges"]) await wrap((await this.store(n, "readwrite")).clear());
   }
 }
 

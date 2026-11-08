@@ -10,7 +10,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
       - run: cargo test --release
+      # the browser solver (Solve screen) must keep compiling to WebAssembly
+      - run: cargo build --release --lib --target wasm32-unknown-unknown
 
   web:
     runs-on: ubuntu-latest

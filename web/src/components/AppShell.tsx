@@ -2,8 +2,9 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { ReactNode, useEffect, useRef } from "react";
+import type { Key } from "@/lib/i18n/ja";
 import { useSettings } from "@/lib/settings";
-import { IconChart, IconGear, IconGrid, IconHome, IconTarget } from "./icons";
+import { IconBolt, IconChart, IconGear, IconGrid, IconHome, IconTarget } from "./icons";
 import { Onboarding } from "./Onboarding";
 import { useShell } from "./ShellContext";
 
@@ -11,9 +12,10 @@ const NAV = [
   { href: "/", key: "nav.home", Icon: IconHome },
   { href: "/study/", key: "nav.study", Icon: IconGrid },
   { href: "/practice/", key: "nav.practice", Icon: IconTarget },
+  { href: "/solve/", key: "nav.solve", Icon: IconBolt, also: ["/builder"] },
   { href: "/stats/", key: "nav.stats", Icon: IconChart },
   { href: "/settings/", key: "nav.settings", Icon: IconGear },
-] as const;
+] as readonly { href: string; key: Key; Icon: typeof IconHome; also?: string[] }[];
 
 export function AppShell({ children }: { children: ReactNode }) {
   const path = usePathname() ?? "/";
@@ -29,7 +31,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     navigator.serviceWorker.register("/sw.js").catch(() => {});
   }, []);
 
-  const isActive = (href: string) => (href === "/" ? path === "/" : path.startsWith(href.replace(/\/$/, "")));
+  const isActive = (href: string, also: string[] = []) => (href === "/" ? path === "/" : [href, ...also].some((h) => path.startsWith(h.replace(/\/$/, ""))));
 
   return (
     <div className="mx-auto flex min-h-dvh max-w-3xl flex-col">
@@ -45,8 +47,8 @@ export function AppShell({ children }: { children: ReactNode }) {
         className="safe-b fixed inset-x-0 bottom-0 z-40 border-t border-line bg-surface/95 backdrop-blur"
       >
         <ul className="mx-auto flex max-w-3xl">
-          {NAV.map(({ href, key, Icon }) => {
-            const active = isActive(href);
+          {NAV.map(({ href, key, Icon, also }) => {
+            const active = isActive(href, also);
             return (
               <li key={href} className="flex-1">
                 <Link

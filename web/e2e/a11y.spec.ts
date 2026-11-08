@@ -19,7 +19,7 @@ for (const theme of ["dark", "light"] as const) {
     test.beforeEach(async ({ context }) => {
       await context.addInitScript((th) => localStorage.setItem("tessera.settings.v1", JSON.stringify({ onboarded: true, theme: th })), theme);
     });
-    for (const path of ["/", "/study/", "/study/postflop/", "/study/report/", "/practice/", "/stats/", "/settings/", "/glossary/", "/roadmap/"]) {
+    for (const path of ["/", "/study/", "/study/postflop/", "/study/report/", "/practice/", "/solve/", "/builder/", "/stats/", "/settings/", "/glossary/", "/roadmap/"]) {
       test(`${path}`, async ({ page }) => {
         await page.goto(path);
         if (path === "/study/" || path === "/study/postflop/") await page.waitForSelector(".cell");
@@ -28,6 +28,25 @@ for (const theme of ["dark", "light"] as const) {
         await audit(page, `${theme} ${path}`);
       });
     }
+    test("solve result with the node-lock panel", async ({ page }) => {
+      await page.goto("/solve/");
+      await page.getByRole("button", { name: "クリア" }).click();
+      for (const c of ["Ks", "7d", "2c", "9h", "3s"]) await page.getByTestId(`pick-${c}`).click();
+      await page.getByTestId("range-oop-text").fill("QQ,JJ,AQs");
+      await page.getByTestId("range-ip-text").fill("AA,KK,77,A5s");
+      await page.getByTestId("acc-draft").click();
+      await page.getByTestId("solve-run").click();
+      await page.getByTestId("lock-panel").waitFor({ timeout: 45_000 });
+      await audit(page, `${theme} solve result`);
+    });
+    test("range builder with the GTO comparison overlay", async ({ page }) => {
+      await page.goto("/builder/");
+      await page.getByTestId("range-text").fill("22+,A2s+,K9s+,QTs+,JTs,ATo+,KJo+:0.5");
+      await page.getByTestId("range-import").click();
+      await page.getByTestId("ref-select").selectOption("btn-open");
+      await page.getByTestId("compare").waitFor();
+      await audit(page, `${theme} builder compare`);
+    });
     test("study with a selected hand, EV mode", async ({ page }) => {
       await page.goto("/study/");
       await page.waitForSelector(".cell");

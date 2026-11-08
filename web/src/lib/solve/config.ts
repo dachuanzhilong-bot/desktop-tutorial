@@ -21,12 +21,13 @@ export interface SolveConfig {
 export const DEFAULT_SOLVE: SolveConfig = {
   pot: 5.5,
   stack: 97.5,
-  bets: [[0.33, 0.75], [0.66], [0.5, 1]],
+  // lighter than the shipped solutions (those have two flop sizes and a raise size): a flop solve has to finish in the browser
+  bets: [[0.5], [0.66], [0.5, 1]],
   raiseMult: 3,
   allinRatio: 0.67,
   allowAllin: true,
-  raiseSizes: [true, false, false],
-  turnCards: 6,
+  raiseSizes: [false, false, false],
+  turnCards: 4,
   riverCards: 2,
   flopRunouts: 120,
   seed: 7,
@@ -49,12 +50,20 @@ export function buildConfig(c: SolveConfig): number[] {
   return v;
 }
 
-/** rough tree size / cost estimate shown before the solve starts */
+/**
+ * Rough cost of one iteration, calibrated with the WebAssembly build (see docs/04):
+ *   river ~0.6 ms, turn ~6.7 ms (2 sizes on the river), flop ~92 ms (4 turn / 2 river cards, one size per street)
+ * It grows with the number of bet options per street and with the sampled cards.
+ */
 export function costHint(boardLen: number, c: SolveConfig): { level: "fast" | "medium" | "slow"; msPerIter: number } {
-  // measured with the WASM build: river 0.7 ms, turn (river x4) 10 ms, flop (turn x4, river x1) 157 ms per iteration
-  const base = boardLen >= 5 ? 0.7 : boardLen === 4 ? 2.5 * c.riverCards : 40 * c.turnCards * (c.riverCards / 2 + 0.5) * 0.4;
-  const bets = c.bets[Math.min(2, boardLen - 3)].length + 1;
-  const ms = base * (bets / 3);
+  const start = Math.max(0, Math.min(2, boardLen - 3));
+  const width = (s: number) => c.bets[s].length + (c.raiseSizes[s] ? 1 : 0) + (c.allowAllin ? 1 : 0);
+  const rel = (ref: number, f: number) => Math.pow(f / ref, 1.3);
+  const riverTerm = (0.695 + c.riverCards) / 2.695;
+  let ms: number;
+  if (start === 2) ms = 0.6 * rel(3, width(2));
+  else if (start === 1) ms = 6.7 * riverTerm * rel(6, width(1) * width(2));
+  else ms = 92.4 * (c.turnCards / 4) * riverTerm * rel(12, width(0) * width(1) * width(2));
   return { level: ms < 8 ? "fast" : ms < 60 ? "medium" : "slow", msPerIter: ms };
 }
 

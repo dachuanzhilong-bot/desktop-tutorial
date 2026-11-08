@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { Ring } from "@/components/Charts";
-import { IconFlame, IconGrid, IconTarget } from "@/components/icons";
+import { IconFlame, IconBolt, IconGrid, IconTarget } from "@/components/icons";
 import { useSettings } from "@/lib/settings";
 import { SEATS } from "@/lib/solution/tree";
 import { getRepo } from "@/lib/storage/idb";
@@ -62,6 +62,10 @@ export default function Home() {
       <Link href="/study/" data-testid="cta-study" className="flex min-h-14 items-center justify-center gap-3 rounded-3xl border border-line bg-surface font-bold">
         <IconGrid width={22} height={22} />
         {t("home.study")}
+      </Link>
+      <Link href="/solve/" data-testid="cta-solve" className="flex min-h-14 items-center justify-center gap-3 rounded-3xl border border-line bg-surface font-bold">
+        <IconBolt width={22} height={22} />
+        {t("home.solve")}
       </Link>
 
       {weak.length > 0 && (

@@ -5,8 +5,8 @@ import type { Key } from "@/lib/i18n/ja";
 const PHASES = [
   { k: "roadmap.p1", done: true },
   { k: "roadmap.p2", done: true },
-  { k: "roadmap.p3", done: false },
-  { k: "roadmap.p4", done: false },
+  { k: "roadmap.p3", done: true },
+  { k: "roadmap.p4", done: true },
   { k: "roadmap.p5", done: false },
   { k: "roadmap.p6", done: false },
 ] as const;

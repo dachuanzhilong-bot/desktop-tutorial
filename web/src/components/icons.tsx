@@ -102,3 +102,9 @@ export const IconUndo = (p: SVGProps<SVGSVGElement>) => (
     <path d="M4 9h10a6 6 0 0 1 0 12h-3" />
   </svg>
 );
+
+export const IconBolt = (p: SVGProps<SVGSVGElement>) => (
+  <svg {...base(p)}>
+    <path d="M13 3 5 13.5h6L10 21l8-10.5h-6L13 3Z" />
+  </svg>
+);
