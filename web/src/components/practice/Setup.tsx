@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
+import { DepthPicker } from "@/components/DepthPicker";
 import { IconDice, IconTimer } from "@/components/icons";
 import { DEFAULT_FILTER, PracticeFilter } from "@/lib/practice/sampler";
 import { HAND_FILTERS, HandFilterId } from "@/lib/poker/hands";
@@ -172,6 +173,7 @@ export function Setup({
       {!isPost && (
       <section className="space-y-3" aria-label={t("practice.conditions")}>
         <h2 className="text-sm font-bold text-muted">{t("practice.conditions")}</h2>
+        <DepthPicker />
         <div>
           <p className="mb-1.5 text-sm font-semibold">{t("practice.seat")}</p>
           <div className="flex flex-wrap gap-1.5">

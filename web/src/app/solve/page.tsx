@@ -12,7 +12,7 @@ import type { Key } from "@/lib/i18n/ja";
 import { parseBoard, cardOf, cardText } from "@/lib/postflop/combos";
 import { decodeFlop, PfFlop } from "@/lib/postflop/decode";
 import { loadIndex } from "@/lib/postflop/loader";
-import { RANGE_PRESETS, presetRange } from "@/lib/ranges/presets";
+import { RANGE_PRESETS, availablePresets, presetRange } from "@/lib/ranges/presets";
 import { formatRange, parseRange, rangeCombos } from "@/lib/ranges/range";
 import { SolverClient } from "@/lib/solve/client";
 import type { Exported, Progress } from "@/lib/solve/client";
@@ -143,6 +143,10 @@ export default function SolvePage() {
     if (b) setIpText((cur) => cur || formatRange(b));
   };
 
+  const have = useMemo(() => new Set((store ? availablePresets(store) : RANGE_PRESETS).map((p) => p.id)), [store]);
+  const can3bp = have.has("bb-3bet-btn") && have.has("btn-call-3bet");
+  const depthBB = store?.manifest.stack ?? 100;
+
   const quick = async (kind: "srp" | "3bp") => {
     setOopName("BB");
     setIpName("BTN");
@@ -157,8 +161,10 @@ export default function SolvePage() {
       const ix = await loadIndex();
       const sc = ix.scenarios.find((s) => s.id === (kind === "srp" ? "srp-btn-bb" : "3bp-btn-bb"));
       if (sc) {
+        // the postflop data are 100bb; at another depth the pot is the same and the stack behind is what is left
+        const invested = (sc.pot - 0.5) / 2;
         setPot(String(sc.pot));
-        setStack(String(sc.stack));
+        setStack(String(depthBB === 100 ? sc.stack : Math.max(1, Math.round((depthBB - invested) * 10) / 10)));
       }
     } catch {
       setPot(kind === "srp" ? "5.5" : "20.5");
@@ -315,7 +321,7 @@ export default function SolvePage() {
             <button type="button" data-testid="quick-srp" onClick={() => quick("srp")} className="min-h-11 rounded-xl border border-line bg-surface px-3.5 text-sm font-semibold">
               {t("solve.quick.srp")}
             </button>
-            <button type="button" data-testid="quick-3bp" onClick={() => quick("3bp")} className="min-h-11 rounded-xl border border-line bg-surface px-3.5 text-sm font-semibold">
+            <button type="button" data-testid="quick-3bp" disabled={!can3bp} onClick={() => quick("3bp")} className="min-h-11 rounded-xl border border-line bg-surface px-3.5 text-sm font-semibold disabled:opacity-45">
               {t("solve.quick.3bp")}
             </button>
           </div>

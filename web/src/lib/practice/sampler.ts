@@ -2,7 +2,7 @@ import type { Manifest, NodeSolution, SpotType } from "../solution/types";
 import { spotType } from "../solution/tree";
 import { HandFilterId, matchesFilter, NUM_CLASSES, comboCount } from "../poker/hands";
 import { weightedPick } from "../util/rng";
-import { mixedness, priorityWeight, SrsItem } from "./srs";
+import { mixedness, priorityWeight, srsKey, SrsItem } from "./srs";
 
 export interface PracticeFilter {
   /** hero seats (empty = any) */
@@ -43,6 +43,7 @@ export function pickHand(
   rnd: () => number,
   srs: Map<string, SrsItem>,
   now: number,
+  solution?: string,
 ): number {
   const w = new Float64Array(NUM_CLASSES);
   for (let h = 0; h < NUM_CLASSES; h++) {
@@ -51,7 +52,7 @@ export function pickHand(
     for (let a = 0; a < sol.na; a++) fr[a] = sol.freq[a * NUM_CLASSES + h];
     const mx = mixedness(fr);
     if (f.mixedOnly && mx < 0.12) continue;
-    w[h] = comboCount(h) * sol.weight[h] * priorityWeight({ item: srs.get(`${nodeId}:${h}`), now, mixedness: mx, mixedBoost: true });
+    w[h] = comboCount(h) * sol.weight[h] * priorityWeight({ item: srs.get(srsKey(solution, nodeId, h)), now, mixedness: mx, mixedBoost: true });
   }
   return weightedPick(w, rnd);
 }

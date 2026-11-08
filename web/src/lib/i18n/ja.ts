@@ -594,7 +594,7 @@ export const ja = {
   "analyze.clear": "取り込んだハンドをすべて削除",
   "analyze.clearAsk": "取り込んだハンドをすべて削除しますか？",
   "analyze.stackNote": "スタック {n}bb",
-  "analyze.limits": "対応: PokerStars・キャッシュ・ノーリミットHE・2〜6人、スタック50〜200bb。プリフロップの判断のみ採点（解は6-max 100bbのモデル）。",
+  "analyze.limits": "対応: PokerStars・キャッシュ・ノーリミットHE・2〜6人、有効スタック15〜250bb（最も近い深度の解で採点）。プリフロップの判断のみ採点。",
   "sync.title": "アカウントとクラウド同期",
   "sync.notConfigured": "クラウド同期はこのビルドでは未設定です。練習の記録などは端末内だけに保存されます（書き出し/読み込みでバックアップできます）。",
   "sync.intro": "ログインすると、練習の記録・間隔反復・保存したレンジ・設定を複数の端末で同期できます。同期しなくても、すべての機能は使えます。",
@@ -692,6 +692,10 @@ export const ja = {
   "icm.drill.stats": "回答 {n}回 · 正解率 {acc}% · 平均EV損失 {loss}%",
   "icm.drill.none": "このポジションには練習できる場面がありません（誰もそこまで来ない設定です）。",
   "icm.drill.note": "練習の記録は保存されません（このページを離れると消えます）。",
+  "depth.label": "スタック深度",
+  "depth.hint": "プリフロップ解の有効スタック（bb）。100bb以外はモデルの調整をしていないので、100bbより粗い近似です（特に20〜40bbと200bb）。ポストフロップの解は100bbのみ。",
+  "depth.option": "{n}bb",
+  "depth.loading": "読み込み中…",
 } as const;
 
 export type Key = keyof typeof ja;

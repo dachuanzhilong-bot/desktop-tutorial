@@ -6,15 +6,17 @@ import { PlayingCard } from "@/components/PlayingCard";
 import { SolutionGate } from "@/components/SolutionGate";
 import { ReviewTabs } from "@/components/analyze/ReviewTabs";
 import { GradeBadge } from "@/components/practice/ResultPanel";
-import { analyzeHand } from "@/lib/analyze/match";
+import { analyzeHand, effectiveStack, MAX_STACK, MIN_STACK } from "@/lib/analyze/match";
 import type { DecisionInfo } from "@/lib/analyze/match";
-import { filterHands, HandFilter, practiceItems, summarize, weakSpots } from "@/lib/analyze/aggregate";
+import { filterHands, HandFilter, mistakeSolution, practiceItems, solutionOf, summarize, weakSpots } from "@/lib/analyze/aggregate";
 import { normalizeHand, SEAT_NAMES } from "@/lib/analyze/normalize";
 import { parseHandHistory } from "@/lib/analyze/parse";
 import type { Key } from "@/lib/i18n/ja";
 import { cardOf } from "@/lib/postflop/combos";
 import { saveDraft } from "@/lib/solve/draft";
+import { depthOf, nearestDepth } from "@/lib/solution/loader";
 import type { SolutionStore } from "@/lib/solution/loader";
+import { useSolutionStore } from "@/lib/solution/context";
 import { actionLabel, fmtBB, stateAt } from "@/lib/solution/tree";
 import { ActionKind } from "@/lib/solution/types";
 import type { Manifest, SpotType } from "@/lib/solution/types";
@@ -39,6 +41,7 @@ function Analyze({ store }: { store: SolutionStore }) {
   const { t } = useSettings();
   const router = useRouter();
   const m = store.manifest;
+  const { getStore } = useSolutionStore();
   const [hands, setHands] = useState<StoredHand[] | null>(null);
   const [busy, setBusy] = useState<{ done: number; total: number } | null>(null);
   const [report, setReport] = useState<Report | null>(null);
@@ -79,7 +82,10 @@ function Analyze({ store }: { store: SolutionStore }) {
       if ("reason" in n) {
         rep.skipped[n.reason] = (rep.skipped[n.reason] ?? 0) + 1;
       } else {
-        out.push({ id: n.id, site: todo[i].site, ts: n.ts, importedAt: Date.now(), hand: n, analysis: await analyzeHand(store, n) });
+        // each hand is graded against the solution whose depth is closest to its effective stack
+        const eff = effectiveStack(n);
+        const src = eff >= MIN_STACK && eff <= MAX_STACK ? await getStore(nearestDepth(eff)).catch(() => store) : store;
+        out.push({ id: n.id, site: todo[i].site, ts: n.ts, importedAt: Date.now(), hand: n, analysis: await analyzeHand(src, n) });
       }
       if (i % 20 === 0) setBusy({ done: i, total: todo.length });
     }
@@ -103,13 +109,15 @@ function Analyze({ store }: { store: SolutionStore }) {
   const view = useMemo(() => filterHands(list, filter), [list, filter]);
 
   const makeSet = async (seat?: number, spot?: SpotType) => {
-    const items = practiceItems(list, 30, seat, spot);
-    if (!items.length) {
+    // one solution (stack depth) per set: the one with the most mistakes
+    const solution = mistakeSolution(list, seat, spot);
+    const items = solution ? practiceItems(list, 30, seat, spot, solution) : [];
+    if (!solution || !items.length) {
       setNote(t("analyze.setNone"));
       return;
     }
     const id = `a${Date.now().toString(36)}`;
-    await getRepo().setMeta(`practiceSet:${id}`, { title: t("analyze.setTitle"), items });
+    await getRepo().setMeta(`practiceSet:${id}`, { title: `${t("analyze.setTitle")} · ${depthOf(solution)}bb`, solution, items });
     router.push(`/practice/#set=${id}`);
   };
 
@@ -255,7 +263,7 @@ function Analyze({ store }: { store: SolutionStore }) {
             </div>
             <ul className="space-y-3" data-testid="hh-list">
               {view.slice(0, shown).map((h) => (
-                <HandCard key={h.id} h={h} m={m} onChange={refresh} />
+                <HandCard key={h.id} h={h} onChange={refresh} />
               ))}
             </ul>
             {view.length > shown && (
@@ -283,6 +291,22 @@ function Analyze({ store }: { store: SolutionStore }) {
   );
 }
 
+/** the manifest of the solution a stored hand was graded against (needed for action names) */
+function useManifestOf(solution: string): Manifest | null {
+  const { getStore } = useSolutionStore();
+  const [m, setM] = useState<Manifest | null>(null);
+  useEffect(() => {
+    let alive = true;
+    getStore(depthOf(solution))
+      .then((s) => alive && setM(s.manifest))
+      .catch(() => {});
+    return () => {
+      alive = false;
+    };
+  }, [solution, getStore]);
+  return m;
+}
+
 function actionText(m: Manifest, nodeId: number, idx: number, t: (k: Key) => string): string {
   const node = m.nodes[nodeId];
   const a = node.actions[idx];
@@ -290,9 +314,10 @@ function actionText(m: Manifest, nodeId: number, idx: number, t: (k: Key) => str
   return a.kind >= ActionKind.Raise ? `${base} ${fmtBB(a.to)}` : base;
 }
 
-function HandCard({ h, m, onChange }: { h: StoredHand; m: Manifest; onChange: () => void }) {
+function HandCard({ h, onChange }: { h: StoredHand; onChange: () => void }) {
   const { t } = useSettings();
   const router = useRouter();
+  const m = useManifestOf(solutionOf(h));
   const a = h.analysis;
   const [c1, c2] = h.hand.heroCards;
   const net = h.hand.heroNet;
@@ -330,7 +355,7 @@ function HandCard({ h, m, onChange }: { h: StoredHand; m: Manifest; onChange: ()
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
         {a.worst && (
-          <Link href={`/study/#n=${a.worst.nodeId}`} className="min-h-10 rounded-lg border border-line px-3 py-2 text-sm font-semibold">
+          <Link href={`/study/#d=${depthOf(a.solution)}&n=${a.worst.nodeId}`} className="min-h-10 rounded-lg border border-line px-3 py-2 text-sm font-semibold">
             {t("analyze.openStudy")}
           </Link>
         )}
@@ -355,9 +380,10 @@ function HandCard({ h, m, onChange }: { h: StoredHand; m: Manifest; onChange: ()
   );
 }
 
-function DecisionRow({ d, m }: { d: DecisionInfo; m: Manifest }) {
+function DecisionRow({ d, m }: { d: DecisionInfo; m: Manifest | null }) {
   const { t } = useSettings();
   const tt = t as (k: Key) => string;
+  if (!m) return <li className="rounded-xl bg-surface-2 p-2 text-sm text-muted">…</li>;
   const acts = m.nodes[d.nodeId].actions;
   return (
     <li className="rounded-xl bg-surface-2 p-2">

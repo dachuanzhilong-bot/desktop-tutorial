@@ -2,6 +2,7 @@
   "name": "tessera-web",
   "version": "0.1.0",
   "private": true,
+  "license": "MIT",
   "description": "Tessera \u2013 poker GTO study app (Next.js, PWA, local-first)",
   "scripts": {
     "dev": "next dev",

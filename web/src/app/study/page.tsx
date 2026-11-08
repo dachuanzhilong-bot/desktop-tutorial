@@ -1,7 +1,8 @@
 "use client";
-import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
 import { HandPanel, FreqBars } from "@/components/HandPanel";
 import { LineBar } from "@/components/LineBar";
+import { DepthPicker } from "@/components/DepthPicker";
 import { StudyTabs } from "@/components/StudyTabs";
 import { ActionLegend, GridAction, RangeGrid, GridMode, toneFor } from "@/components/RangeGrid";
 import { SolutionGate } from "@/components/SolutionGate";
@@ -11,7 +12,8 @@ import { Term } from "@/components/Term";
 import { ALL_CLASSES, HAND_FILTERS, HandFilterId, holdsRank, matchesFilter, RANK_CHARS } from "@/lib/poker/hands";
 import { useSettings } from "@/lib/settings";
 import type { SolutionStore } from "@/lib/solution/loader";
-import { useNodeSolution } from "@/lib/solution/context";
+import { useNodeSolution, useSolutionStore } from "@/lib/solution/context";
+import { DEPTHS } from "@/lib/solution/loader";
 import { actionLabel, fmtBB, history, spotType, stateAt } from "@/lib/solution/tree";
 import { ActionKind, Terminal } from "@/lib/solution/types";
 import type { Key } from "@/lib/i18n/ja";
@@ -24,9 +26,9 @@ function termKey(term: Terminal): Key {
   return term === Terminal.Fold ? "term.fold" : term === Terminal.Flop ? "term.flop" : term === Terminal.FlopMulti ? "term.flopMulti" : "term.allin";
 }
 
-function replaceHash(id: number) {
+function replaceHash(id: number, depth: number) {
   try {
-    window.history.replaceState(null, "", `${location.pathname}#n=${id}`);
+    window.history.replaceState(null, "", `${location.pathname}#d=${depth}&n=${id}`);
   } catch {
     /* ignore */
   }
@@ -45,12 +47,44 @@ function Study({ store }: { store: SolutionStore }) {
   const [peek, setPeek] = useState<number | null>(null);
   const [tab, setTab] = useState<"range" | "compare">("range");
 
-  // deep link: #n=123
+  // deep link: #d=40&n=123 (depth, node). Another depth starts at the node given, or at the root, once that solution has loaded.
+  const { depth, setDepth } = useSolutionStore();
+  const depthRef = useRef(depth);
+  depthRef.current = depth;
+  const wanted = useRef<{ d: number | null; n: number | null } | null>(null);
+  const nodeCount = useRef(m.nodes.length);
+  nodeCount.current = m.nodes.length;
   useEffect(() => {
-    const m1 = /n=(\d+)/.exec(location.hash);
-    if (m1 && Number(m1[1]) < m.nodes.length) setNodeId(Number(m1[1]));
-  }, [m.nodes.length]);
-  useEffect(() => replaceHash(nodeId), [nodeId]);
+    const apply = () => {
+      const d = /d=(\d+)/.exec(location.hash);
+      const n = /n=(\d+)/.exec(location.hash);
+      const want = { d: d ? Number(d[1]) : null, n: n ? Number(n[1]) : null };
+      if (want.d !== null && (DEPTHS as readonly number[]).includes(want.d) && want.d !== depthRef.current) {
+        wanted.current = want; // applied when the other solution is here
+        setDepth(want.d);
+      } else if (want.n !== null && want.n < nodeCount.current) setNodeId(want.n);
+    };
+    apply();
+    window.addEventListener("hashchange", apply);
+    return () => window.removeEventListener("hashchange", apply);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+  const shownId = useRef<string | null>(null);
+  useEffect(() => {
+    const first = shownId.current === null;
+    shownId.current = m.id;
+    const w = wanted.current;
+    if (w && (w.d === null || w.d === m.stack)) {
+      wanted.current = null;
+      setNodeId(w.n !== null && w.n < m.nodes.length ? w.n : 0);
+      setSelected(null);
+    } else if (!first) {
+      setNodeId(0);
+      setSelected(null);
+      setBlocker(null);
+    }
+  }, [m.id, m.stack, m.nodes.length]);
+  useEffect(() => replaceHash(nodeId, m.stack), [nodeId, m.stack]);
 
   const node = m.nodes[nodeId];
   const state = useMemo(() => stateAt(m, nodeId), [m, nodeId]);
@@ -104,6 +138,7 @@ function Study({ store }: { store: SolutionStore }) {
         </p>
       </header>
       <StudyTabs />
+      <DepthPicker />
 
       <LineBar steps={steps} players={m.players} currentLabel={`${m.players[node.actor]} ?`} onJump={go} />
 

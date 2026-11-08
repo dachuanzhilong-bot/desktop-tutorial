@@ -66,11 +66,29 @@ export function weakSpots(list: StoredHand[], limit = 6): WeakSpot[] {
     .slice(0, limit);
 }
 
-/** hands the player got wrong, worst first, as practice questions (each (node, hand) once) */
-export function practiceItems(list: StoredHand[], limit = 30, seat?: number, spot?: SpotType): { nodeId: number; hand: number }[] {
-  const all: DecisionInfo[] = [];
+export const solutionOf = (h: StoredHand) => h.analysis.solution ?? "cash6max-100bb";
+
+/** the solution (stack depth) in which the player made the most mistakes — a practice set uses one solution */
+export function mistakeSolution(list: StoredHand[], seat?: number, spot?: SpotType): string | null {
+  const n = new Map<string, number>();
   for (const h of list)
     for (const d of h.analysis.decisions) {
+      if (d.grade === "best" || d.grade === "correct") continue;
+      if ((seat !== undefined && d.seat !== seat) || (spot !== undefined && d.spot !== spot)) continue;
+      n.set(solutionOf(h), (n.get(solutionOf(h)) ?? 0) + 1);
+    }
+  let best: string | null = null;
+  for (const [k, v] of n) if (best === null || v > n.get(best)!) best = k;
+  return best;
+}
+
+/** hands the player got wrong, worst first, as practice questions (each (node, hand) once, all from one solution) */
+export function practiceItems(list: StoredHand[], limit = 30, seat?: number, spot?: SpotType, solution?: string): { nodeId: number; hand: number }[] {
+  const all: DecisionInfo[] = [];
+  const sol = solution ?? mistakeSolution(list, seat, spot);
+  for (const h of list)
+    for (const d of h.analysis.decisions) {
+      if (sol && solutionOf(h) !== sol) continue;
       if (d.grade === "best" || d.grade === "correct") continue;
       if (seat !== undefined && d.seat !== seat) continue;
       if (spot !== undefined && d.spot !== spot) continue;

@@ -163,3 +163,28 @@ Hero collected $26.5 from pot
 Total pot $26.5 | Rake $0`;
 
 export const FILE_CRLF_BOM = "﻿" + [H_CO_OPEN, H_BAD_3BET, H_TOURNAMENT].join("\r\n\r\n\r\n").replace(/\n/g, "\r\n");
+
+/** 40bb effective: hero on the button 3-bets a UTG open with 72o */
+export const H_40BB = `PokerStars Hand #230000000008:  Hold'em No Limit ($0.50/$1.00 USD) - 2024/03/05 20:20:11 ET
+Table 'Aurora' 6-max Seat #4 is the button
+Seat 1: Alice ($40 in chips)
+Seat 2: Bob ($40 in chips)
+Seat 3: Cara ($40 in chips)
+Seat 4: Hero ($40 in chips)
+Seat 5: Eve ($40 in chips)
+Seat 6: Frank ($40 in chips)
+Eve: posts small blind $0.50
+Frank: posts big blind $1
+*** HOLE CARDS ***
+Dealt to Hero [7c 2d]
+Alice: raises $1.50 to $2.50
+Bob: folds
+Cara: folds
+Hero: raises $5.50 to $8
+Eve: folds
+Frank: folds
+Alice: folds
+Uncalled bet ($5.50) returned to Hero
+Hero collected $6 from pot
+*** SUMMARY ***
+Total pot $6 | Rake $0`;

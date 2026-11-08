@@ -2,7 +2,7 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { RangeCells } from "@/components/ranges/RangeCells";
-import { RANGE_PRESETS, presetRange } from "@/lib/ranges/presets";
+import { RANGE_PRESETS, availablePresets, presetRange } from "@/lib/ranges/presets";
 import { parseRange, rangeCombos, rangePercent, formatRange } from "@/lib/ranges/range";
 import { useSolutionStore } from "@/lib/solution/context";
 import { useSettings } from "@/lib/settings";
@@ -13,6 +13,8 @@ export function RangeField({ label, text, onText, saved, testId }: { label: stri
   const { t } = useSettings();
   const { store } = useSolutionStore();
   const parsed = useMemo(() => parseRange(text), [text]);
+  // not every line exists at every stack depth (e.g. nobody calls a 3-bet at 20bb)
+  const presets = useMemo(() => (store ? availablePresets(store) : RANGE_PRESETS), [store]);
   const [choice, setChoice] = useState("");
   const pick = async (id: string) => {
     setChoice(id);
@@ -47,7 +49,7 @@ export function RangeField({ label, text, onText, saved, testId }: { label: stri
             <select value={choice} onChange={(e) => pick(e.target.value)} data-testid={`${testId}-preset`} className="mt-0.5 block min-h-11 w-full rounded-xl border border-line bg-surface-2 px-2 text-sm text-ink">
               <option value="">{t("solve.presetCustom")}</option>
               <optgroup label="GTO">
-                {RANGE_PRESETS.map((p) => (
+                {presets.map((p) => (
                   <option key={p.id} value={`preset:${p.id}`}>
                     {p.title}
                   </option>

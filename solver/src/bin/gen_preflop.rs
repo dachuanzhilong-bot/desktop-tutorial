@@ -1,6 +1,6 @@
-//! Generates the 6-max 100bb preflop solution consumed by the web app.
+//! Generates a 6-max preflop solution (default 100bb) consumed by the web app.
 //!
-//!   cargo run --release --bin gen_preflop -- --out ../web/solutions-src/cash6max-100bb
+//!   cargo run --release --bin gen_preflop -- --stack 40 --out out/cash6max-40bb
 use std::time::Instant;
 use tessera_solver::{equity, preflop::*};
 
@@ -24,7 +24,8 @@ fn main() {
     let iters: u32 = arg(&args, "--iters", 2000);
     let samples: u32 = arg(&args, "--eq-samples", 60_000);
     let threads: usize = arg(&args, "--threads", std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4));
-    let out: String = arg(&args, "--out", "out/cash6max-100bb".to_string());
+    let out_default = format!("out/cash6max-{}bb", arg(&args, "--stack", 100.0f32).round() as i64);
+    let out: String = arg(&args, "--out", out_default);
     let seed: u64 = arg(&args, "--seed", 20260101);
     let log_every: u32 = arg(&args, "--log-every", 250);
     let explore: f32 = arg(&args, "--explore", 0.2);
@@ -34,6 +35,10 @@ fn main() {
     let report_only: bool = args.iter().any(|a| a == "--report");
 
     let mut cfg = Config::default();
+    cfg.stack = arg(&args, "--stack", cfg.stack);
+    cfg.open_jam_max = arg(&args, "--open-jam-max", cfg.open_jam_max);
+    cfg.shove_3bet_max = arg(&args, "--shove-3bet-max", cfg.shove_3bet_max);
+    let id = format!("cash6max-{}bb", cfg.stack.round() as i64);
     cfg.real.ip_mean = arg(&args, "--ip-mean", cfg.real.ip_mean);
     cfg.real.ip_slope = arg(&args, "--ip-slope", cfg.real.ip_slope);
     cfg.real.oop_mean = arg(&args, "--oop-mean", cfg.real.oop_mean);
@@ -121,6 +126,6 @@ fn main() {
         "{{\"solver\":\"tessera-cfr+\",\"iterations\":{},\"polish\":{},\"eqSamples\":{},\"brGainMax\":{:.5},\"brGainMean\":{:.5},\"model\":\"169-class CFR+, up to 3-way flops, EQR model\",\"real\":{{\"ipMean\":{},\"ipSlope\":{},\"oopMean\":{},\"oopSlope\":{},\"sprScale\":{}}}}}",
         iters, polish, samples, last_gap.0, last_gap.1, cfg.real.ip_mean, cfg.real.ip_slope, cfg.real.oop_mean, cfg.real.oop_slope, cfg.real.spr_scale
     );
-    let st = export(&pf, &ev, &out, "cash6max-100bb", &info, min_reach).expect("export failed");
+    let st = export(&pf, &ev, &out, &id, &info, min_reach).expect("export failed");
     eprintln!("exported {} decision nodes, {:.2} MB raw -> {}", st.nodes, st.bytes as f64 / 1e6, out);
 }

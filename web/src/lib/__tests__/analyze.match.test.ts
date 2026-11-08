@@ -83,10 +83,11 @@ describe("analysing a hand against the preflop solution", () => {
 
   it("does not grade stacks far from 100bb", async () => {
     const n = norm(H_CO_OPEN);
-    n.stacks = n.stacks.map((x) => x / 5);
+    n.stacks = n.stacks.map((x) => x / 10);
     const a = await analyzeHand(src, n);
     expect(a.status).toBe("skipped");
     expect(a.reason).toMatch(/outside/);
+    expect(a.solution).toBe("cash6max-100bb");
   });
 });
 

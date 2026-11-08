@@ -10,7 +10,7 @@ import { Card, comboCount, matchesFilter, NUM_CLASSES, randomCombo } from "@/lib
 import { buildQuestion, judge, PendingStep, playOutOpponents, Question, shortcutFor, stepsTo } from "@/lib/practice/engine";
 import { candidateNodes, pickHand, pickNode } from "@/lib/practice/sampler";
 import { Result, sessionStats } from "@/lib/practice/session";
-import { updateSrs, SrsItem } from "@/lib/practice/srs";
+import { srsKey, updateSrs, SrsItem } from "@/lib/practice/srs";
 import { useSettings } from "@/lib/settings";
 import type { SolutionStore } from "@/lib/solution/loader";
 import { actionLabel, applyAction, fmtBB, initialState, spotType, stateAt } from "@/lib/solution/tree";
@@ -99,7 +99,7 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
     for (let tries = 0; tries < 12; tries++) {
       const nodeId = pickNode(m, nodes, config.filter, rnd);
       const sol = await store.node(nodeId);
-      const hand = pickHand(sol, nodeId, config.filter, rnd, srs.current, Date.now());
+      const hand = pickHand(sol, nodeId, config.filter, rnd, srs.current, Date.now(), m.id);
       if (sol.weight[hand] < 0.02 || !matchesFilter(hand, config.filter.hands)) continue;
       const q = buildQuestion(m, nodeId, sol, hand, rnd, config.rng);
       setRound({ heroSeat: m.nodes[nodeId].actor, hand, cards: q.cards, queue: stepsTo(m, nodeId), startState: initialState(m), q, endedWith: null });
@@ -244,8 +244,8 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
         timeout,
         hint: hintUsed.current,
       };
-      const key = `${q.nodeId}:${q.hand}`;
-      const item = updateSrs(srs.current.get(key), q.nodeId, q.hand, j.grade, now);
+      const key = srsKey(m.id, q.nodeId, q.hand);
+      const item = updateSrs(srs.current.get(key), q.nodeId, q.hand, j.grade, now, key);
       srs.current.set(key, item);
       const repo = getRepo();
       repo.addAttempt(attempt).catch(() => {});

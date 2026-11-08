@@ -9,6 +9,9 @@ import { PostSession } from "@/components/postflop/PostSession";
 import { DEFAULT_FILTER } from "@/lib/practice/sampler";
 import type { PracticeFilter } from "@/lib/practice/sampler";
 import { getRepo } from "@/lib/storage/idb";
+import { useSolutionStore } from "@/lib/solution/context";
+import { depthOf } from "@/lib/solution/loader";
+import type { SolutionStore } from "@/lib/solution/loader";
 import { SPOT_TYPES, SpotType } from "@/lib/solution/types";
 
 /** `/practice/#seat=3&spot=vs3bet` pre-fills the conditions (used by the weak-spot shortcuts) */
@@ -39,20 +42,39 @@ function parseHash(): Preset {
   };
 }
 
+interface PendingSet {
+  title: string;
+  /** solution id the node ids belong to (absent in sets made before stack depths existed: 100bb) */
+  solution?: string;
+  items: { nodeId: number; hand: number }[];
+}
+
+/** waits until the solution of the question list is loaded (switching the stack depth if needed), then starts it */
+function SetStarter({ store, pending, onStart }: { store: SolutionStore; pending: PendingSet; onStart: () => void }) {
+  useEffect(() => {
+    if (store.manifest.id === (pending.solution ?? "cash6max-100bb")) onStart();
+  }, [store, pending, onStart]);
+  return <div className="h-40 animate-pulse rounded-2xl bg-surface" aria-busy="true" />;
+}
+
 export default function PracticePage() {
   const [config, setConfig] = useState<StartConfig | null>(null);
   const [run, setRun] = useState(0);
   const [initial, setInitial] = useState<Preset | null>(null);
+  const [pending, setPending] = useState<PendingSet | null>(null);
+  const { setDepth } = useSolutionStore();
   useImmersive(config !== null);
   useEffect(() => {
     const preset = parseHash();
     if (!preset.set) return setInitial(preset);
     // a question list from Analyze: start right away
     getRepo()
-      .getMeta<{ title: string; items: { nodeId: number; hand: number }[] }>(`practiceSet:${preset.set}`)
+      .getMeta<PendingSet>(`practiceSet:${preset.set}`)
       .then((s) => {
-        if (s?.items.length) setConfig({ type: "pre", config: { mode: "spot", filter: { ...DEFAULT_FILTER }, rng: false, timer: 0, fixed: s.items, title: s.title } });
-        else setInitial({ ...preset, set: undefined });
+        if (s?.items.length) {
+          setDepth(depthOf(s.solution));
+          setPending(s);
+        } else setInitial({ ...preset, set: undefined });
       })
       .catch(() => setInitial({ ...preset, set: undefined }));
   }, []);
@@ -65,10 +87,10 @@ export default function PracticePage() {
             key={run}
             store={store}
             config={config.config}
-            onPostflop={(c) => {
+            onPostflop={store.manifest.stack === 100 ? (c) => {
               setConfig({ type: "post", config: c });
               setRun((r) => r + 1);
-            }}
+            } : undefined}
             onExit={() => {
               setConfig(null);
               setRun((r) => r + 1);
@@ -81,6 +103,15 @@ export default function PracticePage() {
             onExit={() => {
               setConfig(null);
               setRun((r) => r + 1);
+            }}
+          />
+        ) : pending ? (
+          <SetStarter
+            store={store}
+            pending={pending}
+            onStart={() => {
+              setConfig({ type: "pre", config: { mode: "spot", filter: { ...DEFAULT_FILTER }, rng: false, timer: 0, fixed: pending.items, title: pending.title } });
+              setPending(null);
             }}
           />
         ) : initial ? (

@@ -1,7 +1,29 @@
 import { decodeChunk, gunzip, parseManifest } from "./decode";
 import type { Manifest, NodeSolution } from "./types";
 
-export const DEFAULT_SOLUTION = "cash6max-100bb";
+/** effective stack depths (bb) a preflop solution exists for */
+export const DEPTHS = [20, 40, 60, 100, 200] as const;
+export type Depth = (typeof DEPTHS)[number];
+export const DEFAULT_DEPTH: Depth = 100;
+export const solutionId = (depth: number) => `cash6max-${depth}bb`;
+export const DEFAULT_SOLUTION = solutionId(DEFAULT_DEPTH);
+
+/** the depth whose solution is closest to an effective stack (compared on a log scale: 70bb is nearer 60 than 100) */
+export function nearestDepth(stack: number): Depth {
+  let best: Depth = DEPTHS[0];
+  let d = Infinity;
+  for (const x of DEPTHS) {
+    const e = Math.abs(Math.log(Math.max(stack, 1) / x));
+    if (e < d) {
+      d = e;
+      best = x;
+    }
+  }
+  return best;
+}
+
+/** depth encoded in a solution id such as "cash6max-40bb" (100 when unknown) */
+export const depthOf = (id: string | undefined): number => Number(/-(\d+)bb$/.exec(id ?? "")?.[1]) || DEFAULT_DEPTH;
 
 export class SolutionStore {
   manifest: Manifest;

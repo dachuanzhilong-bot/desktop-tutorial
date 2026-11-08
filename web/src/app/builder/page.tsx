@@ -5,7 +5,7 @@ import { RangeCells } from "@/components/ranges/RangeCells";
 import { SolveTabs } from "@/components/solve/SolveTabs";
 import { Term } from "@/components/Term";
 import { ALL_CLASSES, NUM_CLASSES } from "@/lib/poker/hands";
-import { RANGE_PRESETS, presetRange } from "@/lib/ranges/presets";
+import { RANGE_PRESETS, availablePresets, presetRange } from "@/lib/ranges/presets";
 import { compareRanges, emptyRange, formatRange, parseRange, rangeCombos, rangePercent } from "@/lib/ranges/range";
 import { loadDraft, saveDraft } from "@/lib/solve/draft";
 import { useSolutionStore } from "@/lib/solution/context";
@@ -262,7 +262,7 @@ export default function BuilderPage() {
           {t("builder.ref")}
           <select data-testid="ref-select" value={refId} onChange={(e) => setRefId(e.target.value)} className="mt-1 block min-h-11 w-full rounded-xl border border-line bg-surface-2 px-3 text-ink">
             <option value="">{t("builder.refNone")}</option>
-            {RANGE_PRESETS.map((p) => (
+            {(store ? availablePresets(store) : RANGE_PRESETS).map((p) => (
               <option key={p.id} value={p.id}>
                 {p.title}
               </option>

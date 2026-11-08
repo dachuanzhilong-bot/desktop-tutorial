@@ -49,3 +49,22 @@ export function mix(sol: NodeSolution): number[] {
   }
   return out.map((x) => x / tot);
 }
+
+/** the solution of another stack depth (needs `npm run solutions:pack` to have packed it) */
+export function loadManifestFor(depth: number): Manifest {
+  const dir = path.resolve(__dirname, `../../../public/solutions/cash6max-${depth}bb`);
+  return parseManifest(JSON.parse(gunzipSync(readFileSync(path.join(dir, "manifest.json.gz"))).toString("utf8")));
+}
+
+const depthCache = new Map<string, Map<number, NodeSolution>>();
+export function loadNodeFor(depth: number, m: Manifest, id: number): NodeSolution {
+  const chunk = m.nodes[id].chunk;
+  const key = `${depth}:${chunk}`;
+  let map = depthCache.get(key);
+  if (!map) {
+    const dir = path.resolve(__dirname, `../../../public/solutions/cash6max-${depth}bb`);
+    map = decodeChunk(new Uint8Array(gunzipSync(readFileSync(path.join(dir, `chunk-${chunk}.bin.gz`)))));
+    depthCache.set(key, map);
+  }
+  return map.get(id)!;
+}

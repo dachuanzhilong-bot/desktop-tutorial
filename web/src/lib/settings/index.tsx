@@ -18,6 +18,8 @@ export interface Settings {
   textScale: number;
   haptics: boolean;
   dailyGoal: number;
+  /** effective stack (bb) of the preflop solution shown in Study / Practice: 20, 40, 60, 100 or 200 */
+  depth: number;
   onboarded: boolean;
 }
 
@@ -31,6 +33,7 @@ export const DEFAULT_SETTINGS: Settings = {
   textScale: 1,
   haptics: true,
   dailyGoal: 30,
+  depth: 100,
   onboarded: false,
 };
 

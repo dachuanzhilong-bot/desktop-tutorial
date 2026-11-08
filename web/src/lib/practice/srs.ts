@@ -51,3 +51,10 @@ export function mixedness(freqs: ArrayLike<number>): number {
   for (let i = 0; i < freqs.length; i++) top = Math.max(top, freqs[i]);
   return Math.min(1, (1 - top) * 2);
 }
+
+/**
+ * Key of a (decision, hand) in the spaced-repetition store. The 100bb solution keeps the original
+ * `<node>:<hand>` keys (existing records stay valid); other depths are prefixed with their solution id,
+ * because node ids of different solutions mean different decisions.
+ */
+export const srsKey = (solution: string | undefined, nodeId: number, hand: number) => (!solution || solution === "cash6max-100bb" ? `${nodeId}:${hand}` : `${solution}:${nodeId}:${hand}`);

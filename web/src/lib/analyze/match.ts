@@ -12,10 +12,15 @@ export interface SolutionSource {
   node(id: number): Promise<NodeSolution>;
 }
 
-/** stack depth (bb) the preflop solution was computed for; hands far from it are not graded */
-export const SOLUTION_STACK = 100;
-export const MIN_STACK = 50;
-export const MAX_STACK = 200;
+/** hands whose effective stack is outside this range (bb) are not graded: below ~15bb it is push/fold, above 250bb it is a different game */
+export const MIN_STACK = 15;
+export const MAX_STACK = 250;
+
+/** the stack that matters in a hand: the hero's, capped by the deepest opponent (nobody can win or lose more than that) */
+export function effectiveStack(hand: NormHand): number {
+  const others = hand.stacks.filter((s, i) => s > 0 && i !== hand.heroSeat);
+  return Math.min(hand.stacks[hand.heroSeat], others.length ? Math.max(...others) : Infinity);
+}
 /** a raise this much bigger/smaller than the solution's single raise size is flagged as an approximation */
 const SIZE_TOLERANCE = 1.35;
 
@@ -53,6 +58,8 @@ export interface FlopLink {
 
 export interface HandAnalysis {
   id: string;
+  /** id of the solution the node ids refer to (absent in hands analysed before depths existed: 100bb) */
+  solution?: string;
   status: "ok" | "partial" | "skipped";
   reason?: string;
   decisions: DecisionInfo[];
@@ -97,10 +104,10 @@ function actionIndex(m: Manifest, nodeId: number, act: NormAction, stack: number
  */
 export async function analyzeHand(src: SolutionSource, hand: NormHand): Promise<HandAnalysis> {
   const m = src.manifest;
-  const base: HandAnalysis = { id: hand.id, status: "ok", decisions: [], offTree: [], evLoss: 0, worst: null, flopLink: null };
+  const base: HandAnalysis = { id: hand.id, solution: src.manifest.id, status: "ok", decisions: [], offTree: [], evLoss: 0, worst: null, flopLink: null };
   const skip = (reason: string): HandAnalysis => ({ ...base, status: "skipped", reason });
-  const heroStack = hand.stacks[hand.heroSeat];
-  if (heroStack < MIN_STACK || heroStack > MAX_STACK) return skip(`stack ${heroStack.toFixed(0)}bb is outside ${MIN_STACK}-${MAX_STACK}bb`);
+  const eff = effectiveStack(hand);
+  if (eff < MIN_STACK || eff > MAX_STACK) return skip(`effective stack ${eff.toFixed(0)}bb is outside ${MIN_STACK}-${MAX_STACK}bb`);
   if (hand.names.filter(Boolean).length < 2) return skip("fewer than two players");
 
   const last = new Map<number, { nodeId: number; action: number }>();

@@ -84,6 +84,10 @@ pub struct Config {
     pub four_bet_mult: f32,
     /// a 4-bet at least this fraction of the stack becomes a jam
     pub jam_threshold: f32,
+    /// at stacks up to this many bb a player may also jam instead of the normal open
+    pub open_jam_max: f32,
+    /// at stacks up to this many bb a player may also jam (re-shove) over an open instead of the normal 3-bet
+    pub shove_3bet_max: f32,
     pub real: Realization,
 }
 
@@ -98,6 +102,8 @@ impl Default for Config {
             three_bet_oop_add: 3.5,
             four_bet_mult: 2.3,
             jam_threshold: 0.4,
+            open_jam_max: 25.0,
+            shove_3bet_max: 45.0,
             real: Realization::default(),
         }
     }
@@ -252,6 +258,8 @@ impl<'a> Builder<'a> {
         let matched = (0..6).filter(|&q| !st.folded[q] && (st.inv[q] - st.cur).abs() < 1e-4).count();
         let can_call = if st.level == 0 {
             p == SB || p == BB
+        } else if st.level == 1 && st.cur >= self.cfg.stack - 1e-3 {
+            to_call > 1e-6 && matched <= 1 // an open-jam can be called by one player only (no three-way all-ins)
         } else if st.level == 1 {
             to_call > 1e-6 && matched <= 2 // up to three players see the flop of a single-raised pot
         } else {
@@ -278,7 +286,16 @@ impl<'a> Builder<'a> {
             }
             acts.push((ActKind::Call, st.cur, n));
         }
-        if let Some(size) = self.raise_to(st, p) {
+        let normal = self.raise_to(st, p);
+        // short stacks: a jam is a real option next to the normal raise (open-shove, re-shove over an open)
+        let jam_too = st.cur < self.cfg.stack - 1e-3
+            && ((st.level == 0 && self.cfg.stack <= self.cfg.open_jam_max) || (st.level == 1 && st.callers == 0 && self.cfg.stack <= self.cfg.shove_3bet_max))
+            && normal.map(|x| x < self.cfg.stack - 1e-3).unwrap_or(false);
+        let mut sizes: Vec<f32> = normal.into_iter().collect();
+        if jam_too {
+            sizes.push(self.cfg.stack);
+        }
+        for size in sizes {
             let mut n = st.clone();
             n.inv[p] = size;
             n.level += 1;

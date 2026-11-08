@@ -58,3 +58,8 @@ export async function presetRange(store: SolutionStore, p: RangePreset): Promise
   }
   return out;
 }
+
+/** the presets whose line exists in this solution (the trees differ by stack depth) */
+export function availablePresets(store: Pick<SolutionStore, "manifest">): RangePreset[] {
+  return RANGE_PRESETS.filter((p) => findNode(store, p.path) !== null);
+}

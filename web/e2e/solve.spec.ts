@@ -139,7 +139,7 @@ test.describe("solve", () => {
     await page.getByTestId("quick-3bp").click();
     await expect(page.getByTestId("range-oop-size")).not.toContainText("0コンボ", { timeout: 15_000 });
     await expect(page.getByTestId("range-ip-size")).not.toContainText("0コンボ");
-    const pot = Number(await page.getByTestId("pot-input").inputValue());
-    expect(pot).toBeGreaterThan(10);
+    // the pot / stack of the 3-bet pot arrive once the postflop index has loaded
+    await expect.poll(async () => Number(await page.getByTestId("pot-input").inputValue())).toBeGreaterThan(10);
   });
 });

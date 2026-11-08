@@ -596,7 +596,7 @@ export const en: Record<Key, string> = {
   "analyze.clear": "Delete all imported hands",
   "analyze.clearAsk": "Delete all imported hands?",
   "analyze.stackNote": "Stack {n}bb",
-  "analyze.limits": "Supported: PokerStars, cash games, No-Limit Hold'em, 2-6 players, 50-200bb. Only preflop decisions are graded (the solution is the 6-max 100bb model).",
+  "analyze.limits": "Supported: PokerStars, cash games, No-Limit Hold'em, 2-6 players, effective stack 15-250bb (graded against the nearest depth's solution). Only preflop decisions are graded.",
   "sync.title": "Account and cloud sync",
   "sync.notConfigured": "Cloud sync is not configured in this build. Your practice records stay on this device (back them up with export / import).",
   "sync.intro": "Sign in to sync your practice records, spaced repetition, saved ranges and settings across devices. Everything works without it.",
@@ -694,4 +694,8 @@ export const en: Record<Key, string> = {
   "icm.drill.stats": "{n} answered · {acc}% good · avg EV loss {loss}%",
   "icm.drill.none": "There is nothing to practise for this position (nobody gets that far in this setup).",
   "icm.drill.note": "Practice results are not saved (they are gone when you leave the page).",
+  "depth.label": "Stack depth",
+  "depth.hint": "Effective stack (bb) of the preflop solution. Only 100bb has been tuned: the other depths are rougher approximations (especially 20-40bb and 200bb). Postflop solutions exist for 100bb only.",
+  "depth.option": "{n}bb",
+  "depth.loading": "Loading…",
 };
