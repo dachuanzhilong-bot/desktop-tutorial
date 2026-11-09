@@ -1,3 +1,4 @@
+import { ICM_LOG_KEY, mergeIcmLog } from "./icmLog";
 import type { SrsItem } from "../practice/srs";
 import type { Attempt, ExportBlob, Repo, SavedRange, SavedSolve, StoredHand } from "./types";
 
@@ -37,7 +38,7 @@ export class MemoryRepo implements Repo {
       const cur = this.srs.get(s.key);
       if (!cur || cur.updated < s.updated) this.srs.set(s.key, s);
     }
-    for (const [k, v] of Object.entries(b.meta)) this.meta.set(k, v);
+    for (const [k, v] of Object.entries(b.meta)) this.meta.set(k, k === ICM_LOG_KEY ? mergeIcmLog(this.meta.get(k), v) : v);
     for (const r of b.ranges ?? []) await this.putRange(r);
     await this.putHands(b.hands ?? []);
   }

@@ -85,5 +85,30 @@ test.describe("ICM practice", () => {
     await expect(page.getByTestId("icm-drill-question")).toContainText("CO");
     await page.keyboard.press("f");
     await expect(page.getByTestId("icm-drill-result")).toBeVisible();
+
+    // the answers are kept on the device: the Stats screen sums them up and the drill shows them next time
+    const stored = () =>
+      page.evaluate(
+        () =>
+          new Promise<number>((resolve) => {
+            const r = indexedDB.open("tessera");
+            r.onsuccess = () => {
+              const g = r.result.transaction("meta").objectStore("meta").get("icm.log");
+              g.onsuccess = () => {
+                resolve(Array.isArray(g.result) ? g.result.length : 0);
+                r.result.close();
+              };
+            };
+          }),
+      );
+    await expect.poll(stored).toBe(4);
+    await page.goto("/stats/");
+    const rec = page.getByTestId("icm-record");
+    await expect(rec.locator("dd").first()).toHaveText("4");
+    await expect(rec.getByRole("link")).toHaveAttribute("href", "/icm/");
+    await page.goto("/icm/");
+    await page.getByTestId("icm-run").click();
+    await expect(page.getByTestId("icm-result")).toBeVisible({ timeout: 60_000 });
+    await expect(page.getByTestId("icm-drill-past")).toContainText("回答 4回");
   });
 });

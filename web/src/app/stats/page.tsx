@@ -10,6 +10,8 @@ import { useNow } from "@/lib/util/hooks";
 import { SEATS } from "@/lib/solution/tree";
 import { ALL_SPOT_COLUMNS } from "@/lib/solution/types";
 import { getRepo } from "@/lib/storage/idb";
+import { readIcmLog, summarizeIcm } from "@/lib/storage/icmLog";
+import type { IcmLogEntry } from "@/lib/storage/icmLog";
 import { dailySeries, heatmap, studyStreak, summarize, todayCount, weakSpots } from "@/lib/storage/stats";
 import type { Attempt } from "@/lib/storage/types";
 import { GRADES } from "@/lib/practice/grading";
@@ -24,12 +26,18 @@ function lossColor(loss: number): string {
 export default function StatsPage() {
   const { t, settings } = useSettings();
   const [list, setList] = useState<Attempt[] | null>(null);
+  const [icmLog, setIcmLog] = useState<IcmLogEntry[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   const load = useCallback(() => {
-    getRepo()
-      .allAttempts()
+    // the ICM drill log first, so it is there when the records appear
+    readIcmLog(getRepo())
+      .catch(() => [])
+      .then((icm) => {
+        setIcmLog(icm);
+        return getRepo().allAttempts();
+      })
       .then(setList)
       .catch(() => setList([]));
   }, []);
@@ -42,6 +50,7 @@ export default function StatsPage() {
   const weak = useMemo(() => weakSpots(list ?? [], 3, 5), [list]);
   const streak = studyStreak(list ?? [], now);
   const today = todayCount(list ?? [], now);
+  const icm = useMemo(() => (icmLog.length ? summarizeIcm(icmLog) : null), [icmLog]);
   const byGrade = useMemo(() => {
     const c: Record<string, number> = { best: 0, correct: 0, inaccurate: 0, mistake: 0, blunder: 0 };
     for (const a of list ?? []) c[a.grade]++;
@@ -236,6 +245,39 @@ export default function StatsPage() {
             )}
           </section>
         </>
+      )}
+
+      {icm && (
+        <section className="rounded-card border border-line bg-surface p-4" data-testid="icm-record">
+          <h2 className="font-bold">{t("stats.icm")}</h2>
+          <p className="mb-3 mt-1 text-xs text-muted">{t("stats.icmDesc")}</p>
+          <dl className="grid grid-cols-3 gap-2 text-center">
+            {[
+              [t("stats.attempts"), String(icm.n)],
+              [t("stats.accuracy"), `${Math.round(icm.accuracy * 100)}%`],
+              [t("stats.avgLoss"), `${icm.avgLoss.toFixed(2)}%`],
+            ].map(([k, v]) => (
+              <div key={k} className="rounded-control bg-surface-2 p-2">
+                <dt className="text-xs text-muted">{k}</dt>
+                <dd className="text-xl font-black">{v}</dd>
+              </div>
+            ))}
+          </dl>
+          <h3 className="mb-1 mt-3 text-sm font-bold">{t("stats.icmWorst")}</h3>
+          <ul className="space-y-1 text-sm">
+            {icm.byPos.slice(0, 3).map((r) => (
+              <li key={r.pos} className="flex justify-between gap-2">
+                <b>{r.pos}</b>
+                <span className="text-muted">
+                  {r.avgLoss.toFixed(2)}% · {t("stats.nSamples", { n: r.n })}
+                </span>
+              </li>
+            ))}
+          </ul>
+          <Link href="/icm/" className="mt-3 inline-flex min-h-tap items-center rounded-full border border-accent px-4 text-sm font-bold text-accent-text">
+            {t("stats.icmMore")}
+          </Link>
+        </section>
       )}
 
       {backup}

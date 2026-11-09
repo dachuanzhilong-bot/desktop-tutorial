@@ -9,6 +9,9 @@ import { randomCombo } from "@/lib/poker/hands";
 import type { Card } from "@/lib/poker/hands";
 import { isGood } from "@/lib/practice/grading";
 import { useSettings } from "@/lib/settings";
+import { getRepo } from "@/lib/storage/idb";
+import { appendIcmLog, readIcmLog, summarizeIcm } from "@/lib/storage/icmLog";
+import type { IcmLogEntry } from "@/lib/storage/icmLog";
 import { haptic } from "@/lib/util/haptics";
 import { cryptoRandom } from "@/lib/util/rng";
 
@@ -19,7 +22,7 @@ interface Props {
   hero: number;
 }
 
-/** random spots from a solved ICM table, graded by EV loss in % of the prize pool (session only, nothing is stored) */
+/** random spots from a solved ICM table, graded by EV loss in % of the prize pool; answers are kept on this device */
 export function IcmDrill({ sol, stacks, positions, hero }: Props) {
   const { t } = useSettings();
   const [active, setActive] = useState(false);
@@ -28,6 +31,17 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
   const [answer, setAnswer] = useState<IcmJudgement | null>(null);
   const [none, setNone] = useState(false);
   const [log, setLog] = useState<IcmJudgement[]>([]);
+  /** answers from earlier sessions and this one (null while loading) */
+  const [past, setPast] = useState<IcmLogEntry[] | null>(null);
+  useEffect(() => {
+    let alive = true;
+    readIcmLog(getRepo())
+      .then((l) => alive && setPast(l))
+      .catch(() => alive && setPast([]));
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   const players = useMemo(() => [...new Set(sol.nodes.filter((n) => n.reach > 1e-6).map((n) => n.player))].sort((a, b) => a - b), [sol]);
 
@@ -55,10 +69,24 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
       const j = judgeIcm(q, act);
       setAnswer(j);
       setLog((l) => [...l, j]);
+      const entry: IcmLogEntry = {
+        ts: Date.now(),
+        players: sol.players,
+        pos: positions[q.node.player],
+        stack: stacks[q.node.player],
+        facing: q.node.facing === null ? null : positions[q.node.facing],
+        hand: q.hand,
+        chosen: j.chosen,
+        grade: j.grade,
+        evLoss: j.evLoss,
+        score: j.score,
+      };
+      setPast((p) => (p ? [...p, entry] : p));
+      appendIcmLog(getRepo(), entry).catch(() => undefined);
       if (isGood(j.grade)) haptic.good();
       else haptic.bad();
     },
-    [q, answer],
+    [q, answer, sol.players, positions, stacks],
   );
 
   useEffect(() => {
@@ -78,6 +106,7 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
   }, [active, answer, answerWith, next]);
 
   const good = log.filter((j) => isGood(j.grade)).length;
+  const record = useMemo(() => (past?.length ? summarizeIcm(past) : null), [past]);
   const avgLoss = log.length ? log.reduce((s, j) => s + j.evLoss, 0) / log.length : 0;
   const act = q?.node.facing === null || q?.node.facing === undefined ? t("icm.drill.jam") : t("icm.drill.call");
   const chip = (on: boolean) => `min-h-tap rounded-full border px-3 text-sm font-semibold ${on ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`;
@@ -88,6 +117,11 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
       {!active ? (
         <>
           <p className="text-sm text-muted">{t("icm.drill.intro")}</p>
+          {record && (
+            <p className="text-sm font-semibold" data-testid="icm-drill-past">
+              {t("icm.drill.past", { n: record.n, acc: Math.round(record.accuracy * 100), loss: record.avgLoss.toFixed(2) })}
+            </p>
+          )}
           <button type="button" data-testid="icm-drill-start" onClick={() => (setLog([]), setActive(true), next())} className="min-h-tap-lg w-full rounded-control bg-accent font-bold text-accent-ink">
             {t("icm.drill.start")}
           </button>
