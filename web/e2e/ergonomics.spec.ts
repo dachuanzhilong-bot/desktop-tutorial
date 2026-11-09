@@ -74,3 +74,14 @@ test("practice starts in two taps from anywhere, without scrolling", async ({ pa
   await page.getByTestId("start-practice").click(); // tap 2
   await expect(page.locator('[data-testid^="action-"]').first()).toBeVisible({ timeout: 20_000 });
 });
+
+test("a tab tapped while a screen is still loading its data is not lost", async ({ page }) => {
+  // regression: the deep-link hash written after the data arrived used to cancel the pending navigation
+  for (const from of ["/study/", "/study/postflop/"]) {
+    for (let i = 0; i < 3; i++) {
+      await page.goto(from);
+      await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "練習" }).click();
+      await expect(page).toHaveURL(/\/practice\/$/);
+    }
+  }
+});

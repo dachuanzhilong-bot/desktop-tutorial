@@ -12,17 +12,17 @@ test.describe("stack depths", () => {
     await expect(page.getByTestId("depth-100")).toHaveAttribute("aria-checked", "true");
     await page.getByTestId("depth-40").click();
     await expect(page.getByTestId("depth-40")).toHaveAttribute("aria-checked", "true");
-    await expect(page.locator("header p").first()).toContainText("40bb", { timeout: 15_000 });
+    await expect(page.getByTestId("study-sub")).toContainText("40bb", { timeout: 15_000 });
     await expect(page).toHaveURL(/#d=40&n=0/);
     await expect(page.locator(".cell")).toHaveCount(169);
 
     // a deep link to another depth and node, then back to 100bb
     await page.goto("/study/#d=20&n=0");
-    await expect(page.locator("header p").first()).toContainText("20bb", { timeout: 15_000 });
+    await expect(page.getByTestId("study-sub")).toContainText("20bb", { timeout: 15_000 });
     await page.getByTestId("depth-200").click();
-    await expect(page.locator("header p").first()).toContainText("200bb", { timeout: 15_000 });
+    await expect(page.getByTestId("study-sub")).toContainText("200bb", { timeout: 15_000 });
     await page.getByTestId("depth-100").click();
-    await expect(page.locator("header p").first()).toContainText("100bb", { timeout: 15_000 });
+    await expect(page.getByTestId("study-sub")).toContainText("100bb", { timeout: 15_000 });
   });
 
   test("Practice asks questions from the selected depth", async ({ page }) => {
@@ -46,7 +46,7 @@ test.describe("stack depths", () => {
     const href = await hand.getByRole("link", { name: "Studyで見る" }).getAttribute("href");
     expect(href).toMatch(/#d=40&n=\d+/);
     await hand.getByRole("link", { name: "Studyで見る" }).click();
-    await expect(page.locator("header p").first()).toContainText("40bb", { timeout: 15_000 });
+    await expect(page.getByTestId("study-sub")).toContainText("40bb", { timeout: 15_000 });
     // the practice set of this hand uses the 40bb solution too
     await page.goto("/analyze/");
     await page.getByTestId("hh-make-set").click();

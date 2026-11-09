@@ -85,7 +85,15 @@ function Study({ store }: { store: SolutionStore }) {
       setBlocker(null);
     }
   }, [m.id, m.stack, m.nodes.length]);
-  useEffect(() => replaceHash(nodeId, m.stack), [nodeId, m.stack]);
+  // keep the deep link in the URL once the user moves (Next mirrors history.replaceState into its router state, so a
+  // write right after load could cancel a navigation the user has already started: the default view writes nothing)
+  const firstView = useRef(true);
+  useEffect(() => {
+    const first = firstView.current;
+    firstView.current = false;
+    if (location.hash === `#d=${m.stack}&n=${nodeId}` || (first && !location.hash)) return;
+    replaceHash(nodeId, m.stack);
+  }, [nodeId, m.stack]);
 
   const node = m.nodes[nodeId];
   const state = useMemo(() => stateAt(m, nodeId), [m, nodeId]);

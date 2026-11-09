@@ -68,9 +68,9 @@ test.describe("study", () => {
 
   test("view modes and filters work", async ({ page }) => {
     await page.goto("/study/");
-    await page.getByRole("tab", { name: "エクイティ" }).click();
+    await page.getByRole("tab", { name: "エクイティ", exact: true }).click();
     await expect(page.locator('[data-cls="0"]')).toContainText("AA");
-    await page.getByRole("tab", { name: "EV" }).click();
+    await page.getByRole("tab", { name: "EV", exact: true }).click();
     await page.getByRole("button", { name: "スーテッドA" }).click();
     await expect(page.locator('.cell[data-dim="false"]')).toHaveCount(12); // AKs..A2s
     await page.getByRole("button", { name: "A", exact: true }).click(); // blocker A

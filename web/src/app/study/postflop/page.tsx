@@ -1,6 +1,6 @@
 "use client";
 import Link from "next/link";
-import { startTransition, useEffect, useState } from "react";
+import { startTransition, useEffect, useRef, useState } from "react";
 import { preload } from "react-dom";
 import { GridSkeleton, Skeleton } from "@/components/Skeleton";
 import { StudyTabs } from "@/components/StudyTabs";
@@ -106,10 +106,17 @@ function PostflopStudy() {
     };
   }, [scenario, flopIdx, flopKey, haveFlop]);
 
+  // deep link in the URL once the user moves; the default view writes nothing right after load (Next mirrors
+  // history.replaceState into its router state, which could cancel a navigation the user has already started)
+  const firstView = useRef(true);
   useEffect(() => {
     if (!scenario) return;
+    const first = firstView.current;
+    firstView.current = false;
+    const want = `#s=${scenario}&f=${flopIdx}&n=${nodeId}`;
+    if (location.hash === want || (first && !location.hash)) return;
     try {
-      history.replaceState(null, "", `${location.pathname}#s=${scenario}&f=${flopIdx}&n=${nodeId}`);
+      history.replaceState(null, "", `${location.pathname}${want}`);
     } catch {
       /* ignore */
     }

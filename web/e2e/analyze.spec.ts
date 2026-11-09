@@ -69,12 +69,14 @@ test.describe("analyze", () => {
   });
 
   test("a large import shows progress, keeps the page responsive and can be stopped", async ({ page }) => {
-    // 5,000 distinct hands (ids changed) – a few months of play
-    const many = Array.from({ length: 5000 }, (_, i) => H_CO_OPEN.replace("230000000001", String(400000000000 + i))).join("\n\n\n");
+    // 20,000 distinct hands (ids changed, about 24 MB) – long enough to sample and stop it on any machine
+    const many = Array.from({ length: 20000 }, (_, i) => H_CO_OPEN.replace("230000000001", String(400000000000 + i))).join("\n\n\n");
     await page.goto("/analyze/");
     await page.getByTestId("hh-file").setInputFiles({ name: "big.txt", mimeType: "text/plain", buffer: Buffer.from(many) });
     const busy = page.getByTestId("hh-busy");
     await expect(busy).toBeVisible();
+    // reading, then grading: wait for the second stage so some hands are already saved when we stop
+    await expect(busy).toContainText("分析中", { timeout: 30_000 });
     // the main thread is not blocked: timers keep firing on time while the import runs (5 samples)
     const lags = await page.evaluate(async () => {
       const out: number[] = [];
