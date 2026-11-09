@@ -31,6 +31,17 @@ test.describe("onboarding", () => {
     await expect(page.getByTestId("onboarding")).toBeHidden();
     await ctx.close();
   });
+
+  test("a deep link opens its screen; the tour waits for the home screen", async ({ browser }) => {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.goto("/study/");
+    await expect(page.locator(".cell")).toHaveCount(169);
+    await expect(page.getByTestId("onboarding")).toBeHidden();
+    await page.getByRole("navigation", { name: "Primary" }).getByRole("link", { name: "ホーム" }).click();
+    await expect(page.getByTestId("onboarding")).toBeVisible();
+    await ctx.close();
+  });
 });
 
 test.describe("study", () => {

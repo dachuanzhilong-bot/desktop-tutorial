@@ -1,5 +1,4 @@
 "use client";
-import { MotionConfig } from "framer-motion";
 import type { ReactNode } from "react";
 import { SettingsProvider } from "@/lib/settings";
 import { SolutionProvider } from "@/lib/solution/context";
@@ -11,10 +10,7 @@ export function Providers({ children }: { children: ReactNode }) {
     <SettingsProvider>
       <SolutionProvider>
         <SyncProvider>
-          {/* every animation follows the OS "reduce motion" setting */}
-          <MotionConfig reducedMotion="user">
-            <ShellProvider>{children}</ShellProvider>
-          </MotionConfig>
+          <ShellProvider>{children}</ShellProvider>
         </SyncProvider>
       </SolutionProvider>
     </SettingsProvider>

@@ -69,18 +69,26 @@ test.describe("analyze", () => {
   });
 
   test("a large import shows progress, keeps the page responsive and can be stopped", async ({ page }) => {
-    // 3,000 distinct hands (ids changed) – a few months of play
-    const many = Array.from({ length: 3000 }, (_, i) => H_CO_OPEN.replace("230000000001", String(400000000000 + i))).join("\n\n\n");
+    // 5,000 distinct hands (ids changed) – a few months of play
+    const many = Array.from({ length: 5000 }, (_, i) => H_CO_OPEN.replace("230000000001", String(400000000000 + i))).join("\n\n\n");
     await page.goto("/analyze/");
     await page.getByTestId("hh-file").setInputFiles({ name: "big.txt", mimeType: "text/plain", buffer: Buffer.from(many) });
     const busy = page.getByTestId("hh-busy");
     await expect(busy).toBeVisible();
-    // the main thread is not blocked: a timer still fires promptly while the import runs
-    const lag = await page.evaluate(() => new Promise<number>((r) => {
-      const t0 = performance.now();
-      setTimeout(() => r(performance.now() - t0 - 50), 50);
-    }));
-    expect(lag).toBeLessThan(250);
+    // the main thread is not blocked: timers keep firing on time while the import runs (5 samples)
+    const lags = await page.evaluate(async () => {
+      const out: number[] = [];
+      for (let i = 0; i < 5; i++)
+        out.push(
+          await new Promise<number>((r) => {
+            const t0 = performance.now();
+            setTimeout(() => r(performance.now() - t0 - 50), 50);
+          }),
+        );
+      return out;
+    });
+    expect(Math.max(...lags), `timer delays ${lags.map((x) => Math.round(x)).join(", ")} ms`).toBeLessThan(300);
+    await expect(busy).toBeVisible(); // still importing: the samples were taken during the work
     await page.getByTestId("hh-cancel").click();
     await expect(busy).toBeHidden();
     await expect(page.getByTestId("hh-report")).toContainText("途中で中止しました");

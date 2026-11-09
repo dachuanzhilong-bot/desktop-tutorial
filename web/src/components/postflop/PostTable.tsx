@@ -1,5 +1,6 @@
 "use client";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { FlippingCard } from "@/components/FlippingCard";
 import { CardBack, PlayingCard } from "@/components/PlayingCard";
 import type { Card } from "@/lib/poker/hands";
 import { cardOf } from "@/lib/postflop/combos";
@@ -35,8 +36,8 @@ export function PostTable({ seats, hero, board, pot, streetInv, stacks, actor, l
       )}
       {!top && heroCards && (
         <div className="mb-1 flex justify-center gap-1">
-          <PlayingCard card={heroCards[0]} size="tbl" flip delay={0.05} />
-          <PlayingCard card={heroCards[1]} size="tbl" flip delay={0.16} />
+          <FlippingCard card={heroCards[0]} size="tbl" delay={0.05} />
+          <FlippingCard card={heroCards[1]} size="tbl" delay={0.16} />
         </div>
       )}
       <div className={`mx-auto inline-block min-w-[4rem] rounded-control border px-2.5 py-1 leading-tight shadow ${actor === p ? "border-accent bg-surface text-ink ring-2 ring-accent" : "border-white/20 bg-black/55 text-white"} ${folded === p ? "opacity-40" : ""}`}>
@@ -73,7 +74,7 @@ export function PostTable({ seats, hero, board, pot, streetInv, stacks, actor, l
         <div className="mb-1 flex items-center justify-center gap-1" aria-label="board">
           {board.map((c, i) => (
             <span key={c} className={i === 3 || i === 4 ? "ml-1" : ""}>
-              <PlayingCard card={cardOf(c)} size="tbl" flip={i >= 3} />
+              {i >= 3 ? <FlippingCard card={cardOf(c)} size="tbl" /> : <PlayingCard card={cardOf(c)} size="tbl" />}
             </span>
           ))}
         </div>

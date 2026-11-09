@@ -28,6 +28,8 @@ export const depthOf = (id: string | undefined): number => Number(/-(\d+)bb$/.ex
 export class SolutionStore {
   manifest: Manifest;
   private chunks = new Map<number, Promise<Map<number, NodeSolution>>>();
+  /** chunks that finished decoding, for synchronous reads */
+  private decoded = new Map<number, Map<number, NodeSolution>>();
   private base: string;
 
   constructor(manifest: Manifest, base: string) {
@@ -52,11 +54,21 @@ export class SolutionStore {
           return r.arrayBuffer();
         })
         .then(gunzip)
-        .then(decodeChunk);
+        .then(decodeChunk)
+        .then((m) => {
+          this.decoded.set(chunk, m);
+          return m;
+        });
       p.catch(() => this.chunks.delete(chunk));
       this.chunks.set(chunk, p);
     }
     return p;
+  }
+
+  /** the node's data if its chunk is already decoded, so a screen can render it in its first pass */
+  peek(id: number): NodeSolution | null {
+    const meta = this.manifest.nodes[id];
+    return meta ? (this.decoded.get(meta.chunk)?.get(id) ?? null) : null;
   }
 
   async node(id: number): Promise<NodeSolution> {

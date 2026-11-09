@@ -91,10 +91,9 @@ pub fn build_pm(k: usize, compat: &[f32], prior: &[f32]) -> Vec<f32> {
 #[inline]
 fn dot(a: &[f32], b: &[f32]) -> f32 {
     let mut acc = [0f32; 8];
-    let ca = a.chunks_exact(8);
-    let cb = b.chunks_exact(8);
-    let (ra, rb) = (ca.remainder(), cb.remainder());
-    for (x, y) in ca.zip(cb) {
+    let (ca, ra) = a.as_chunks::<8>();
+    let (cb, rb) = b.as_chunks::<8>();
+    for (x, y) in ca.iter().zip(cb) {
         for i in 0..8 {
             acc[i] += x[i] * y[i];
         }

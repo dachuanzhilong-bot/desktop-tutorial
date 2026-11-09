@@ -1,5 +1,5 @@
 "use client";
-import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
+import { createContext, ReactNode, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useSettings } from "../settings";
 import { DEFAULT_DEPTH, DEPTHS, solutionId, SolutionStore } from "./loader";
 import type { NodeSolution } from "./types";
@@ -32,7 +32,12 @@ export function SolutionProvider({ children }: { children: ReactNode }) {
   const getStore = useCallback((d: number) => {
     let p = cache.current.get(d);
     if (!p) {
-      p = SolutionStore.open(solutionId(d));
+      // the first decision (where Study and most practice start) is decoded before the store is handed out,
+      // so screens render once with data instead of once empty and again when it arrives
+      p = SolutionStore.open(solutionId(d)).then(async (s) => {
+        await s.node(0).catch(() => {});
+        return s;
+      });
       p.catch(() => cache.current.delete(d));
       cache.current.set(d, p);
     }
@@ -45,8 +50,11 @@ export function SolutionProvider({ children }: { children: ReactNode }) {
     getStore(depth)
       .then((s) => {
         if (!alive) return;
-        setStore(s);
-        setOutcome({ key, error: null });
+        // a non-urgent update: React renders the (large) screens in short slices, so input stays responsive
+        startTransition(() => {
+          setStore(s);
+          setOutcome({ key, error: null });
+        });
       })
       .catch((e) => alive && setOutcome({ key, error: e instanceof Error ? e.message : String(e) }));
     return () => {
@@ -71,12 +79,13 @@ export function useNodeSolution(nodeId: number | null) {
   const { store } = useSolutionStore();
   const key = store && nodeId !== null ? `${store.manifest.id}#${nodeId}` : null;
   const [res, setRes] = useState<{ key: string; data: NodeSolution | null; error: string | null } | null>(null);
+  const cached = store && nodeId !== null ? store.peek(nodeId) : null;
   useEffect(() => {
-    if (!store || nodeId === null || !key) return;
+    if (!store || nodeId === null || !key || store.peek(nodeId)) return;
     let alive = true;
     store
       .node(nodeId)
-      .then((data) => alive && setRes({ key, data, error: null }))
+      .then((data) => alive && startTransition(() => setRes({ key, data, error: null })))
       .catch((e) => alive && setRes({ key, data: null, error: e instanceof Error ? e.message : String(e) }));
     return () => {
       alive = false;
@@ -84,5 +93,5 @@ export function useNodeSolution(nodeId: number | null) {
   }, [store, nodeId, key]);
   // only the answer to the current request counts (switching node/depth shows "loading", never stale data)
   const cur = res && res.key === key ? res : null;
-  return { sol: cur?.data ?? null, loading: !!key && !cur, error: cur?.error ?? null };
+  return { sol: cached ?? cur?.data ?? null, loading: !!key && !cached && !cur, error: cached ? null : (cur?.error ?? null) };
 }

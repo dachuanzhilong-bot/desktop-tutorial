@@ -1,7 +1,8 @@
-/** let the browser paint and handle input before continuing a long loop */
+/**
+ * Let the browser paint, handle input and run timers before continuing a long loop.
+ * (Not scheduler.yield(): its continuation is queued ahead of other tasks, so timers would starve.)
+ */
 export function yieldToMain(): Promise<void> {
-  const s = (globalThis as { scheduler?: { yield?: () => Promise<void> } }).scheduler;
-  if (s?.yield) return s.yield();
   return new Promise((r) => setTimeout(r, 0));
 }
 

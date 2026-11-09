@@ -106,14 +106,16 @@ export function Setup({
       </header>
 
       <section aria-label={t("practice.mode")} className="grid grid-cols-2 gap-2.5">
-        {(["spot", "hand", "postSpot", "post"] as const).filter((m) => scenarios.length > 0 || !m.startsWith("post")).map((m) => (
+        {/* all four are always laid out (no jump when the postflop index arrives); postflop modes wait for their data */}
+        {(["spot", "hand", "postSpot", "post"] as const).map((m) => (
           <button
             key={m}
             type="button"
+            disabled={m.startsWith("post") && scenarios.length === 0}
             aria-pressed={mode === m}
             data-testid={`mode-${m}`}
             onClick={() => setMode(m)}
-            className={`rounded-card border p-3.5 text-left transition-colors ${mode === m ? "border-accent bg-accent/15" : "border-line bg-surface"}`}
+            className={`rounded-card border p-3.5 text-left transition-colors disabled:opacity-60 ${mode === m ? "border-accent bg-accent/15" : "border-line bg-surface"}`}
           >
             <span className="block font-extrabold">{t(`practice.mode.${m}` as Key)}</span>
             <span className="mt-0.5 block text-xs text-muted">{t(`practice.mode.${m}Desc` as Key)}</span>
@@ -239,7 +241,7 @@ export function Setup({
       <ApproxNote>{isPost ? t("pf.approx") : t("approx.grading", { depth })}</ApproxNote>
 
       {/* always on screen above the tab bar: practice starts in two taps from anywhere (tab + this button) */}
-      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 bg-gradient-to-t from-bg from-60% to-transparent px-4 pb-1 pt-4">
+      <div className="pointer-events-none sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 bg-gradient-to-t from-bg from-60% to-transparent px-4 pb-1 pt-4 [&>button]:pointer-events-auto">
       <button
         type="button"
         data-testid="start-practice"

@@ -12,6 +12,7 @@ import { Term } from "@/components/Term";
 import { ALL_CLASSES, HAND_FILTERS, HandFilterId, holdsRank, matchesFilter, RANK_CHARS } from "@/lib/poker/hands";
 import { useSettings } from "@/lib/settings";
 import { useLatest } from "@/lib/util/hooks";
+import { preload } from "react-dom";
 import { ApproxNote } from "@/components/ApproxNote";
 import type { SolutionStore } from "@/lib/solution/loader";
 import { useNodeSolution, useSolutionStore } from "@/lib/solution/context";
@@ -131,14 +132,9 @@ function Study({ store }: { store: SolutionStore }) {
 
   return (
     <div className="space-y-4">
-      <header>
-        <h1 className="text-2xl font-extrabold">{t("study.title")}</h1>
-        <p className="text-sm text-muted" data-testid="study-sub">
-          {t("format.cash6")} · {t("format.stack", { n: m.stack })} · {t(`spot.${spot}` as Key)}
-        </p>
-      </header>
-      <StudyTabs />
-      <DepthPicker />
+      <p className="text-sm text-muted" data-testid="study-sub">
+        {t("format.cash6")} · {t("format.stack", { n: m.stack })} · {t(`spot.${spot}` as Key)}
+      </p>
 
       <LineBar steps={steps} players={m.players} currentLabel={`${m.players[node.actor]} ?`} onJump={go} />
 
@@ -377,6 +373,20 @@ function MiniRange({ title, range, combos, tone }: { title: string; range: Array
   );
 }
 
+/** the page frame is static HTML (painted at once); the chart part waits for the solution data */
 export default function StudyPage() {
-  return <SolutionGate>{(store) => <Study store={store} />}</SolutionGate>;
+  const { t } = useSettings();
+  // the default (100bb) solution starts downloading from the static HTML; other depths load when chosen
+  preload("/solutions/cash6max-100bb/manifest.json.gz", { as: "fetch", crossOrigin: "anonymous" });
+  preload("/solutions/cash6max-100bb/chunk-0.bin.gz", { as: "fetch", crossOrigin: "anonymous" });
+  return (
+    <div className="space-y-4">
+      <header>
+        <h1 className="text-2xl font-extrabold">{t("study.title")}</h1>
+      </header>
+      <StudyTabs />
+      <DepthPicker />
+      <SolutionGate>{(store) => <Study store={store} />}</SolutionGate>
+    </div>
+  );
 }

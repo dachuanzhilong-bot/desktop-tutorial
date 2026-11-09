@@ -148,13 +148,15 @@ export default function StatsPage() {
             <h2 className="font-bold">{t("stats.heatmap")}</h2>
             <p className="mb-2 text-xs text-muted">{t("stats.heatmapHint")}</p>
             <div className="-mx-1 overflow-x-auto px-1">
-              <table className="w-full min-w-[44rem] border-separate border-spacing-1 text-center text-xs" data-testid="heatmap">
+              <table className="w-full min-w-[46rem] border-separate border-spacing-1 text-center text-xs" data-testid="heatmap">
                 <thead>
                   <tr>
-                    <th scope="col" />
+                    <th scope="col" className="sticky left-0 bg-surface" />
                     {ALL_SPOT_COLUMNS.map((s) => (
-                      <th key={s} scope="col" className="px-1 pb-1 font-semibold text-muted">
-                        {t(`spot.${s}` as Key)}
+                      <th key={s} scope="col" className="whitespace-nowrap px-1 pb-1 font-semibold text-muted">
+                        <abbr title={t(`spot.${s}` as Key)} className="no-underline">
+                          {t(`spotShort.${s}` as Key)}
+                        </abbr>
                       </th>
                     ))}
                   </tr>
@@ -162,7 +164,7 @@ export default function StatsPage() {
                 <tbody>
                   {SEATS.map((seat, si) => (
                     <tr key={seat}>
-                      <th scope="row" className="pr-1 text-left font-bold">
+                      <th scope="row" className="sticky left-0 bg-surface pr-1 text-left font-bold">
                         {seat}
                       </th>
                       {ALL_SPOT_COLUMNS.map((s) => {

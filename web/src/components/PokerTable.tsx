@@ -3,7 +3,8 @@ import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { Card } from "@/lib/poker/hands";
 import { fmtBB } from "@/lib/solution/tree";
 import type { PublicState } from "@/lib/solution/types";
-import { CardBack, PlayingCard } from "./PlayingCard";
+import { FlippingCard } from "./FlippingCard";
+import { CardBack } from "./PlayingCard";
 
 interface Props {
   seats: readonly string[];
@@ -75,8 +76,8 @@ export function PokerTable({ seats, hero, state, stack, actor, lastAction, heroC
               )}
               {isHero && heroCards && (
                 <div className="mb-1 flex justify-center gap-1">
-                  <PlayingCard card={heroCards[0]} size="tbl" flip delay={0.05} />
-                  <PlayingCard card={heroCards[1]} size="tbl" flip delay={0.16} />
+                  <FlippingCard card={heroCards[0]} size="tbl" delay={0.05} />
+                  <FlippingCard card={heroCards[1]} size="tbl" delay={0.16} />
                 </div>
               )}
               <div

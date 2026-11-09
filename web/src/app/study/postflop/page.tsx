@@ -1,6 +1,7 @@
 "use client";
 import Link from "next/link";
-import { useEffect, useState } from "react";
+import { startTransition, useEffect, useState } from "react";
+import { preload } from "react-dom";
 import { GridSkeleton, Skeleton } from "@/components/Skeleton";
 import { StudyTabs } from "@/components/StudyTabs";
 import { PostflopViewer } from "@/components/postflop/PostflopViewer";
@@ -58,6 +59,9 @@ function SavedView({ id }: { id: string }) {
 }
 
 function PostflopStudy() {
+  // start downloading the index and the default flop from the static HTML, before the app has hydrated
+  preload("/postflop/index.json", { as: "fetch", crossOrigin: "anonymous" });
+  preload("/postflop/srp-btn-bb/0.bin.gz", { as: "fetch", crossOrigin: "anonymous" });
   const { t } = useSettings();
   const [index, setIndex] = useState<PfIndex | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -79,25 +83,28 @@ function PostflopStudy() {
     if (sid) return;
     loadIndex()
       .then((ix) => {
-        setIndex(ix);
         const s = p.get("s");
-        setScenario(s && ix.scenarios.some((x) => x.id === s) ? s : ix.scenarios[0]?.id ?? "");
-        setFlopIdx(Math.min(Number(p.get("f") ?? 0) || 0, ix.flops.length - 1));
-        setNodeId(Number(p.get("n") ?? 0) || 0);
+        startTransition(() => {
+          setIndex(ix);
+          setScenario(s && ix.scenarios.some((x) => x.id === s) ? s : (ix.scenarios[0]?.id ?? ""));
+          setFlopIdx(Math.min(Number(p.get("f") ?? 0) || 0, ix.flops.length - 1));
+          setNodeId(Number(p.get("n") ?? 0) || 0);
+        });
       })
       .catch((e) => setError(e instanceof Error ? e.message : String(e)));
   }, []);
 
+  const haveFlop = loaded?.key === flopKey;
   useEffect(() => {
-    if (!scenario) return;
+    if (!scenario || haveFlop) return;
     let alive = true;
     loadFlop(scenario, flopIdx)
-      .then((f) => alive && setLoaded({ key: flopKey, flop: f }))
+      .then((f) => alive && startTransition(() => setLoaded({ key: flopKey, flop: f })))
       .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
     return () => {
       alive = false;
     };
-  }, [scenario, flopIdx, flopKey]);
+  }, [scenario, flopIdx, flopKey, haveFlop]);
 
   useEffect(() => {
     if (!scenario) return;
@@ -130,16 +137,23 @@ function PostflopStudy() {
 
   if (error)
     return (
-      <p role="alert" className="rounded-card border border-line bg-surface p-4 text-sm">
-        {t("pf.missing")} {error}
-      </p>
+      <div className="space-y-4">
+        {header}
+        <p role="alert" className="rounded-card border border-line bg-surface p-4 text-sm">
+          {t("pf.missing")} {error}
+        </p>
+      </div>
     );
+  // the page frame is in the static HTML; only the data part waits
   if (solveId === undefined || !index || !sc)
     return (
-      <div className="space-y-3">
-        <Skeleton className="h-10 w-full" />
-        <Skeleton className="h-24 w-full" />
-        <GridSkeleton />
+      <div className="space-y-4">
+        {header}
+        <div className="space-y-3" aria-busy="true">
+          <Skeleton className="h-10 w-full" />
+          <Skeleton className="h-24 w-full" />
+          <GridSkeleton />
+        </div>
       </div>
     );
 

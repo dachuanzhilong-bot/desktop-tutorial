@@ -1,4 +1,5 @@
 "use client";
+import { MotionConfig } from "framer-motion";
 import { useEffect, useState } from "react";
 import { useImmersive } from "@/components/ShellContext";
 import { SolutionGate } from "@/components/SolutionGate";
@@ -23,6 +24,9 @@ interface Preset {
   scenario?: string;
   flop?: number;
 }
+
+const NO_PRESET: Preset = { filter: {} };
+const presetKey = (p: Preset) => `${p.mode ?? ""}|${p.scenario ?? ""}|${p.flop ?? ""}|${JSON.stringify(p.filter)}`;
 
 function parseHash(): Preset {
   const p = new URLSearchParams(location.hash.replace(/^#/, ""));
@@ -81,7 +85,15 @@ export default function PracticePage() {
       .catch(() => setInitial({ ...preset, set: undefined }));
   }, [setDepth]);
 
+  // the setup screen needs no solution data: it is part of the static HTML and painted at once.
+  // A preset from the URL (read after hydration) remounts it with those values.
+  const shown = initial ?? NO_PRESET;
+  if (!config && !pending && !shown.set)
+    return <Setup key={presetKey(shown)} initial={shown.filter} initialMode={shown.mode} initialScenario={shown.scenario} initialFlop={shown.flop} onStart={(c) => setConfig(c)} />;
+
   return (
+    // every practice animation follows the OS "reduce motion" setting
+    <MotionConfig reducedMotion="user">
     <SolutionGate grid={false}>
       {(store) =>
         config?.type === "pre" ? (
@@ -116,10 +128,9 @@ export default function PracticePage() {
               setPending(null);
             }}
           />
-        ) : initial ? (
-          <Setup initial={initial.filter} initialMode={initial.mode} initialScenario={initial.scenario} initialFlop={initial.flop} onStart={(c) => setConfig(c)} />
         ) : null
       }
     </SolutionGate>
+    </MotionConfig>
   );
 }

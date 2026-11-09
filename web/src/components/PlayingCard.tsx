@@ -1,5 +1,4 @@
 "use client";
-import { motion, useReducedMotion } from "framer-motion";
 import type { Card } from "@/lib/poker/hands";
 import { RANK_CHARS } from "@/lib/poker/hands";
 import { useSettings } from "@/lib/settings";
@@ -12,27 +11,26 @@ export function cardLabel(c: Card) {
   return `${r === "T" ? "10" : r} of ${SUIT_NAME[c.suit]}`;
 }
 
-export function PlayingCard({ card, size = "md", flip = false, delay = 0 }: { card: Card; size?: "sm" | "tbl" | "md" | "lg"; flip?: boolean; delay?: number }) {
-  const { settings } = useSettings();
-  const reduce = useReducedMotion();
-  const dims = size === "lg" ? "h-24 w-[4.2rem] text-4xl" : size === "tbl" ? "h-[3.7rem] w-[2.6rem] text-xl" : size === "md" ? "h-[4.6rem] w-[3.2rem] text-2xl" : "h-12 w-8 text-base";
+export const DIMS = { lg: "h-24 w-[4.2rem] text-4xl", tbl: "h-[3.7rem] w-[2.6rem] text-xl", md: "h-[4.6rem] w-[3.2rem] text-2xl", sm: "h-12 w-8 text-base" } as const;
+export const CARD_CLASS = "card relative inline-grid select-none place-items-center rounded-lg border border-black/20 bg-white font-extrabold leading-none shadow-md";
+
+export function Face({ card }: { card: Card }) {
   const r = RANK_CHARS[12 - card.rank];
   return (
-    <motion.div
-      role="img"
-      aria-label={cardLabel(card)}
-      data-deck={settings.deck4 ? "4" : "2"}
-      className={`card relative inline-grid ${dims} select-none place-items-center rounded-lg border border-black/20 bg-white font-extrabold leading-none shadow-md`}
-      initial={flip && !reduce ? { rotateY: 90, opacity: 0 } : false}
-      animate={{ rotateY: 0, opacity: 1 }}
-      transition={{ duration: 0.28, delay, ease: "easeOut" }}
-      style={{ transformStyle: "preserve-3d" }}
-    >
-      <span data-suit={card.suit} className="flex flex-col items-center gap-0.5">
-        <span>{r === "T" ? "10" : r}</span>
-        <span className="-mt-0.5">{GLYPH[card.suit]}</span>
-      </span>
-    </motion.div>
+    <span data-suit={card.suit} className="flex flex-col items-center gap-0.5">
+      <span>{r === "T" ? "10" : r}</span>
+      <span className="-mt-0.5">{GLYPH[card.suit]}</span>
+    </span>
+  );
+}
+
+/** A card face (static). Dealt cards that flip in use FlippingCard (components/FlippingCard.tsx). */
+export function PlayingCard({ card, size = "md" }: { card: Card; size?: keyof typeof DIMS }) {
+  const { settings } = useSettings();
+  return (
+    <div role="img" aria-label={cardLabel(card)} data-deck={settings.deck4 ? "4" : "2"} className={`${CARD_CLASS} ${DIMS[size]}`}>
+      <Face card={card} />
+    </div>
   );
 }
 

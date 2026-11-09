@@ -1,5 +1,5 @@
 "use client";
-import { useRouter } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useSettings } from "@/lib/settings";
 import type { Key } from "@/lib/i18n/ja";
@@ -55,11 +55,13 @@ export function Onboarding() {
     if (d && !d.open) d.showModal();
   }, []);
 
-  // first launch: show the tour (step is still 0, so only the dialog has to open)
+  // first launch on the home screen (where the installed app starts): show the tour. A deep link straight into a
+  // screen (a shared Study position, a practice set) opens that screen instead; the tour waits for the home screen.
+  const path = usePathname();
   useEffect(() => {
     const d = ref.current;
-    if (ready && !settings.onboarded && d && !d.open) d.showModal();
-  }, [ready, settings.onboarded]);
+    if (ready && !settings.onboarded && path === "/" && d && !d.open) d.showModal();
+  }, [ready, settings.onboarded, path]);
 
   useEffect(() => {
     const h = () => open();

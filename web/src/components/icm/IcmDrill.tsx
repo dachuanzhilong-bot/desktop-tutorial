@@ -1,6 +1,6 @@
 "use client";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { PlayingCard } from "@/components/PlayingCard";
+import { FlippingCard } from "@/components/FlippingCard";
 import { GradeBadge } from "@/components/practice/ResultPanel";
 import { judgeIcm, pickIcmQuestion } from "@/lib/icm/drill";
 import type { IcmJudgement, IcmQuestion } from "@/lib/icm/drill";
@@ -115,8 +115,8 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
                 <p className="mt-1 text-xs text-muted">{positions.map((p, i) => (i === q.node.player ? null : t("icm.drill.table", { pos: p, bb: stacks[i] }))).filter(Boolean).join(" · ")}</p>
               </div>
               <div className="flex justify-center gap-2" aria-label={q.cards.map((c) => `${c.rank}${c.suit}`).join(" ")}>
-                <PlayingCard card={q.cards[0]} size="md" key={`${q.cards[0].rank}${q.cards[0].suit}${log.length}a`} flip />
-                <PlayingCard card={q.cards[1]} size="md" key={`${q.cards[1].rank}${q.cards[1].suit}${log.length}b`} flip delay={0.08} />
+                <FlippingCard card={q.cards[0]} size="md" key={`${q.cards[0].rank}${q.cards[0].suit}${log.length}a`} />
+                <FlippingCard card={q.cards[1]} size="md" key={`${q.cards[1].rank}${q.cards[1].suit}${log.length}b`} delay={0.08} />
               </div>
               {!answer ? (
                 <div className="grid grid-cols-2 gap-2">
