@@ -1,14 +1,11 @@
 "use client";
 import Link from "next/link";
 import { startTransition, useEffect, useRef, useState } from "react";
-import { preload } from "react-dom";
 import { GridSkeleton, Skeleton } from "@/components/Skeleton";
 import { StudyTabs } from "@/components/StudyTabs";
 import { PostflopViewer } from "@/components/postflop/PostflopViewer";
-import { PlayingCard } from "@/components/PlayingCard";
-import { cardOf } from "@/lib/postflop/combos";
 import { decodeFlop, PfFlop } from "@/lib/postflop/decode";
-import { loadFlop, loadIndex, PfIndex } from "@/lib/postflop/loader";
+import { loadFlop, PF_INDEX } from "@/lib/postflop/loader";
 import { fmtBB } from "@/lib/solution/tree";
 import { useSettings } from "@/lib/settings";
 import { getRepo } from "@/lib/storage/idb";
@@ -58,14 +55,16 @@ function SavedView({ id }: { id: string }) {
   );
 }
 
+const SUIT_GLYPH = { s: "♠", h: "♥", d: "♦", c: "♣" } as const;
+const SUIT_NAME = { s: "spades", h: "hearts", d: "diamonds", c: "clubs" } as const;
+
 function PostflopStudy() {
-  // start downloading the index and the default flop from the static HTML, before the app has hydrated
-  preload("/postflop/index.json", { as: "fetch", crossOrigin: "anonymous" });
-  preload("/postflop/srp-btn-bb/0.bin.gz", { as: "fetch", crossOrigin: "anonymous" });
-  const { t } = useSettings();
-  const [index, setIndex] = useState<PfIndex | null>(null);
+  // the scenario / flop lists are in the build (PF_INDEX), so the default view is static HTML.
+  // (No preload of the flop file: 270 KB would compete with the app's scripts, and the worker fetches it itself.)
+  const { t, settings } = useSettings();
+  const index = PF_INDEX;
   const [error, setError] = useState<string | null>(null);
-  const [scenario, setScenario] = useState<string>("");
+  const [scenario, setScenario] = useState<string>(PF_INDEX.scenarios[0]?.id ?? "");
   const [flopIdx, setFlopIdx] = useState(0);
   /** the last flop that finished loading, with the request it answers */
   const [loaded, setLoaded] = useState<{ key: string; flop: PfFlop } | null>(null);
@@ -81,17 +80,10 @@ function PostflopStudy() {
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of the URL hash
     setSolveId(sid);
     if (sid) return;
-    loadIndex()
-      .then((ix) => {
-        const s = p.get("s");
-        startTransition(() => {
-          setIndex(ix);
-          setScenario(s && ix.scenarios.some((x) => x.id === s) ? s : (ix.scenarios[0]?.id ?? ""));
-          setFlopIdx(Math.min(Number(p.get("f") ?? 0) || 0, ix.flops.length - 1));
-          setNodeId(Number(p.get("n") ?? 0) || 0);
-        });
-      })
-      .catch((e) => setError(e instanceof Error ? e.message : String(e)));
+    const s = p.get("s");
+    if (s && PF_INDEX.scenarios.some((x) => x.id === s)) setScenario(s);
+    if (p.get("f")) setFlopIdx(Math.min(Number(p.get("f")) || 0, PF_INDEX.flops.length - 1));
+    if (p.get("n")) setNodeId(Number(p.get("n")) || 0);
   }, []);
 
   const haveFlop = loaded?.key === flopKey;
@@ -110,7 +102,8 @@ function PostflopStudy() {
   // history.replaceState into its router state, which could cancel a navigation the user has already started)
   const firstView = useRef(true);
   useEffect(() => {
-    if (!scenario) return;
+    // a saved solve (#solve=…) keeps its address
+    if (!scenario || /(^|[#&])solve=/.test(location.hash)) return;
     const first = firstView.current;
     firstView.current = false;
     const want = `#s=${scenario}&f=${flopIdx}&n=${nodeId}`;
@@ -152,7 +145,7 @@ function PostflopStudy() {
       </div>
     );
   // the page frame is in the static HTML; only the data part waits
-  if (solveId === undefined || !index || !sc)
+  if (!sc)
     return (
       <div className="space-y-4">
         {header}
@@ -201,10 +194,20 @@ function PostflopStudy() {
                   setFlopIdx(i);
                   setNodeId(0);
                   }}
-                className={`flex shrink-0 gap-0.5 rounded-control border-2 p-1.5 ${i === flopIdx ? "border-accent bg-surface-2" : "border-transparent bg-surface"}`}
+                data-deck={settings.deck4 ? "4" : "2"}
+                className={`card relative flex min-h-tap shrink-0 items-center gap-1.5 rounded-control border-2 bg-white px-3 text-base font-extrabold leading-none ${i === flopIdx ? "border-accent" : "border-transparent"}`}
               >
-                {cards.map((c) => (
-                  <PlayingCard key={c} card={cardOf("23456789TJQKA".indexOf(c[0]) * 4 + "cdhs".indexOf(c[1]))} size="sm" />
+                {/* compact board chips: 21 boards of full card faces made the static HTML slow to lay out */}
+                {cards.map((c, k) => (
+                  <span key={c} data-suit={c[1]}>
+                    {c[0] === "T" ? "10" : c[0]}
+                    <span aria-hidden>{SUIT_GLYPH[c[1] as keyof typeof SUIT_GLYPH]}</span>
+                    <span className="sr-only">
+                      {" "}
+                      of {SUIT_NAME[c[1] as keyof typeof SUIT_NAME]}
+                      {k < 2 ? ", " : ""}
+                    </span>
+                  </span>
                 ))}
               </button>
             );

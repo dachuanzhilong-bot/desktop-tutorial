@@ -85,3 +85,16 @@ test("a tab tapped while a screen is still loading its data is not lost", async 
     }
   }
 });
+
+test("no screen is wider than the device (no sideways page scroll)", async ({ page }) => {
+  test.setTimeout(90_000);
+  const wide: string[] = [];
+  for (const r of ROUTES) {
+    await page.goto(r);
+    await expect(page.locator("main[data-ready=true]")).toBeVisible();
+    await page.waitForLoadState("networkidle");
+    const [sw, iw] = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth]);
+    if (sw > iw + 1) wide.push(`${r}: page ${sw}px > viewport ${iw}px`);
+  }
+  expect(wide).toEqual([]);
+});

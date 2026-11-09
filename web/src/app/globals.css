@@ -280,16 +280,35 @@ dialog::backdrop {
 }
 
 /* skeleton */
+/* loading placeholders: the shimmer is a moving overlay (transform, done by the compositor) so a screen full of
+   placeholders does not repaint on every frame while the app starts */
 .skeleton {
-  background: linear-gradient(90deg, var(--surface-2) 25%, color-mix(in oklab, var(--surface-2) 70%, var(--ink) 8%) 50%, var(--surface-2) 75%);
-  background-size: 200% 100%;
-  animation: shimmer 1.4s infinite linear;
+  position: relative;
+  overflow: hidden;
+  background: var(--surface-2);
   border-radius: 8px;
 }
-@keyframes shimmer {
+.skeleton::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in oklab, var(--surface-2) 70%, var(--ink) 8%), transparent);
+  transform: translateX(-100%);
+  animation: sweep 1.4s infinite linear;
+  will-change: transform;
+}
+@keyframes sweep {
   to {
-    background-position: -200% 0;
+    transform: translateX(100%);
   }
+}
+/* the 13x13 chart placeholder is a single element: cells drawn by a background pattern */
+.grid-skeleton {
+  aspect-ratio: 1;
+  width: 100%;
+  background-color: var(--surface-2);
+  background-image: linear-gradient(to right, var(--bg) 2px, transparent 2px), linear-gradient(to bottom, var(--bg) 2px, transparent 2px);
+  background-size: calc(100% / 13) calc(100% / 13);
 }
 
 /* popover tooltips for glossary terms */

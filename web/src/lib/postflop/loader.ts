@@ -1,6 +1,7 @@
 import { gunzip } from "../solution/decode";
 import { decodeFlop, PfFlop } from "./decode";
 import { parseBoard } from "./combos";
+import indexJson from "../../../public/postflop/index.json";
 
 export interface PfScenario {
   id: string;
@@ -34,22 +35,17 @@ export interface PfIndex {
 }
 
 const base = "/postflop";
-let indexP: Promise<PfIndex> | null = null;
 const flopCache = new Map<string, Promise<PfFlop>>();
 
+/**
+ * The index of the solved scenarios and flops (13 KB) is part of the build, not fetched: screens can show the
+ * scenario and flop lists in their static HTML. public/postflop/index.json stays as the source and for the data tests.
+ */
+// JSON arrays are typed number[][] where PfIndex has [kind, amount] tuples; the shape is checked by the data tests
+export const PF_INDEX: PfIndex = indexJson as unknown as PfIndex;
+
 export function loadIndex(): Promise<PfIndex> {
-  if (!indexP) {
-    indexP = fetch(`${base}/index.json`)
-      .then((r) => {
-        if (!r.ok) throw new Error(`index ${r.status}`);
-        return r.json();
-      })
-      .catch((e) => {
-        indexP = null;
-        throw e;
-      });
-  }
-  return indexP;
+  return Promise.resolve(PF_INDEX);
 }
 
 // decoding a flop file (about 0.5 MB, thousands of tree nodes) runs in a Web Worker when one is available
