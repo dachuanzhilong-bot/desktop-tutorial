@@ -212,3 +212,155 @@ Uncalled bet ($1.50) returned to Hero
 Hero collected $2.25 from pot
 *** SUMMARY ***
 Total pot $2.25 | Rake $0.25`;
+
+/**
+ * A short PokerStars session with the noise real files contain: players joining / leaving / sitting out,
+ * chat, disconnects, time-outs, a dead "small & big blinds" post, a three-way all-in with a side pot,
+ * mucked and shown hands. Synthetic (written from the documented format), not real play.
+ */
+export const SESSION_STARS = `PokerStars Hand #231000000001:  Hold'em No Limit ($0.25/$0.50 USD) - 2024/04/01 21:00:00 CET [2024/04/01 15:00:00 ET]
+Table 'Thalia II' 6-max Seat #2 is the button
+Seat 1: Hero ($50 in chips)
+Seat 2: kroko_99 ($61.20 in chips)
+Seat 3: Mia.L ($48.75 in chips)
+Seat 4: x Ray x ($50 in chips)
+Seat 5: SlowRoller ($23.10 in chips) is sitting out
+Seat 6: NewGuy ($50 in chips)
+Mia.L: posts small blind $0.25
+x Ray x: posts big blind $0.50
+NewGuy: posts small & big blinds $0.75
+*** HOLE CARDS ***
+Dealt to Hero [Qs Qd]
+NewGuy: checks
+Hero: raises $1.25 to $1.75
+SlowRoller leaves the table
+kroko_99: calls $1.75
+Mia.L: folds
+x Ray x: raises $5.50 to $7.25
+NewGuy: folds
+Hero: raises $42.75 to $50 and is all-in
+kroko_99 said, "wow"
+kroko_99: calls $48.25
+x Ray x: calls $42.75 and is all-in
+*** FLOP *** [8h 4c 2s]
+*** TURN *** [8h 4c 2s] [Kd]
+*** RIVER *** [8h 4c 2s Kd] [6c]
+*** SHOW DOWN ***
+x Ray x: shows [Ah Ad] (a pair of Aces)
+Hero: shows [Qs Qd] (a pair of Queens)
+kroko_99: shows [Kh Ks] (three of a kind, Kings)
+kroko_99 collected $0 from side pot
+kroko_99 collected $150.95 from main pot
+*** SUMMARY ***
+Total pot $151 Main pot $150.95. Side pot $0. | Rake $0.05
+Board [8h 4c 2s Kd 6c]
+Seat 1: Hero showed [Qs Qd] and lost with a pair of Queens
+Seat 2: kroko_99 (button) showed [Kh Ks] and won ($150.95) with three of a kind, Kings
+Seat 3: Mia.L (small blind) folded before Flop
+Seat 4: x Ray x (big blind) showed [Ah Ad] and lost with a pair of Aces
+Seat 6: NewGuy folded before Flop
+
+
+
+PokerStars Hand #231000000002:  Hold'em No Limit ($0.25/$0.50 USD) - 2024/04/01 21:01:30 CET [2024/04/01 15:01:30 ET]
+Table 'Thalia II' 6-max Seat #3 is the button
+Seat 1: Hero ($50 in chips)
+Seat 2: kroko_99 ($100 in chips)
+Seat 3: Mia.L ($48.50 in chips)
+Seat 6: NewGuy ($49.25 in chips)
+NewGuy: posts small blind $0.25
+Hero: posts big blind $0.50
+*** HOLE CARDS ***
+Dealt to Hero [7c 2d]
+Lena_K joins the table at seat #5
+kroko_99: raises $1 to $1.50
+Mia.L is disconnected
+Mia.L has timed out while disconnected
+Mia.L: folds
+Mia.L is sitting out
+NewGuy: folds
+Hero: folds
+Uncalled bet ($1) returned to kroko_99
+kroko_99 collected $1.25 from pot
+kroko_99: doesn't show hand
+*** SUMMARY ***
+Total pot $1.25 | Rake $0
+Seat 1: Hero (big blind) folded before Flop
+Seat 2: kroko_99 collected ($1.25)
+Seat 3: Mia.L (button) folded before Flop
+Seat 6: NewGuy (small blind) folded before Flop`;
+
+/**
+ * GGPoker-style hands with its quirks: "Dealt to" for every player, Rush & Cash drop, "*** SHOWDOWN ***",
+ * extra summary fields. Synthetic, written from the format as published on hand-history converters' docs.
+ */
+export const SESSION_GG = `Poker Hand #RC2310000003: Hold'em No Limit ($0.10/$0.25) - 2024/04/02 11:00:00
+Table 'RushAndCash12345' 6-max Seat #1 is the button
+Seat 1: 1f2e3d4c ($25 in chips)
+Seat 2: Hero ($26.10 in chips)
+Seat 3: 9a8b7c6d ($25 in chips)
+Seat 4: 0f1e2d3c ($30.40 in chips)
+Seat 5: 5b6a7f8e ($25 in chips)
+Seat 6: aa11bb22 ($18 in chips)
+Hero: posts small blind $0.10
+9a8b7c6d: posts big blind $0.25
+*** HOLE CARDS ***
+Dealt to 1f2e3d4c 
+Dealt to Hero [Ac Jc]
+Dealt to 9a8b7c6d 
+Dealt to 0f1e2d3c 
+Dealt to 5b6a7f8e 
+Dealt to aa11bb22 
+0f1e2d3c: folds
+5b6a7f8e: raises $0.35 to $0.60
+aa11bb22: folds
+1f2e3d4c: folds
+Hero: raises $1.90 to $2.50
+9a8b7c6d: folds
+5b6a7f8e: calls $1.90
+*** FLOP *** [Jd 8s 3c]
+Hero: bets $1.80
+5b6a7f8e: calls $1.80
+*** TURN *** [Jd 8s 3c] [2h]
+Hero: bets $4.10
+5b6a7f8e: folds
+Uncalled bet ($4.10) returned to Hero
+*** SHOWDOWN ***
+Hero collected $8.69 from pot
+*** SUMMARY ***
+Total pot $8.85 | Rake $0.16 | Jackpot $0 | Bingo $0 | Fortune $0 | Tax $0
+Board [Jd 8s 3c 2h]
+Seat 2: Hero (small blind) won ($8.69)
+
+
+
+Poker Hand #RC2310000004: Hold'em No Limit ($0.10/$0.25) - 2024/04/02 11:01:10
+Table 'RushAndCash12345' 6-max Seat #2 is the button
+Seat 1: c0ffee00 ($25 in chips)
+Seat 2: Hero ($32.43 in chips)
+Seat 3: deadbeef ($25 in chips)
+Seat 4: 12ab34cd ($25 in chips)
+Seat 5: 56ef78ab ($27 in chips)
+Seat 6: 90cd12ef ($25 in chips)
+deadbeef: posts small blind $0.10
+12ab34cd: posts big blind $0.25
+Cash Drop to Pot : total $1
+*** HOLE CARDS ***
+Dealt to c0ffee00 
+Dealt to Hero [5h 5d]
+Dealt to deadbeef 
+Dealt to 12ab34cd 
+Dealt to 56ef78ab 
+Dealt to 90cd12ef 
+56ef78ab: folds
+90cd12ef: folds
+c0ffee00: folds
+Hero: raises $0.40 to $0.65
+deadbeef: folds
+12ab34cd: folds
+Uncalled bet ($0.40) returned to Hero
+*** SHOWDOWN ***
+Hero collected $1.60 from pot
+*** SUMMARY ***
+Total pot $1.60 | Rake $0 | Jackpot $0 | Bingo $0 | Fortune $0 | Tax $0
+Seat 2: Hero (button) won ($1.60)`;

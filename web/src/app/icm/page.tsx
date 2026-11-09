@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { IcmDrill } from "@/components/icm/IcmDrill";
+import { ApproxNote } from "@/components/ApproxNote";
 import { Term } from "@/components/Term";
 import { RangeCells } from "@/components/ranges/RangeCells";
 import { SolveTabs } from "@/components/solve/SolveTabs";
@@ -336,7 +337,7 @@ export default function IcmPage() {
                 )}
               </>
             )}
-            <p className="text-xs text-muted">{t("icm.note")}</p>
+            <ApproxNote>{t("icm.note")}</ApproxNote>
           </section>
 
           <IcmDrill key={`${result.iterations}-${result.exploit}-${result.input.stacks.join(",")}`} sol={result.sol} stacks={result.input.stacks} positions={pos} hero={Math.min(d.hero, result.sol.players - 1)} />

@@ -28,4 +28,4 @@ export function Term({ id, children }: { id: string; children?: ReactNode }) {
   );
 }
 
-export const GLOSSARY_IDS = ["ev", "evLoss", "gto", "equity", "eqr", "range", "mixed", "rfi", "3bet", "4bet", "squeeze", "limp", "ip", "blocker", "spr", "mdf", "exploit", "nodelock", "icm", "pushfold", "bubble", "cfr"];
+export const GLOSSARY_IDS = ["approx", "ev", "evLoss", "gto", "equity", "eqr", "range", "mixed", "rfi", "3bet", "4bet", "squeeze", "limp", "ip", "blocker", "spr", "mdf", "exploit", "nodelock", "icm", "pushfold", "bubble", "cfr"];

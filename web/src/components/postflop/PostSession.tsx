@@ -462,7 +462,7 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
           </>
         )}
         {answered && round?.q && answer && (
-          <ResultPanel q={round.q} a={answer as AnswerInfo} actions={actions} pane={pane} state={undefined as never} onNext={next} onTogglePane={() => setPane((p) => (p === "result" ? "explain" : "result"))} nextLabel={config.kind === "through" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")} />
+          <ResultPanel q={round.q} a={answer as AnswerInfo} actions={actions} pane={pane} state={undefined as never} onNext={next} onTogglePane={() => setPane((p) => (p === "result" ? "explain" : "result"))} nextLabel={config.kind === "through" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")} approx={t("pf.approx")} />
         )}
         {phase === "handEnd" && round && (
           <div className="rounded-3xl border border-line bg-surface p-4 text-center shadow-xl" data-testid="hand-end">

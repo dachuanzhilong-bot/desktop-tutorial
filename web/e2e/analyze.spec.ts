@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { H_BAD_3BET, H_CO_OPEN, H_TOURNAMENT } from "../src/lib/__tests__/fixtures/hands";
+import { H_BAD_3BET, H_CO_OPEN, H_TOURNAMENT, SESSION_STARS } from "../src/lib/__tests__/fixtures/hands";
 
 test.beforeEach(async ({ context }) => {
   await context.addInitScript(() => localStorage.setItem("tessera.settings.v1", JSON.stringify({ onboarded: true })));
@@ -52,5 +52,39 @@ test.describe("analyze", () => {
     await page.getByTestId("hh-paste").fill("hello world");
     await page.getByTestId("hh-run").click();
     await expect(page.getByTestId("hh-report")).toContainText("見つかりませんでした");
+  });
+
+  test("files without hands and unsupported hands are reported with the reason, in Japanese", async ({ page }) => {
+    await page.goto("/analyze/");
+    await page.getByTestId("hh-file").setInputFiles([
+      { name: "notes.txt", mimeType: "text/plain", buffer: Buffer.from("just some notes\nnothing to see") },
+      { name: "photo.txt", mimeType: "text/plain", buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]) },
+      { name: "session.txt", mimeType: "text/plain", buffer: Buffer.from([SESSION_STARS, H_TOURNAMENT].join("\n\n\n")) },
+    ]);
+    const report = page.getByTestId("hh-report");
+    await expect(report).toContainText("新規 2");
+    await expect(report).toContainText("ハンドが見つからなかったファイル: notes.txt, photo.txt");
+    await report.getByText("対象外の理由").click();
+    await expect(report).toContainText("トーナメントのハンドには対応していません × 1");
+  });
+
+  test("a large import shows progress, keeps the page responsive and can be stopped", async ({ page }) => {
+    // 3,000 distinct hands (ids changed) – a few months of play
+    const many = Array.from({ length: 3000 }, (_, i) => H_CO_OPEN.replace("230000000001", String(400000000000 + i))).join("\n\n\n");
+    await page.goto("/analyze/");
+    await page.getByTestId("hh-file").setInputFiles({ name: "big.txt", mimeType: "text/plain", buffer: Buffer.from(many) });
+    const busy = page.getByTestId("hh-busy");
+    await expect(busy).toBeVisible();
+    // the main thread is not blocked: a timer still fires promptly while the import runs
+    const lag = await page.evaluate(() => new Promise<number>((r) => {
+      const t0 = performance.now();
+      setTimeout(() => r(performance.now() - t0 - 50), 50);
+    }));
+    expect(lag).toBeLessThan(250);
+    await page.getByTestId("hh-cancel").click();
+    await expect(busy).toBeHidden();
+    await expect(page.getByTestId("hh-report")).toContainText("途中で中止しました");
+    // what was analysed before stopping is kept
+    await expect(page.getByTestId("hh-summary")).toBeVisible();
   });
 });

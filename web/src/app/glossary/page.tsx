@@ -21,7 +21,7 @@ export default function GlossaryPage() {
       </label>
       <dl className="space-y-2">
         {items.map((x) => (
-          <div key={x.id} className="rounded-2xl border border-line bg-surface p-4">
+          <div key={x.id} id={`gl-${x.id}`} className="scroll-mt-4 rounded-2xl border border-line bg-surface p-4">
             <dt className="font-bold">{x.title}</dt>
             <dd className="mt-1 text-sm leading-relaxed text-muted">{x.desc}</dd>
           </div>

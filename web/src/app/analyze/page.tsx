@@ -1,8 +1,9 @@
 "use client";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { PlayingCard } from "@/components/PlayingCard";
+import { ApproxNote } from "@/components/ApproxNote";
 import { SolutionGate } from "@/components/SolutionGate";
 import { ReviewTabs } from "@/components/analyze/ReviewTabs";
 import { GradeBadge } from "@/components/practice/ResultPanel";
@@ -10,11 +11,14 @@ import { analyzeHand, effectiveStack, MAX_STACK, MIN_STACK } from "@/lib/analyze
 import type { DecisionInfo } from "@/lib/analyze/match";
 import { filterHands, HandFilter, mistakeSolution, practiceItems, solutionOf, summarize, weakSpots } from "@/lib/analyze/aggregate";
 import { normalizeHand, SEAT_NAMES } from "@/lib/analyze/normalize";
-import { parseHandHistory } from "@/lib/analyze/parse";
+import { parseHandBlock, splitHandBlocks } from "@/lib/analyze/parse";
+import type { ParsedHand } from "@/lib/analyze/parse";
+import { reasonText } from "@/lib/analyze/reasons";
 import type { Key } from "@/lib/i18n/ja";
 import { cardOf } from "@/lib/postflop/combos";
 import { saveDraft } from "@/lib/solve/draft";
 import { newId } from "@/lib/util/id";
+import { timeSlicer } from "@/lib/util/yield";
 import { depthOf, nearestDepth } from "@/lib/solution/loader";
 import type { SolutionStore } from "@/lib/solution/loader";
 import { useSolutionStore } from "@/lib/solution/context";
@@ -30,9 +34,16 @@ interface Report {
   added: number;
   dup: number;
   skipped: Record<string, number>;
+  /** names of picked files without a single hand block */
+  emptyFiles: string[];
+  cancelled: boolean;
 }
 
 const PAGE = 15;
+/** larger files are refused before reading them (a real month of play is a few MB) */
+const MAX_FILE_BYTES = 50 * 1024 * 1024;
+/** analysed hands are saved in batches, so stopping keeps what is done */
+const SAVE_EVERY = 200;
 
 export default function AnalyzePage() {
   return <SolutionGate grid={false}>{(store) => <Analyze store={store} />}</SolutionGate>;
@@ -43,7 +54,9 @@ function Analyze({ store }: { store: SolutionStore }) {
   const router = useRouter();
   const { getStore } = useSolutionStore();
   const [hands, setHands] = useState<StoredHand[] | null>(null);
-  const [busy, setBusy] = useState<{ done: number; total: number } | null>(null);
+  const [busy, setBusy] = useState<{ stage: "read" | "analyze"; done: number; total: number } | null>(null);
+  const [failure, setFailure] = useState<string | null>(null);
+  const cancelled = useRef(false);
   const [report, setReport] = useState<Report | null>(null);
   const [paste, setPaste] = useState("");
   const [filter, setFilter] = useState<HandFilter>({ seat: null, mistakesOnly: true, spot: null, sort: "loss" });
@@ -58,49 +71,94 @@ function Analyze({ store }: { store: SolutionStore }) {
   }, []);
   useEffect(refresh, [refresh]);
 
-  const importTexts = async (texts: string[]) => {
-    const repo = getRepo();
-    const have = new Set((await repo.listHands()).map((h) => h.id));
-    const rep: Report = { total: 0, added: 0, dup: 0, skipped: {} };
-    const todo: ReturnType<typeof parseHandHistory>["hands"] = [];
-    for (const text of texts) {
-      const r = parseHandHistory(text);
-      rep.total += r.blocks;
-      for (const s of r.skipped) rep.skipped[s.reason] = (rep.skipped[s.reason] ?? 0) + 1;
-      for (const h of r.hands) {
-        if (have.has(h.id)) rep.dup++;
+  /**
+   * Reads, grades and saves hand histories without freezing the screen: the work runs in ~12 ms slices,
+   * shows progress, can be stopped, and one broken hand never aborts the rest.
+   */
+  const importTexts = async (files: { name: string; text: string }[], refused: string[] = []) => {
+    cancelled.current = false;
+    setFailure(null);
+    setReport(null);
+    const rep: Report = { total: 0, added: 0, dup: 0, skipped: {}, emptyFiles: [], cancelled: false };
+    const skip = (reason: string) => (rep.skipped[reason] = (rep.skipped[reason] ?? 0) + 1);
+    refused.forEach(() => skip("file too large"));
+    const tick = timeSlicer();
+    try {
+      const repo = getRepo();
+      const have = new Set((await repo.listHands()).map((h) => h.id));
+      const blocks: string[] = [];
+      for (const f of files) {
+        const b = splitHandBlocks(f.text);
+        if (!b.length && f.name) rep.emptyFiles.push(f.name);
+        blocks.push(...b);
+      }
+      rep.total = blocks.length;
+
+      // 1. parse
+      const todo: ParsedHand[] = [];
+      for (let i = 0; i < blocks.length && !cancelled.current; i++) {
+        const h = parseHandBlock(blocks[i]);
+        if ("reason" in h) skip(h.reason);
+        else if (have.has(h.id)) rep.dup++;
         else {
           have.add(h.id);
           todo.push(h);
         }
+        if (i % 50 === 0) setBusy({ stage: "read", done: i, total: blocks.length });
+        await tick();
       }
-    }
-    setBusy({ done: 0, total: todo.length });
-    const out: StoredHand[] = [];
-    for (let i = 0; i < todo.length; i++) {
-      const n = normalizeHand(todo[i]);
-      if ("reason" in n) {
-        rep.skipped[n.reason] = (rep.skipped[n.reason] ?? 0) + 1;
-      } else {
-        // each hand is graded against the solution whose depth is closest to its effective stack
-        const eff = effectiveStack(n);
-        const src = eff >= MIN_STACK && eff <= MAX_STACK ? await getStore(nearestDepth(eff)).catch(() => store) : store;
-        out.push({ id: n.id, site: todo[i].site, ts: n.ts, importedAt: Date.now(), hand: n, analysis: await analyzeHand(src, n) });
+
+      // 2. grade against the solution nearest to each hand's effective stack, saving in batches
+      let batch: StoredHand[] = [];
+      const flush = async () => {
+        if (!batch.length) return;
+        await repo.putHands(batch);
+        rep.added += batch.length;
+        batch = [];
+      };
+      for (let i = 0; i < todo.length && !cancelled.current; i++) {
+        try {
+          const n = normalizeHand(todo[i]);
+          if ("reason" in n) skip(n.reason);
+          else {
+            const eff = effectiveStack(n);
+            const src = eff >= MIN_STACK && eff <= MAX_STACK ? await getStore(nearestDepth(eff)).catch(() => store) : store;
+            batch.push({ id: n.id, site: todo[i].site, ts: n.ts, importedAt: Date.now(), hand: n, analysis: await analyzeHand(src, n) });
+          }
+        } catch (e) {
+          skip(`internal error (${e instanceof Error ? e.message : String(e)})`);
+        }
+        if (batch.length >= SAVE_EVERY) await flush();
+        if (i % 20 === 0) setBusy({ stage: "analyze", done: i, total: todo.length });
+        await tick();
       }
-      if (i % 20 === 0) setBusy({ done: i, total: todo.length });
+      await flush();
+      rep.cancelled = cancelled.current;
+      setReport(rep);
+    } catch (e) {
+      setFailure(e instanceof Error ? e.message : String(e));
+    } finally {
+      setBusy(null);
+      setShown(PAGE);
+      refresh();
     }
-    await repo.putHands(out);
-    rep.added = out.length;
-    setBusy(null);
-    setReport(rep);
-    setShown(PAGE);
-    refresh();
   };
 
-  const onFiles = async (files: FileList | null) => {
-    if (!files?.length) return;
-    const texts = await Promise.all([...files].map((f) => f.text()));
-    await importTexts(texts);
+  const onFiles = async (picked: FileList | null) => {
+    if (!picked?.length) return;
+    const all = [...picked];
+    const ok = all.filter((f) => f.size <= MAX_FILE_BYTES);
+    const refused = all.filter((f) => f.size > MAX_FILE_BYTES).map((f) => f.name);
+    setBusy({ stage: "read", done: 0, total: 0 });
+    let texts: { name: string; text: string }[];
+    try {
+      texts = await Promise.all(ok.map(async (f) => ({ name: f.name, text: await f.text() })));
+    } catch (e) {
+      setBusy(null);
+      setFailure(e instanceof Error ? e.message : String(e));
+      return;
+    }
+    await importTexts(texts, refused);
   };
 
   const list = useMemo(() => hands ?? [], [hands]);
@@ -147,27 +205,43 @@ function Analyze({ store }: { store: SolutionStore }) {
             placeholder={t("analyze.pasteHint")}
             className="mt-2 w-full rounded-xl border border-line bg-surface-2 p-2 font-mono text-xs"
           />
-          <button type="button" data-testid="hh-run" disabled={!paste.trim() || !!busy} onClick={() => importTexts([paste]).then(() => setPaste(""))} className="mt-2 min-h-11 rounded-xl border border-accent px-4 font-bold text-accent-text disabled:opacity-50">
+          <button type="button" data-testid="hh-run" disabled={!paste.trim() || !!busy} onClick={() => importTexts([{ name: "", text: paste }]).then(() => setPaste(""))} className="mt-2 min-h-11 rounded-xl border border-accent px-4 font-bold text-accent-text disabled:opacity-50">
             {t("analyze.run")}
           </button>
         </details>
         <p className="text-xs text-muted">{t("analyze.privacy")}</p>
         <p className="text-xs text-muted">{t("analyze.limits")}</p>
+        <ApproxNote>{t("approx.analyze")}</ApproxNote>
         {busy && (
-          <p role="status" className="text-sm font-semibold">
-            {t("analyze.working", { done: busy.done, total: busy.total })}
+          <div role="status" data-testid="hh-busy" className="space-y-2">
+            <div className="flex items-center gap-3">
+              <p className="flex-1 text-sm font-semibold">{t(busy.stage === "read" ? "analyze.reading" : "analyze.working", { done: busy.done, total: busy.total || "…" })}</p>
+              <button type="button" data-testid="hh-cancel" onClick={() => (cancelled.current = true)} className="min-h-11 rounded-xl border border-line px-4 text-sm font-semibold">
+                {t("analyze.cancel")}
+              </button>
+            </div>
+            <div className="h-2 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-label={t("analyze.import")} aria-valuemin={0} aria-valuemax={100} aria-valuenow={busy.total ? Math.round((100 * busy.done) / busy.total) : 0}>
+              <div className="h-full bg-accent transition-[width]" style={{ width: `${busy.total ? (100 * busy.done) / busy.total : 0}%` }} />
+            </div>
+          </div>
+        )}
+        {failure && (
+          <p role="alert" className="text-sm text-[color:var(--g-blunder)]" data-testid="hh-failed">
+            {t("analyze.failed", { msg: failure })}
           </p>
         )}
         {report && (
           <div role="status" data-testid="hh-report" className="space-y-1 text-sm">
             <p className="font-semibold">{report.total === 0 ? t("analyze.noHands") : t("analyze.result", { total: report.total, added: report.added, dup: report.dup, skipped: Object.values(report.skipped).reduce((a, b) => a + b, 0) })}</p>
+            {report.cancelled && <p>{t("analyze.cancelled")}</p>}
+            {report.emptyFiles.length > 0 && <p className="text-muted">{t("analyze.emptyFiles", { names: report.emptyFiles.join(", ") })}</p>}
             {Object.keys(report.skipped).length > 0 && (
               <details>
                 <summary className="cursor-pointer text-muted">{t("analyze.skipList")}</summary>
                 <ul className="mt-1 list-disc pl-5 text-muted">
                   {Object.entries(report.skipped).map(([reason, n]) => (
                     <li key={reason}>
-                      {reason} × {n}
+                      {reasonText(reason, t)} × {n}
                     </li>
                   ))}
                 </ul>
@@ -344,8 +418,8 @@ function HandCard({ h, onChange }: { h: StoredHand; onChange: () => void }) {
         {a.evLoss > 0.005 && <span className="text-lg font-extrabold tabular-nums text-[color:var(--g-blunder)]">{t("analyze.loss", { n: a.evLoss.toFixed(2) })}</span>}
       </div>
 
-      {a.status === "skipped" && <p className="text-sm text-muted">{t("analyze.skipped", { reason: a.reason ?? "" })}</p>}
-      {a.status === "partial" && <p className="text-xs text-muted">{t("analyze.partial", { reason: a.reason ?? "" })}</p>}
+      {a.status === "skipped" && <p className="text-sm text-muted">{t("analyze.skipped", { reason: reasonText(a.reason ?? "", t) })}</p>}
+      {a.status === "partial" && <p className="text-xs text-muted">{t("analyze.partial", { reason: reasonText(a.reason ?? "", t) })}</p>}
 
       <ul className="space-y-1.5">
         {a.decisions.map((d, i) => (

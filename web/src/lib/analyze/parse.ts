@@ -72,7 +72,8 @@ const num = (s: string) => Number(s.replace(/[,$€£\s]/g, ""));
 const MONEY = String.raw`[$€£]?[\d.,]+`;
 const CARD = String.raw`[2-9TJQKA][cdhs]`;
 
-function splitHands(text: string): string[] {
+/** the hand blocks of a history file ("PokerStars Hand #…" / "Poker Hand #…"), in order */
+export function splitHandBlocks(text: string): string[] {
   const t = text.replace(/^﻿/, "").replace(/\r\n?/g, "\n");
   const parts = t.split(/\n(?=(?:PokerStars|Poker) (?:Zoom )?Hand #)/);
   return parts.map((p) => p.trim()).filter((p) => /^(?:PokerStars|Poker) (?:Zoom )?Hand #/.test(p));
@@ -210,17 +211,22 @@ function parseOne(block: string): ParsedHand | Skipped {
   return out;
 }
 
+/** one hand block: the hand, or why it was skipped (never throws) */
+export function parseHandBlock(block: string): ParsedHand | Skipped {
+  try {
+    return parseOne(block);
+  } catch (e) {
+    return { id: null, reason: `could not parse (${e instanceof Error ? e.message : String(e)})` };
+  }
+}
+
 export function parseHandHistory(text: string): ParseResult {
-  const blocks = splitHands(text);
+  const blocks = splitHandBlocks(text);
   const res: ParseResult = { hands: [], skipped: [], blocks: blocks.length };
   for (const b of blocks) {
-    try {
-      const h = parseOne(b);
-      if ("reason" in h) res.skipped.push(h);
-      else res.hands.push(h);
-    } catch (e) {
-      res.skipped.push({ id: null, reason: `could not parse (${(e as Error).message})` });
-    }
+    const h = parseHandBlock(b);
+    if ("reason" in h) res.skipped.push(h);
+    else res.hands.push(h);
   }
   return res;
 }

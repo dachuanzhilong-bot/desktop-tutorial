@@ -3,6 +3,7 @@ import { motion } from "framer-motion";
 import { FreqBars } from "@/components/HandPanel";
 import { GridAction, RangeGrid } from "@/components/RangeGrid";
 import { Term } from "@/components/Term";
+import { ApproxNote } from "@/components/ApproxNote";
 import type { Judgement, Question } from "@/lib/practice/engine";
 import type { Grade } from "@/lib/practice/grading";
 import { useSettings } from "@/lib/settings";
@@ -89,6 +90,7 @@ export function ResultPanel({
   onNext,
   onTogglePane,
   nextLabel,
+  approx,
 }: {
   q: Question;
   a: AnswerInfo;
@@ -98,6 +100,8 @@ export function ResultPanel({
   onNext: () => void;
   onTogglePane: () => void;
   nextLabel: string;
+  /** "graded against an approximation" text, shown with the explanation */
+  approx?: string;
 }) {
   const { t } = useSettings();
   const j = a.j;
@@ -166,6 +170,7 @@ export function ResultPanel({
       ) : (
         <div className="mt-3 space-y-3">
           <ExplainLines q={q} a={a} actions={actions} state={state} />
+          {approx && <ApproxNote>{approx}</ApproxNote>}
           <div className="mx-auto w-56" role="img" aria-label={t("practice.rangePos")} inert>
             <RangeGrid sol={q.sol} actions={actions} mode="strategy" selected={null} marker={q.hand} showNumbers={false} bare ariaLabel={t("practice.rangePos")} />
           </div>

@@ -2,6 +2,7 @@
 import { useCallback, useDeferredValue, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { PlayingCard } from "@/components/PlayingCard";
+import { ApproxNote } from "@/components/ApproxNote";
 import { ActionLegend, GridAction, GridMode, RangeGrid } from "@/components/RangeGrid";
 import { Skeleton, GridSkeleton } from "@/components/Skeleton";
 import { edgeTone, useEdgeText } from "@/components/postflop/edge";
@@ -291,7 +292,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
               )}
             </>
           )}
-      <p className="text-center text-xs text-muted">{t("pf.approx")}</p>
+      <ApproxNote>{t("pf.approx")}</ApproxNote>
     </>
   );
 }

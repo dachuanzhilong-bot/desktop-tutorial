@@ -472,6 +472,7 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
             onNext={next}
             onTogglePane={() => setPane((p) => (p === "result" ? "explain" : "result"))}
             nextLabel={link ? t("practice.toFlop") : config.mode === "hand" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")}
+            approx={t("approx.grading", { depth: m.stack })}
           />
         )}
 

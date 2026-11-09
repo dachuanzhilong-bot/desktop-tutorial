@@ -12,6 +12,7 @@ import { Term } from "@/components/Term";
 import { ALL_CLASSES, HAND_FILTERS, HandFilterId, holdsRank, matchesFilter, RANK_CHARS } from "@/lib/poker/hands";
 import { useSettings } from "@/lib/settings";
 import { useLatest } from "@/lib/util/hooks";
+import { ApproxNote } from "@/components/ApproxNote";
 import type { SolutionStore } from "@/lib/solution/loader";
 import { useNodeSolution, useSolutionStore } from "@/lib/solution/context";
 import { DEPTHS } from "@/lib/solution/loader";
@@ -338,10 +339,7 @@ function Study({ store }: { store: SolutionStore }) {
         </section>
       )}
 
-      <p className="text-center text-xs text-muted">
-        {t("study.approx")}
-        {info.iterations ? ` · ${info.iterations + (info.polish ?? 0)} it.` : ""}
-      </p>
+      <ApproxNote>{t(m.stack === 100 ? "approx.preflop" : "approx.preflopRough", { depth: m.stack, iters: Number(info.iterations ?? 0) + Number(info.polish ?? 0) })}</ApproxNote>
       {loading && (
         <span className="sr-only-live" role="status">
           {t("common.loading")}

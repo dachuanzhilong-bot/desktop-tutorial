@@ -6,6 +6,8 @@ import { DEFAULT_FILTER, PracticeFilter } from "@/lib/practice/sampler";
 import { HAND_FILTERS, HandFilterId } from "@/lib/poker/hands";
 import { getRepo } from "@/lib/storage/idb";
 import { useSettings } from "@/lib/settings";
+import { ApproxNote } from "@/components/ApproxNote";
+import { useSolutionStore } from "@/lib/solution/context";
 import { SPOT_TYPES, SpotType } from "@/lib/solution/types";
 import type { Key } from "@/lib/i18n/ja";
 import type { PfScenario } from "@/lib/postflop/loader";
@@ -65,6 +67,7 @@ export function Setup({
   initialFlop?: number;
 }) {
   const { t } = useSettings();
+  const { depth } = useSolutionStore();
   const [mode, setMode] = useState<"spot" | "hand" | "postSpot" | "post">(initialMode ?? "spot");
   const [flopFixed, setFlopFixed] = useState<number | null>(initialFlop ?? null);
   const [flopNames, setFlopNames] = useState<string[]>([]);
@@ -233,6 +236,7 @@ export function Setup({
       </section>
 
       {due > 0 && <p className="text-sm text-accent-text">{t("practice.due", { n: due })}</p>}
+      <ApproxNote>{isPost ? t("pf.approx") : t("approx.grading", { depth })}</ApproxNote>
 
       <button
         type="button"
