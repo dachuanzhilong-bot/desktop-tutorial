@@ -135,7 +135,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
   return (
     <>
           {/* board + line */}
-          <section className="rounded-2xl border border-line bg-surface p-3" aria-label={t("pf.board")}>
+          <section className="rounded-card border border-line bg-surface p-3" aria-label={t("pf.board")}>
             <div className="flex items-center justify-between gap-3">
               <BoardCards board={ctx.board} size="tbl" />
               <div className="text-right text-sm">
@@ -147,7 +147,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
             </div>
             <ol className="no-scrollbar -mx-1 mt-2 flex gap-1.5 overflow-x-auto px-1 pb-0.5" aria-label={t("study.line")}>
               <li>
-                <button type="button" onClick={() => go(0)} className="min-h-9 whitespace-nowrap rounded-full border border-line px-3 text-sm font-semibold text-muted">
+                <button type="button" onClick={() => go(0)} className="min-h-tap whitespace-nowrap rounded-full border border-line px-3 text-sm font-semibold text-muted">
                   {t("study.root")}
                 </button>
               </li>
@@ -159,7 +159,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
                     <button
                       type="button"
                       onClick={() => go(flop.nodes[s.node.id].id)}
-                      className={`${isCard ? "border border-line bg-surface-2" : "seg"} flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-sm font-bold ${isCard ? "text-ink" : "text-white"}`}
+                      className={`${isCard ? "border border-line bg-surface-2" : "seg"} flex min-h-tap items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-sm font-bold ${isCard ? "text-ink" : "text-white"}`}
                       data-k={lab ? edgeTone(lab) : undefined}
                     >
                       {isCard ? <span>{cardText(s.edge.kind)}</span> : <><span>{seatName(s.node.actor)}</span><span className="opacity-90">{edgeText(lab!)}</span></>}
@@ -177,7 +177,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
               <p className="text-xs text-muted">{t("pf.dealHint")}</p>
               <div className="flex flex-wrap gap-2">
                 {node.edges.map((e, i) => (
-                  <button key={i} type="button" disabled={e.code < 0} data-testid="deal-card" onClick={() => e.code >= 0 && go(e.code)} className="rounded-xl border border-line bg-surface p-1.5 disabled:opacity-40" aria-label={cardText(e.kind)}>
+                  <button key={i} type="button" disabled={e.code < 0} data-testid="deal-card" onClick={() => e.code >= 0 && go(e.code)} className="rounded-control border border-line bg-surface p-1.5 disabled:opacity-40" aria-label={cardText(e.kind)}>
                     <PlayingCard card={cardOf(e.kind)} size="tbl" />
                   </button>
                 ))}
@@ -204,7 +204,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
                       disabled={!can}
                       data-testid={`pf-next-${e.kind}`}
                       onClick={() => can && go(e.code)}
-                      className="seg flex min-h-14 flex-col items-center justify-center rounded-2xl px-1 py-1.5 text-white shadow transition-transform active:scale-[0.97] disabled:opacity-60"
+                      className="seg flex min-h-cta flex-col items-center justify-center rounded-card px-1 py-1.5 text-white shadow transition-transform active:scale-[0.97] disabled:opacity-60"
                       data-k={actions[i]?.tone}
                     >
                       <span className="text-sm font-extrabold">{actions[i]?.label}</span>
@@ -219,9 +219,9 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
 
           {node.type === "decision" && sol && d && (
             <>
-              <div role="tablist" aria-label={t("study.modeLabel")} className="grid grid-cols-4 gap-1 rounded-2xl bg-surface p-1">
+              <div role="tablist" aria-label={t("study.modeLabel")} className="grid grid-cols-4 gap-1 rounded-card bg-surface p-1">
                 {MODES.map((md) => (
-                  <button key={md} role="tab" type="button" aria-selected={mode === md} onClick={() => setMode(md)} className={`min-h-11 rounded-xl text-sm font-bold ${mode === md ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`}>
+                  <button key={md} role="tab" type="button" aria-selected={mode === md} onClick={() => setMode(md)} className={`min-h-tap rounded-control text-sm font-bold ${mode === md ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`}>
                     {t(`study.mode.${md}` as Key)}
                   </button>
                 ))}
@@ -232,10 +232,10 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
                 <span className="text-xs text-muted">{t("pf.exploit", { n: exploit.toFixed(1) })}</span>
               </div>
 
-              {selected !== null ? <ComboPanel cls={selected} d={d} actions={actions} board={ctx.board} /> : <p className="rounded-2xl border border-dashed border-line p-4 text-center text-sm text-muted">{t("study.selectHand")}</p>}
+              {selected !== null ? <ComboPanel cls={selected} d={d} actions={actions} board={ctx.board} /> : <p className="rounded-card border border-dashed border-line p-4 text-center text-sm text-muted">{t("study.selectHand")}</p>}
               {extra?.({ node, d, actions, selected, inFilter, board: ctx.board, seat: seatName(node.actor) })}
 
-              <section className="rounded-2xl border border-line bg-surface p-4" aria-label={t("study.actionMix")}>
+              <section className="rounded-card border border-line bg-surface p-4" aria-label={t("study.actionMix")}>
                 <div className="mb-2 flex items-baseline justify-between">
                   <h3 className="font-bold">
                     <Term id="range">{t("study.rangeWidth")}</Term>
@@ -251,7 +251,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
                 </div>
                 <ul className="mt-2 grid gap-2 text-center text-sm" style={{ gridTemplateColumns: `repeat(${actions.length}, minmax(0, 1fr))` }}>
                   {actions.map((a, i) => (
-                    <li key={i} className="rounded-xl bg-surface-2 py-1.5">
+                    <li key={i} className="rounded-control bg-surface-2 py-1.5">
                       <div className="text-xs text-muted">{a.label}</div>
                       <div className="font-extrabold">{((mix[i] ?? 0) * 100).toFixed(1)}%</div>
                     </li>
@@ -263,7 +263,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
                 <h3 className="text-sm font-bold text-muted">{t("pf.category")}</h3>
                 <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4">
                   {CATEGORY_IDS.map((c) => (
-                    <button key={c} type="button" aria-pressed={category === c} onClick={() => setCategory(c)} className={`min-h-9 whitespace-nowrap rounded-full border px-3 text-sm font-semibold ${category === c ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}>
+                    <button key={c} type="button" aria-pressed={category === c} onClick={() => setCategory(c)} className={`min-h-tap whitespace-nowrap rounded-full border px-3 text-sm font-semibold ${category === c ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}>
                       {t(`pf.cat.${c}` as Key)}
                     </button>
                   ))}
@@ -273,7 +273,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
                     <Term id="blocker">{t("study.blockers")}</Term>
                   </span>
                   {[0, 1, 2, 3, 4].map((r) => (
-                    <button key={r} type="button" aria-pressed={blocker === r} aria-label={"AKQJT"[r]} onClick={() => setBlocker(blocker === r ? null : r)} className={`grid min-h-9 min-w-9 place-items-center rounded-full border text-sm font-bold ${blocker === r ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}>
+                    <button key={r} type="button" aria-pressed={blocker === r} aria-label={"AKQJT"[r]} onClick={() => setBlocker(blocker === r ? null : r)} className={`grid min-h-tap min-w-tap place-items-center rounded-full border text-sm font-bold ${blocker === r ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}>
                       {"AKQJT"[r]}
                     </button>
                   ))}
@@ -281,7 +281,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
               </section>
 
               {eqBins && (
-                <section className="rounded-2xl border border-line bg-surface p-4">
+                <section className="rounded-card border border-line bg-surface p-4">
                   <h3 className="mb-1 font-bold">{t("study.eqDist")}</h3>
                   <p className="mb-1 text-xs text-muted">{t("study.eqDistHint")}</p>
                   <Histogram bins={eqBins.bins} labels={eqBins.bins.map((_, i) => `${i * 10}`)} label={t("study.eqDist")} />
@@ -305,7 +305,7 @@ export function ComboPanel({ cls, d, actions, board }: { cls: number; d: DenseNo
   const first = present[0] ?? list[0];
   const inf = first !== undefined ? classify(board, COMBOS[first].c1, COMBOS[first].c2) : null;
   return (
-    <section aria-label={t("study.hand")} className="rounded-2xl border border-line bg-surface p-4" data-testid="pf-hand-panel">
+    <section aria-label={t("study.hand")} className="rounded-card border border-line bg-surface p-4" data-testid="pf-hand-panel">
       <div className="mb-2 flex items-baseline justify-between">
         <h3 className="text-2xl font-extrabold">{classInfo(cls).name}</h3>
         <span className="text-sm text-muted">

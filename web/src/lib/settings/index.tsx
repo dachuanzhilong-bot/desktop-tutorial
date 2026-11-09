@@ -29,7 +29,7 @@ export const DEFAULT_SETTINGS: Settings = {
   lang: "ja",
   theme: "dark",
   palette: "standard",
-  pattern: false,
+  pattern: true,
   labels: true,
   deck4: true,
   textScale: 1,
@@ -48,11 +48,13 @@ export const TEXT_SCALES = [0.9, 1, 1.15, 1.3] as const;
  * Settings schema history
  *   1: unversioned object (up to Phase 8)
  *   2: `_v` added, every field validated on read (unknown fields dropped, wrong types -> default)
+ *   3: action patterns on the chart are on by default (actions must not be told apart by colour alone);
+ *      the old default "off" is switched on once, the user can turn it off again
  */
 export const SETTINGS_SCHEMA: LocalSchema<Settings> = {
   key: STORAGE_KEY,
-  version: 2,
-  migrations: { 1: (d) => d },
+  version: 3,
+  migrations: { 1: (d) => d, 2: (d) => ({ ...d, pattern: true }) },
   sanitize: (d) => {
     const D = DEFAULT_SETTINGS;
     const depth = num(d.depth, D.depth, 1, 1000);
@@ -172,4 +174,4 @@ export function useT() {
 }
 
 /** inline script that runs before first paint to avoid a theme / text-size flash */
-export const THEME_INIT_SCRIPT = `(function(){try{var s=JSON.parse(localStorage.getItem('${STORAGE_KEY}')||'{}');var e=document.documentElement;var th=s.theme||'dark';if(th==='system')th=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';e.dataset.theme=th;e.dataset.palette=s.palette||'standard';e.dataset.pattern=s.pattern?'on':'off';e.dataset.labels=s.labels===false?'off':'on';e.style.setProperty('--text-scale',String(s.textScale||1));if(s.lang)e.lang=s.lang;}catch(_){}})();`;
+export const THEME_INIT_SCRIPT = `(function(){try{var s=JSON.parse(localStorage.getItem('${STORAGE_KEY}')||'{}');var e=document.documentElement;var th=s.theme||'dark';if(th==='system')th=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';e.dataset.theme=th;e.dataset.palette=s.palette||'standard';e.dataset.pattern=(s.pattern===false&&(s._v||1)>=3)?'off':'on';e.dataset.labels=s.labels===false?'off':'on';e.style.setProperty('--text-scale',String(s.textScale||1));if(s.lang)e.lang=s.lang;}catch(_){}})();`;

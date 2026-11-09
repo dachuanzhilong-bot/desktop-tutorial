@@ -18,7 +18,7 @@ export default function RoadmapPage() {
       <h1 className="text-2xl font-extrabold">{t("roadmap.title")}</h1>
       <ol className="space-y-2">
         {PHASES.map((p, i) => (
-          <li key={p.k} className="flex items-start gap-3 rounded-2xl border border-line bg-surface p-4">
+          <li key={p.k} className="flex items-start gap-3 rounded-card border border-line bg-surface p-4">
             <span className={`grid h-8 w-8 shrink-0 place-items-center rounded-full text-sm font-black ${p.done ? "bg-accent text-accent-ink" : "bg-surface-2 text-muted"}`}>{i + 1}</span>
             <span>
               <span className="block font-semibold">{t(p.k as Key)}</span>

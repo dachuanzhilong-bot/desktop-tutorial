@@ -17,11 +17,11 @@ export default function GlossaryPage() {
       <h1 className="text-2xl font-extrabold">{t("gl.title")}</h1>
       <label className="block">
         <span className="sr-only">{t("gl.search")}</span>
-        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("gl.search")} className="min-h-12 w-full rounded-xl border border-line bg-surface px-4" />
+        <input type="search" value={q} onChange={(e) => setQ(e.target.value)} placeholder={t("gl.search")} className="min-h-tap-lg w-full rounded-control border border-line bg-surface px-4" />
       </label>
       <dl className="space-y-2">
         {items.map((x) => (
-          <div key={x.id} id={`gl-${x.id}`} className="scroll-mt-4 rounded-2xl border border-line bg-surface p-4">
+          <div key={x.id} id={`gl-${x.id}`} className="scroll-mt-4 rounded-card border border-line bg-surface p-4">
             <dt className="font-bold">{x.title}</dt>
             <dd className="mt-1 text-sm leading-relaxed text-muted">{x.desc}</dd>
           </div>

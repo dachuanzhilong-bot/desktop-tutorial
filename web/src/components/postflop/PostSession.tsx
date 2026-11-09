@@ -353,9 +353,9 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
     );
   if (phase === "empty")
     return (
-      <div className="space-y-4 rounded-2xl border border-line bg-surface p-5 text-center">
+      <div className="space-y-4 rounded-card border border-line bg-surface p-5 text-center">
         <p>{index ? t("practice.noSpots") : t("pf.missing")}</p>
-        <button type="button" onClick={onExit} className="min-h-12 rounded-xl bg-accent px-6 font-bold text-accent-ink">
+        <button type="button" onClick={onExit} className="min-h-tap-lg rounded-control bg-accent px-6 font-bold text-accent-ink">
           {t("common.back")}
         </button>
       </div>
@@ -437,10 +437,10 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
               </span>
             </div>
             {round.q.roll !== null && (
-              <div className="rounded-2xl border border-accent/60 bg-accent/10 p-3" data-testid="rng-panel">
+              <div className="rounded-card border border-accent/60 bg-accent/10 p-3" data-testid="rng-panel">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm font-bold">{t("practice.rngInstruction")}</span>
-                  <span className="rounded-lg bg-accent px-2.5 py-1 text-xl font-black text-accent-ink" data-testid="rng-roll" aria-label={t("practice.rngRoll")}>
+                  <span className="rounded-control bg-accent px-2.5 py-1 text-xl font-black text-accent-ink" data-testid="rng-roll" aria-label={t("practice.rngRoll")}>
                     {rngRoll}
                   </span>
                 </div>
@@ -462,13 +462,13 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
           </>
         )}
         {answered && round?.q && answer && (
-          <ResultPanel q={round.q} a={answer as AnswerInfo} actions={actions} pane={pane} state={undefined as never} onNext={next} onTogglePane={() => setPane((p) => (p === "result" ? "explain" : "result"))} nextLabel={config.kind === "through" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")} approx={t("pf.approx")} />
+          <ResultPanel q={round.q} a={answer as AnswerInfo} actions={actions} pane={pane} state={undefined as never} onNext={next} onTogglePane={() => setPane((p) => (p === "result" ? "explain" : "result"))} nextLabel={config.kind === "through" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")} approx={t("pf.approx")} terms={["ev", "evLoss", "equity", "range", "spr"]} />
         )}
         {phase === "handEnd" && round && (
-          <div className="rounded-3xl border border-line bg-surface p-4 text-center shadow-xl" data-testid="hand-end">
+          <div className="rounded-sheet border border-line bg-surface p-4 text-center shadow-xl" data-testid="hand-end">
             <p className="mb-3 font-bold">{round.ended === "fold" ? t("pf.end.fold") : round.ended === "showdown" ? t("pf.end.showdown") : round.ended === "allin" ? t("pf.end.allin") : t("pf.end.pruned")}</p>
             {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the answer buttons this replaces are gone: move focus here instead of losing it (the result is announced by a live region) */}
-            <button type="button" onClick={next} autoFocus className="min-h-14 w-full rounded-2xl bg-accent text-lg font-extrabold text-accent-ink">
+            <button type="button" onClick={next} autoFocus className="min-h-cta w-full rounded-card bg-accent text-lg font-extrabold text-accent-ink">
               {t("practice.nextHand")}
             </button>
           </div>

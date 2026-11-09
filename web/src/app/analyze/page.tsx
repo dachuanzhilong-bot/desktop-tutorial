@@ -188,14 +188,14 @@ function Analyze({ store }: { store: SolutionStore }) {
       <ReviewTabs />
 
       {/* import */}
-      <section className="space-y-3 rounded-2xl border border-line bg-surface p-4" aria-label={t("analyze.import")}>
+      <section className="space-y-3 rounded-card border border-line bg-surface p-4" aria-label={t("analyze.import")}>
         <h2 className="font-bold">{t("analyze.import")}</h2>
-        <label className="flex min-h-12 cursor-pointer items-center justify-center rounded-xl bg-accent px-4 font-bold text-accent-ink focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--focus)]">
+        <label className="flex min-h-tap-lg cursor-pointer items-center justify-center rounded-control bg-accent px-4 font-bold text-accent-ink focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--focus)]">
           {t("analyze.pickFiles")}
           <input type="file" multiple accept=".txt,text/plain" data-testid="hh-file" className="sr-only" onChange={(e) => onFiles(e.target.files)} disabled={!!busy} />
         </label>
         <details>
-          <summary className="min-h-10 cursor-pointer text-sm font-semibold">{t("analyze.paste")}</summary>
+          <summary className="min-h-tap cursor-pointer text-sm font-semibold">{t("analyze.paste")}</summary>
           <textarea
             value={paste}
             onChange={(e) => setPaste(e.target.value)}
@@ -203,9 +203,9 @@ function Analyze({ store }: { store: SolutionStore }) {
             rows={5}
             spellCheck={false}
             placeholder={t("analyze.pasteHint")}
-            className="mt-2 w-full rounded-xl border border-line bg-surface-2 p-2 font-mono text-xs"
+            className="mt-2 w-full rounded-control border border-line bg-surface-2 p-2 font-mono text-xs"
           />
-          <button type="button" data-testid="hh-run" disabled={!paste.trim() || !!busy} onClick={() => importTexts([{ name: "", text: paste }]).then(() => setPaste(""))} className="mt-2 min-h-11 rounded-xl border border-accent px-4 font-bold text-accent-text disabled:opacity-50">
+          <button type="button" data-testid="hh-run" disabled={!paste.trim() || !!busy} onClick={() => importTexts([{ name: "", text: paste }]).then(() => setPaste(""))} className="mt-2 min-h-tap rounded-control border border-accent px-4 font-bold text-accent-text disabled:opacity-50">
             {t("analyze.run")}
           </button>
         </details>
@@ -216,7 +216,7 @@ function Analyze({ store }: { store: SolutionStore }) {
           <div role="status" data-testid="hh-busy" className="space-y-2">
             <div className="flex items-center gap-3">
               <p className="flex-1 text-sm font-semibold">{t(busy.stage === "read" ? "analyze.reading" : "analyze.working", { done: busy.done, total: busy.total || "…" })}</p>
-              <button type="button" data-testid="hh-cancel" onClick={() => (cancelled.current = true)} className="min-h-11 rounded-xl border border-line px-4 text-sm font-semibold">
+              <button type="button" data-testid="hh-cancel" onClick={() => (cancelled.current = true)} className="min-h-tap rounded-control border border-line px-4 text-sm font-semibold">
                 {t("analyze.cancel")}
               </button>
             </div>
@@ -252,7 +252,7 @@ function Analyze({ store }: { store: SolutionStore }) {
       </section>
 
       {hands === null ? null : list.length === 0 ? (
-        <p className="rounded-2xl border border-dashed border-line p-6 text-center text-sm text-muted">{t("analyze.empty")}</p>
+        <p className="rounded-card border border-dashed border-line p-6 text-center text-sm text-muted">{t("analyze.empty")}</p>
       ) : (
         <>
           {/* summary */}
@@ -267,7 +267,7 @@ function Analyze({ store }: { store: SolutionStore }) {
                   [t("analyze.sum.net"), `${summary.netPer100 >= 0 ? "+" : "−"}${Math.abs(summary.netPer100).toFixed(1)}bb`],
                 ] as const
               ).map(([k, v]) => (
-                <div key={k} className="rounded-2xl border border-line bg-surface p-3">
+                <div key={k} className="rounded-card border border-line bg-surface p-3">
                   <dt className="text-xs text-muted">{k}</dt>
                   <dd className="text-xl font-extrabold tabular-nums">{v}</dd>
                 </div>
@@ -291,21 +291,21 @@ function Analyze({ store }: { store: SolutionStore }) {
             ) : (
               <ul className="space-y-2" data-testid="hh-weak">
                 {weak.map((w) => (
-                  <li key={`${w.seat}${w.spot}`} className="flex items-center gap-3 rounded-2xl border border-line bg-surface p-3">
+                  <li key={`${w.seat}${w.spot}`} className="flex items-center gap-3 rounded-card border border-line bg-surface p-3">
                     <div className="min-w-0 flex-1">
                       <p className="font-bold">
                         {SEAT_NAMES[w.seat]} · {t(`spot.${w.spot}` as Key)}
                       </p>
                       <p className="text-xs text-muted">{t("analyze.weak.row", { n: w.n, avg: w.avgLoss.toFixed(2), total: w.totalLoss.toFixed(1) })}</p>
                     </div>
-                    <button type="button" onClick={() => makeSet(w.seat, w.spot)} className="min-h-10 rounded-lg border border-accent px-3 text-sm font-bold text-accent-text">
+                    <button type="button" onClick={() => makeSet(w.seat, w.spot)} className="min-h-tap rounded-control border border-accent px-3 text-sm font-bold text-accent-text">
                       {t("analyze.weak.practice")}
                     </button>
                   </li>
                 ))}
               </ul>
             )}
-            <button type="button" data-testid="hh-make-set" onClick={() => makeSet()} className="min-h-12 w-full rounded-2xl bg-accent font-bold text-accent-ink">
+            <button type="button" data-testid="hh-make-set" onClick={() => makeSet()} className="min-h-tap-lg w-full rounded-card bg-accent font-bold text-accent-ink">
               {t("analyze.makeSet")}
             </button>
             {note && (
@@ -319,10 +319,10 @@ function Analyze({ store }: { store: SolutionStore }) {
           <section className="space-y-3" aria-label={t("analyze.hands")}>
             <h2 className="font-bold">{t("analyze.hands")}</h2>
             <div className="flex flex-wrap items-center gap-1.5">
-              <button type="button" aria-pressed={filter.mistakesOnly} onClick={() => setFilter({ ...filter, mistakesOnly: !filter.mistakesOnly })} className={`min-h-10 rounded-full border px-3 text-sm font-semibold ${filter.mistakesOnly ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}>
+              <button type="button" aria-pressed={filter.mistakesOnly} onClick={() => setFilter({ ...filter, mistakesOnly: !filter.mistakesOnly })} className={`min-h-tap rounded-full border px-3 text-sm font-semibold ${filter.mistakesOnly ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}>
                 {t("analyze.f.mistakes")}
               </button>
-              <select aria-label={t("analyze.f.seat")} value={filter.seat ?? ""} onChange={(e) => setFilter({ ...filter, seat: e.target.value === "" ? null : Number(e.target.value) })} className="min-h-10 rounded-full border border-line bg-surface px-3 text-sm">
+              <select aria-label={t("analyze.f.seat")} value={filter.seat ?? ""} onChange={(e) => setFilter({ ...filter, seat: e.target.value === "" ? null : Number(e.target.value) })} className="min-h-tap rounded-full border border-line bg-surface px-3 text-sm">
                 <option value="">{t("analyze.f.seat")}: {t("analyze.f.all")}</option>
                 {SEAT_NAMES.map((n, i) => (
                   <option key={n} value={i}>
@@ -330,7 +330,7 @@ function Analyze({ store }: { store: SolutionStore }) {
                   </option>
                 ))}
               </select>
-              <select aria-label="sort" value={filter.sort} onChange={(e) => setFilter({ ...filter, sort: e.target.value as HandFilter["sort"] })} className="min-h-10 rounded-full border border-line bg-surface px-3 text-sm">
+              <select aria-label="sort" value={filter.sort} onChange={(e) => setFilter({ ...filter, sort: e.target.value as HandFilter["sort"] })} className="min-h-tap rounded-full border border-line bg-surface px-3 text-sm">
                 <option value="loss">{t("analyze.sort.loss")}</option>
                 <option value="recent">{t("analyze.sort.recent")}</option>
               </select>
@@ -341,7 +341,7 @@ function Analyze({ store }: { store: SolutionStore }) {
               ))}
             </ul>
             {view.length > shown && (
-              <button type="button" onClick={() => setShown(shown + PAGE)} className="min-h-11 w-full rounded-xl border border-line font-semibold">
+              <button type="button" onClick={() => setShown(shown + PAGE)} className="min-h-tap w-full rounded-control border border-line font-semibold">
                 {t("analyze.more")}
               </button>
             )}
@@ -355,7 +355,7 @@ function Analyze({ store }: { store: SolutionStore }) {
                 refresh();
               }
             }}
-            className="min-h-11 text-sm text-muted underline"
+            className="min-h-tap text-sm text-muted underline"
           >
             {t("analyze.clear")}
           </button>
@@ -401,7 +401,7 @@ function HandCard({ h, onChange }: { h: StoredHand; onChange: () => void }) {
     router.push("/solve/");
   };
   return (
-    <li className="space-y-2 rounded-2xl border border-line bg-surface p-3" data-testid="hh-hand">
+    <li className="space-y-2 rounded-card border border-line bg-surface p-3" data-testid="hh-hand">
       <div className="flex items-center gap-3">
         <span className="flex shrink-0 gap-0.5">
           <PlayingCard card={cardOf(c1)} size="sm" />
@@ -429,12 +429,12 @@ function HandCard({ h, onChange }: { h: StoredHand; onChange: () => void }) {
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
         {a.worst && (
-          <Link href={`/study/#d=${depthOf(a.solution)}&n=${a.worst.nodeId}`} className="min-h-10 rounded-lg border border-line px-3 py-2 text-sm font-semibold">
+          <Link href={`/study/#d=${depthOf(a.solution)}&n=${a.worst.nodeId}`} className="min-h-tap rounded-control border border-line px-3 py-2 text-sm font-semibold">
             {t("analyze.openStudy")}
           </Link>
         )}
         {a.flopLink && (
-          <button type="button" data-testid="hh-solve" onClick={openSolve} title={t("analyze.solveHint", { pot: a.flopLink.pot, stack: a.flopLink.stack })} className="min-h-10 rounded-lg border border-accent px-3 text-sm font-bold text-accent-text">
+          <button type="button" data-testid="hh-solve" onClick={openSolve} title={t("analyze.solveHint", { pot: a.flopLink.pot, stack: a.flopLink.stack })} className="min-h-tap rounded-control border border-accent px-3 text-sm font-bold text-accent-text">
             {t("analyze.openSolve")}
           </button>
         )}
@@ -444,7 +444,7 @@ function HandCard({ h, onChange }: { h: StoredHand; onChange: () => void }) {
             await getRepo().deleteHand(h.id);
             onChange();
           }}
-          className="ml-auto min-h-10 px-2 text-sm text-muted"
+          className="ml-auto min-h-tap px-2 text-sm text-muted"
         >
           {t("analyze.delete")}
         </button>
@@ -457,10 +457,10 @@ function HandCard({ h, onChange }: { h: StoredHand; onChange: () => void }) {
 function DecisionRow({ d, m }: { d: DecisionInfo; m: Manifest | null }) {
   const { t } = useSettings();
   const tt = t as (k: Key) => string;
-  if (!m) return <li className="rounded-xl bg-surface-2 p-2 text-sm text-muted">…</li>;
+  if (!m) return <li className="rounded-control bg-surface-2 p-2 text-sm text-muted">…</li>;
   const acts = m.nodes[d.nodeId].actions;
   return (
-    <li className="rounded-xl bg-surface-2 p-2">
+    <li className="rounded-control bg-surface-2 p-2">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <GradeBadge grade={d.grade} />
         <span className="text-sm">
@@ -477,7 +477,7 @@ function DecisionRow({ d, m }: { d: DecisionInfo; m: Manifest | null }) {
       </div>
       {d.sizeNote && <p className="mt-1 text-xs text-muted">{t("analyze.sizeNote", { real: fmtBB(d.sizeNote.real), tree: fmtBB(d.sizeNote.tree) })}</p>}
       <details className="mt-1">
-        <summary className="min-h-9 cursor-pointer text-xs font-semibold text-muted">{t("analyze.details")}</summary>
+        <summary className="min-h-tap cursor-pointer text-xs font-semibold text-muted">{t("analyze.details")}</summary>
         <table className="mt-1 w-full text-sm">
           <thead>
             <tr className="text-left text-xs text-muted">

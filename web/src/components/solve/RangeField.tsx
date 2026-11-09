@@ -32,7 +32,7 @@ export function RangeField({ label, text, onText, saved, testId }: { label: stri
 
   const combos = rangeCombos(parsed.range);
   return (
-    <section className="space-y-2 rounded-2xl border border-line bg-surface p-3" aria-label={label} data-testid={testId}>
+    <section className="space-y-2 rounded-card border border-line bg-surface p-3" aria-label={label} data-testid={testId}>
       <div className="flex items-baseline justify-between gap-2">
         <h3 className="font-bold">{label}</h3>
         <span className="text-xs text-muted" data-testid={`${testId}-size`}>
@@ -46,7 +46,7 @@ export function RangeField({ label, text, onText, saved, testId }: { label: stri
         <div className="min-w-0 flex-1 space-y-2">
           <label className="block text-xs text-muted">
             {t("solve.preset")}
-            <select value={choice} onChange={(e) => pick(e.target.value)} data-testid={`${testId}-preset`} className="mt-0.5 block min-h-11 w-full rounded-xl border border-line bg-surface-2 px-2 text-sm text-ink">
+            <select value={choice} onChange={(e) => pick(e.target.value)} data-testid={`${testId}-preset`} className="mt-0.5 block min-h-tap w-full rounded-control border border-line bg-surface-2 px-2 text-sm text-ink">
               <option value="">{t("solve.presetCustom")}</option>
               <optgroup label="GTO">
                 {presets.map((p) => (
@@ -66,7 +66,7 @@ export function RangeField({ label, text, onText, saved, testId }: { label: stri
               )}
             </select>
           </label>
-          <Link href={`/builder/#text=${encodeURIComponent(text)}`} className="inline-block text-sm text-accent-text underline">
+          <Link href={`/builder/#text=${encodeURIComponent(text)}`} className="inline-flex min-h-tap items-center text-sm text-accent-text underline">
             {t("solve.edit")}
           </Link>
         </div>
@@ -82,7 +82,7 @@ export function RangeField({ label, text, onText, saved, testId }: { label: stri
           }}
           rows={2}
           spellCheck={false}
-          className="mt-0.5 block w-full rounded-xl border border-line bg-surface-2 p-2 font-mono text-xs text-ink"
+          className="mt-0.5 block w-full rounded-control border border-line bg-surface-2 p-2 font-mono text-xs text-ink"
         />
       </label>
       {parsed.errors.length > 0 && (

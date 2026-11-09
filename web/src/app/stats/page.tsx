@@ -83,7 +83,7 @@ export default function StatsPage() {
       </header>
       <ReviewTabs />
 
-      <section className="grid grid-cols-[auto_1fr] items-center gap-4 rounded-3xl border border-line bg-surface p-4">
+      <section className="grid grid-cols-[auto_1fr] items-center gap-4 rounded-sheet border border-line bg-surface p-4">
         <Ring value={today} max={settings.dailyGoal} label={t("stats.goalHands", { n: today, goal: settings.dailyGoal })}>
           <div className="text-2xl font-black" data-testid="today-count">
             {today}
@@ -101,9 +101,9 @@ export default function StatsPage() {
       </section>
 
       {sum.n === 0 ? (
-        <div className="rounded-2xl border border-dashed border-line p-6 text-center">
+        <div className="rounded-card border border-dashed border-line p-6 text-center">
           <p className="text-muted">{t("stats.empty")}</p>
-          <Link href="/practice/" className="mt-3 inline-grid min-h-12 place-items-center rounded-xl bg-accent px-6 font-bold text-accent-ink">
+          <Link href="/practice/" className="mt-3 inline-grid min-h-tap-lg place-items-center rounded-control bg-accent px-6 font-bold text-accent-ink">
             {t("home.continue")}
           </Link>
         </div>
@@ -116,19 +116,19 @@ export default function StatsPage() {
               [t("stats.avgLoss"), `${sum.avgLoss.toFixed(2)}bb`],
               [t("stats.avgScore"), sum.avgScore.toFixed(0)],
             ].map(([k, v]) => (
-              <div key={k} className="rounded-2xl bg-surface p-3 text-center">
+              <div key={k} className="rounded-card bg-surface p-3 text-center">
                 <dt className="text-xs text-muted">{k}</dt>
                 <dd className="text-2xl font-black">{v}</dd>
               </div>
             ))}
           </dl>
 
-          <section className="rounded-2xl border border-line bg-surface p-4">
+          <section className="rounded-card border border-line bg-surface p-4">
             <h2 className="mb-2 font-bold">{t("stats.trend")}</h2>
             <LineChart label={t("stats.trend")} values={series.map((d) => (d.n ? Math.round(d.avgScore) : null))} labels={[series[0].date.slice(5), series[series.length - 1].date.slice(5)]} />
           </section>
 
-          <section className="rounded-2xl border border-line bg-surface p-4">
+          <section className="rounded-card border border-line bg-surface p-4">
             <h2 className="mb-2 font-bold">{t("stats.gradeDist")}</h2>
             <div className="flex h-4 overflow-hidden rounded-full bg-surface-2" role="img" aria-label={t("stats.gradeDist")}>
               {GRADES.map((g) => (
@@ -144,7 +144,7 @@ export default function StatsPage() {
             </ul>
           </section>
 
-          <section className="rounded-2xl border border-line bg-surface p-4">
+          <section className="rounded-card border border-line bg-surface p-4">
             <h2 className="font-bold">{t("stats.heatmap")}</h2>
             <p className="mb-2 text-xs text-muted">{t("stats.heatmapHint")}</p>
             <div className="-mx-1 overflow-x-auto px-1">
@@ -180,21 +180,21 @@ export default function StatsPage() {
             </div>
           </section>
 
-          <section className="rounded-2xl border border-line bg-surface p-4">
+          <section className="rounded-card border border-line bg-surface p-4">
             <h2 className="mb-2 font-bold">{t("stats.weak")}</h2>
             {weak.length === 0 ? (
               <p className="text-sm text-muted">{t("stats.weakNone")}</p>
             ) : (
               <ul className="space-y-2">
                 {weak.map((w) => (
-                  <li key={`${w.seat}-${w.spot}`} className="flex items-center justify-between gap-2 rounded-xl bg-surface-2 p-3">
+                  <li key={`${w.seat}-${w.spot}`} className="flex items-center justify-between gap-2 rounded-control bg-surface-2 p-3">
                     <span>
                       <b>{SEATS[w.seat]}</b> · {t(`spot.${w.spot}` as Key)}
                       <span className="block text-xs text-muted">
                         {t("stats.avgLoss")} {w.avgLoss.toFixed(2)}bb · {t("stats.nSamples", { n: w.n })}
                       </span>
                     </span>
-                    <Link href={`/practice/#seat=${w.seat}&spot=${w.spot}`} className="min-h-10 shrink-0 rounded-lg bg-accent px-3 py-2 text-sm font-bold text-accent-ink">
+                    <Link href={`/practice/#seat=${w.seat}&spot=${w.spot}`} className="min-h-tap shrink-0 rounded-control bg-accent px-3 py-2 text-sm font-bold text-accent-ink">
                       {t("stats.makeSet")}
                     </Link>
                   </li>
@@ -205,14 +205,14 @@ export default function StatsPage() {
         </>
       )}
 
-      <section className="rounded-2xl border border-line bg-surface p-4">
+      <section className="rounded-card border border-line bg-surface p-4">
         <h2 className="font-bold">{t("stats.sync")}</h2>
         <p className="mb-3 mt-1 text-sm text-muted">{t("stats.syncDesc")}</p>
         <div className="flex gap-2">
-          <button type="button" onClick={exportData} className="min-h-11 flex-1 rounded-xl border border-line font-semibold">
+          <button type="button" onClick={exportData} className="min-h-tap flex-1 rounded-control border border-line font-semibold">
             {t("stats.export")}
           </button>
-          <button type="button" onClick={() => fileRef.current?.click()} className="min-h-11 flex-1 rounded-xl border border-line font-semibold">
+          <button type="button" onClick={() => fileRef.current?.click()} className="min-h-tap flex-1 rounded-control border border-line font-semibold">
             {t("stats.import")}
           </button>
           <input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && importData(e.target.files[0])} />

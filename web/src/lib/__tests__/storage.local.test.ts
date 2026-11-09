@@ -67,6 +67,11 @@ describe("settings schema", () => {
     const v1 = { lang: "en", theme: "light", palette: "cvd", pattern: true, labels: false, deck4: false, textScale: 1.15, haptics: false, dailyGoal: 50, depth: 40, onboarded: true };
     expect(upgrade(SETTINGS_SCHEMA, v1)).toEqual(v1);
   });
+  it("schema 3 turns the chart patterns on once (old default off); a later 'off' is kept", () => {
+    expect(upgrade(SETTINGS_SCHEMA, { pattern: false })!.pattern).toBe(true);
+    expect(upgrade(SETTINGS_SCHEMA, { pattern: false, [VERSION_FIELD]: 2 })!.pattern).toBe(true);
+    expect(upgrade(SETTINGS_SCHEMA, { pattern: false, [VERSION_FIELD]: 3 })!.pattern).toBe(false);
+  });
   it("fills missing fields with defaults (the e2e tests store only {onboarded:true})", () => {
     expect(upgrade(SETTINGS_SCHEMA, { onboarded: true })).toEqual({ ...DEFAULT_SETTINGS, onboarded: true });
   });

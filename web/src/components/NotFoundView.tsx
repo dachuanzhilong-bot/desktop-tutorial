@@ -12,10 +12,10 @@ export function NotFoundView() {
       <h1 className="text-2xl font-extrabold">{t("nf.title")}</h1>
       <p className="text-muted">{t("nf.body")}</p>
       <div className="grid gap-2 sm:grid-cols-2">
-        <Link href="/" className="grid min-h-12 place-items-center rounded-2xl bg-accent font-bold text-accent-ink">
+        <Link href="/" className="grid min-h-tap-lg place-items-center rounded-card bg-accent font-bold text-accent-ink">
           {t("err.home")}
         </Link>
-        <Link href="/practice/" className="grid min-h-12 place-items-center rounded-2xl border border-line font-bold">
+        <Link href="/practice/" className="grid min-h-tap-lg place-items-center rounded-card border border-line font-bold">
           {t("nav.practice")}
         </Link>
       </div>

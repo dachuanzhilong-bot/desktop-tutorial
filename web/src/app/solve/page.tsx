@@ -312,7 +312,7 @@ export default function SolvePage() {
       </header>
       <SolveTabs />
       {!wasmOk && (
-        <p role="alert" className="rounded-2xl border border-line bg-surface p-4 text-sm">
+        <p role="alert" className="rounded-card border border-line bg-surface p-4 text-sm">
           {t("solve.noWasm")}
         </p>
       )}
@@ -321,10 +321,10 @@ export default function SolvePage() {
         <section className="space-y-2" aria-label={t("solve.quick")}>
           <h2 className="font-bold">{t("solve.quick")}</h2>
           <div className="flex flex-wrap gap-2">
-            <button type="button" data-testid="quick-srp" onClick={() => quick("srp")} className="min-h-11 rounded-xl border border-line bg-surface px-3.5 text-sm font-semibold">
+            <button type="button" data-testid="quick-srp" onClick={() => quick("srp")} className="min-h-tap rounded-control border border-line bg-surface px-3.5 text-sm font-semibold">
               {t("solve.quick.srp")}
             </button>
-            <button type="button" data-testid="quick-3bp" disabled={!can3bp} onClick={() => quick("3bp")} className="min-h-11 rounded-xl border border-line bg-surface px-3.5 text-sm font-semibold disabled:opacity-45">
+            <button type="button" data-testid="quick-3bp" disabled={!can3bp} onClick={() => quick("3bp")} className="min-h-tap rounded-control border border-line bg-surface px-3.5 text-sm font-semibold disabled:opacity-45">
               {t("solve.quick.3bp")}
             </button>
           </div>
@@ -343,11 +343,11 @@ export default function SolvePage() {
           <div className="grid grid-cols-2 gap-3">
             <label className="block text-sm text-muted">
               {t("solve.pot")}
-              <input data-testid="pot-input" type="number" inputMode="decimal" min={1} step={0.5} value={pot} onChange={(e) => setPot(e.target.value)} className="mt-1 block min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-ink" />
+              <input data-testid="pot-input" type="number" inputMode="decimal" min={1} step={0.5} value={pot} onChange={(e) => setPot(e.target.value)} className="mt-1 block min-h-tap w-full rounded-control border border-line bg-surface px-3 text-ink" />
             </label>
             <label className="block text-sm text-muted">
               {t("solve.stack")}
-              <input data-testid="stack-input" type="number" inputMode="decimal" min={1} step={0.5} value={stack} onChange={(e) => setStack(e.target.value)} className="mt-1 block min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-ink" />
+              <input data-testid="stack-input" type="number" inputMode="decimal" min={1} step={0.5} value={stack} onChange={(e) => setStack(e.target.value)} className="mt-1 block min-h-tap w-full rounded-control border border-line bg-surface px-3 text-ink" />
             </label>
           </div>
           <p className="text-xs text-muted">{t("solve.spr", { n: spr.toFixed(1) })}</p>
@@ -357,9 +357,9 @@ export default function SolvePage() {
 
         <section className="space-y-3" aria-label={t("solve.accuracy")}>
           <h2 className="font-bold">{t("solve.accuracy")}</h2>
-          <div role="group" aria-label={t("solve.accuracy")} className="grid grid-cols-3 gap-1 rounded-2xl bg-surface p-1">
+          <div role="group" aria-label={t("solve.accuracy")} className="grid grid-cols-3 gap-1 rounded-card bg-surface p-1">
             {(["draft", "std", "high"] as const).map((a) => (
-              <button key={a} type="button" aria-pressed={acc === a} data-testid={`acc-${a}`} onClick={() => pickAcc(a)} className={`min-h-11 rounded-xl text-sm font-bold ${acc === a ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`}>
+              <button key={a} type="button" aria-pressed={acc === a} data-testid={`acc-${a}`} onClick={() => pickAcc(a)} className={`min-h-tap rounded-control text-sm font-bold ${acc === a ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`}>
                 {t(`solve.acc.${a}` as Key)}
               </button>
             ))}
@@ -368,16 +368,16 @@ export default function SolvePage() {
             {t("solve.iterations")}: <b className="text-ink">{iterations}</b> · {t("solve.est", { s: fmtTime(estSeconds) })} · {t("solve.target")}: <b className="text-ink">{target}</b>
           </p>
           {hint.level === "slow" && <p className="text-sm text-muted">{t("solve.heavy")}</p>}
-          <details className="rounded-2xl border border-line bg-surface p-3">
-            <summary className="min-h-9 cursor-pointer font-semibold">{t("solve.advanced")}</summary>
+          <details className="rounded-card border border-line bg-surface p-3">
+            <summary className="min-h-tap cursor-pointer font-semibold">{t("solve.advanced")}</summary>
             <div className="mt-3 grid grid-cols-2 gap-3">
               <label className="block text-sm text-muted">
                 {t("solve.iterations")}
-                <input type="number" min={10} max={5000} step={10} value={iterations} onChange={(e) => setIterations(Math.max(10, Math.min(5000, Number(e.target.value) || 10)))} className="mt-1 block min-h-11 w-full rounded-xl border border-line bg-surface-2 px-3 text-ink" />
+                <input type="number" min={10} max={5000} step={10} value={iterations} onChange={(e) => setIterations(Math.max(10, Math.min(5000, Number(e.target.value) || 10)))} className="mt-1 block min-h-tap w-full rounded-control border border-line bg-surface-2 px-3 text-ink" />
               </label>
               <label className="block text-sm text-muted">
                 {t("solve.target")}
-                <input type="number" min={0.05} max={10} step={0.05} value={target} onChange={(e) => setTarget(Math.max(0.05, Number(e.target.value) || 1))} className="mt-1 block min-h-11 w-full rounded-xl border border-line bg-surface-2 px-3 text-ink" />
+                <input type="number" min={0.05} max={10} step={0.05} value={target} onChange={(e) => setTarget(Math.max(0.05, Number(e.target.value) || 1))} className="mt-1 block min-h-tap w-full rounded-control border border-line bg-surface-2 px-3 text-ink" />
               </label>
               {board.length < 5 && (
                 <label className="block text-sm text-muted">
@@ -385,7 +385,7 @@ export default function SolvePage() {
                   <select
                     value={board.length === 3 ? cfg.turnCards : cfg.riverCards}
                     onChange={(e) => setCfg(board.length === 3 ? { ...cfg, turnCards: Number(e.target.value) } : { ...cfg, riverCards: Number(e.target.value) })}
-                    className="mt-1 block min-h-11 w-full rounded-xl border border-line bg-surface-2 px-3 text-ink"
+                    className="mt-1 block min-h-tap w-full rounded-control border border-line bg-surface-2 px-3 text-ink"
                   >
                     {(board.length === 3 ? [4, 6, 8] : [1, 2, 4, 8]).map((n) => (
                       <option key={n} value={n}>
@@ -398,7 +398,7 @@ export default function SolvePage() {
               {board.length === 3 && (
                 <label className="block text-sm text-muted">
                   {t("solve.riverCards")}
-                  <select value={cfg.riverCards} onChange={(e) => setCfg({ ...cfg, riverCards: Number(e.target.value) })} className="mt-1 block min-h-11 w-full rounded-xl border border-line bg-surface-2 px-3 text-ink">
+                  <select value={cfg.riverCards} onChange={(e) => setCfg({ ...cfg, riverCards: Number(e.target.value) })} className="mt-1 block min-h-tap w-full rounded-control border border-line bg-surface-2 px-3 text-ink">
                     {[1, 2, 4].map((n) => (
                       <option key={n} value={n}>
                         {n}
@@ -414,13 +414,13 @@ export default function SolvePage() {
       </fieldset>
 
       {/* run */}
-      <section className="space-y-3 rounded-2xl border border-line bg-surface p-4" aria-label={t("solve.run")}>
+      <section className="space-y-3 rounded-card border border-line bg-surface p-4" aria-label={t("solve.run")}>
         <div className="grid grid-cols-[1fr_auto] gap-2">
-          <button type="button" data-testid="solve-run" disabled={!canRun} onClick={run} className="min-h-14 rounded-2xl bg-accent text-lg font-extrabold text-accent-ink shadow disabled:opacity-50">
+          <button type="button" data-testid="solve-run" disabled={!canRun} onClick={run} className="min-h-cta rounded-card bg-accent text-lg font-extrabold text-accent-ink shadow disabled:opacity-50">
             {phase === "building" ? t("solve.preparing") : t("solve.run")}
           </button>
           {(phase === "running" || phase === "locking") && (
-            <button type="button" data-testid="solve-stop" onClick={stop} className="min-h-14 rounded-2xl border border-line px-5 font-bold">
+            <button type="button" data-testid="solve-stop" onClick={stop} className="min-h-cta rounded-card border border-line px-5 font-bold">
               {t("solve.stop")}
             </button>
           )}
@@ -448,14 +448,14 @@ export default function SolvePage() {
       {/* result */}
       {result && (
         <section className="space-y-3" aria-label={t("solve.result")} data-testid="solve-result">
-          <div className="rounded-2xl border border-line bg-surface p-4">
+          <div className="rounded-card border border-line bg-surface p-4">
             <h2 className="text-lg font-extrabold">{result.stopped ? t("solve.stopped") : t("solve.done")}</h2>
             <p className="text-sm text-muted" data-testid="solve-exploit">
               {t("solve.exploitLead", { x: result.exploit.toFixed(2) })} · {t("solve.iterCount", { n: result.iterations })}
             </p>
             <div className="mt-3 flex flex-wrap gap-2">
-              <input aria-label={t("solve.saveName")} placeholder={t("solve.saveName")} value={title} onChange={(e) => setTitle(e.target.value)} className="min-h-11 min-w-0 flex-1 rounded-xl border border-line bg-surface-2 px-3" />
-              <button type="button" data-testid="solve-save" onClick={save} className="min-h-11 rounded-xl bg-accent px-4 font-bold text-accent-ink">
+              <input aria-label={t("solve.saveName")} placeholder={t("solve.saveName")} value={title} onChange={(e) => setTitle(e.target.value)} className="min-h-tap min-w-0 flex-1 rounded-control border border-line bg-surface-2 px-3" />
+              <button type="button" data-testid="solve-save" onClick={save} className="min-h-tap rounded-control bg-accent px-4 font-bold text-accent-ink">
                 {t("solve.save")}
               </button>
               <button
@@ -465,7 +465,7 @@ export default function SolvePage() {
                   const id = await save();
                   if (id) router.push(`/study/postflop/#solve=${id}`);
                 }}
-                className="min-h-11 rounded-xl border border-accent px-4 font-bold text-accent-text"
+                className="min-h-tap rounded-control border border-accent px-4 font-bold text-accent-text"
               >
                 {t("solve.openStudy")}
               </button>
@@ -476,14 +476,14 @@ export default function SolvePage() {
           </div>
 
           {locks.size > 0 && (
-            <div className="rounded-2xl border border-line bg-surface p-3" data-testid="lock-list">
+            <div className="rounded-card border border-line bg-surface p-3" data-testid="lock-list">
               <p className="mb-1.5 text-sm font-bold">{t("solve.lock.list")}</p>
               <ul className="flex flex-wrap gap-1.5">
                 {[...locks.entries()].map(([tree, seat]) => {
                   const ex = result.map.indexOf(tree);
                   return (
                     <li key={tree}>
-                      <button type="button" disabled={ex < 0} onClick={() => setViewNode(ex)} className="min-h-9 rounded-full border border-accent px-3 text-sm font-semibold text-accent-text">
+                      <button type="button" disabled={ex < 0} onClick={() => setViewNode(ex)} className="min-h-tap rounded-full border border-accent px-3 text-sm font-semibold text-accent-text">
                         {seat} #{ex}
                       </button>
                     </li>
@@ -526,11 +526,11 @@ export default function SolvePage() {
       <section className="space-y-2" aria-label={t("solve.mine")}>
         <h2 className="font-bold">{t("solve.mine")}</h2>
         {mine.length === 0 ? (
-          <p className="rounded-2xl border border-dashed border-line p-4 text-sm text-muted">{t("solve.mineEmpty")}</p>
+          <p className="rounded-card border border-dashed border-line p-4 text-sm text-muted">{t("solve.mineEmpty")}</p>
         ) : (
           <ul className="space-y-2" data-testid="saved-solves">
             {mine.map((s) => (
-              <li key={s.id} className="rounded-2xl border border-line bg-surface p-3">
+              <li key={s.id} className="rounded-card border border-line bg-surface p-3">
                 <div className="flex items-center gap-2">
                   <span className="flex shrink-0 gap-0.5">
                     {s.board.map((c) => (
@@ -543,10 +543,10 @@ export default function SolvePage() {
                   {new Date(s.ts).toLocaleString()} · Exploitability {s.exploit.toFixed(2)}% · {t("pf.pot", { pot: fmtBB((s.cfg as SolveConfig).pot), stack: fmtBB((s.cfg as SolveConfig).stack) })}
                 </p>
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <Link href={`/study/postflop/#solve=${s.id}`} className="min-h-10 rounded-lg bg-accent px-3.5 py-2 text-sm font-bold text-accent-ink">
+                  <Link href={`/study/postflop/#solve=${s.id}`} className="min-h-tap rounded-control bg-accent px-3.5 py-2 text-sm font-bold text-accent-ink">
                     {t("solve.openStudy")}
                   </Link>
-                  <button type="button" onClick={() => loadSaved(s)} className="min-h-10 rounded-lg border border-line px-3.5 text-sm font-semibold">
+                  <button type="button" onClick={() => loadSaved(s)} className="min-h-tap rounded-control border border-line px-3.5 text-sm font-semibold">
                     {t("solve.reload")}
                   </button>
                   <button
@@ -555,7 +555,7 @@ export default function SolvePage() {
                       await getRepo().deleteSolve(s.id);
                       void refreshMine();
                     }}
-                    className="min-h-10 rounded-lg px-3 text-sm text-muted"
+                    className="min-h-tap rounded-control px-3 text-sm text-muted"
                   >
                     {t("solve.delete")}
                   </button>

@@ -80,15 +80,15 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
   const good = log.filter((j) => isGood(j.grade)).length;
   const avgLoss = log.length ? log.reduce((s, j) => s + j.evLoss, 0) / log.length : 0;
   const act = q?.node.facing === null || q?.node.facing === undefined ? t("icm.drill.jam") : t("icm.drill.call");
-  const chip = (on: boolean) => `min-h-10 rounded-full border px-3 text-sm font-semibold ${on ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`;
+  const chip = (on: boolean) => `min-h-tap rounded-full border px-3 text-sm font-semibold ${on ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`;
 
   return (
-    <section className="space-y-3 rounded-2xl border border-line bg-surface p-4" aria-label={t("icm.drill.title")} data-testid="icm-drill">
+    <section className="space-y-3 rounded-card border border-line bg-surface p-4" aria-label={t("icm.drill.title")} data-testid="icm-drill">
       <h2 className="font-bold">{t("icm.drill.title")}</h2>
       {!active ? (
         <>
           <p className="text-sm text-muted">{t("icm.drill.intro")}</p>
-          <button type="button" data-testid="icm-drill-start" onClick={() => (setLog([]), setActive(true), next())} className="min-h-12 w-full rounded-xl bg-accent font-bold text-accent-ink">
+          <button type="button" data-testid="icm-drill-start" onClick={() => (setLog([]), setActive(true), next())} className="min-h-tap-lg w-full rounded-control bg-accent font-bold text-accent-ink">
             {t("icm.drill.start")}
           </button>
         </>
@@ -109,7 +109,7 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
             <p className="text-sm text-muted">{t("icm.drill.none")}</p>
           ) : (
             <>
-              <div className="rounded-xl bg-surface-2 p-3 text-sm" data-testid="icm-drill-question">
+              <div className="rounded-control bg-surface-2 p-3 text-sm" data-testid="icm-drill-question">
                 <p className="font-bold">{t("icm.drill.you", { pos: positions[q.node.player], bb: stacks[q.node.player] })}</p>
                 <p className="text-muted">{q.node.facing === null ? t("icm.drill.firstIn") : t("icm.drill.facing", { pos: positions[q.node.facing], bb: stacks[q.node.facing] })}</p>
                 <p className="mt-1 text-xs text-muted">{positions.map((p, i) => (i === q.node.player ? null : t("icm.drill.table", { pos: p, bb: stacks[i] }))).filter(Boolean).join(" · ")}</p>
@@ -120,10 +120,10 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
               </div>
               {!answer ? (
                 <div className="grid grid-cols-2 gap-2">
-                  <button type="button" data-testid="icm-drill-fold" onClick={() => answerWith(false)} className="seg min-h-14 rounded-2xl text-lg font-extrabold text-white" data-k="fold">
+                  <button type="button" data-testid="icm-drill-fold" onClick={() => answerWith(false)} className="seg min-h-cta rounded-card text-lg font-extrabold text-white" data-k="fold">
                     {t("icm.drill.fold")} <span className="text-xs opacity-90">F</span>
                   </button>
-                  <button type="button" data-testid="icm-drill-act" onClick={() => answerWith(true)} className="seg min-h-14 rounded-2xl text-lg font-extrabold text-white" data-k={q.node.facing === null ? "allin" : "call"}>
+                  <button type="button" data-testid="icm-drill-act" onClick={() => answerWith(true)} className="seg min-h-cta rounded-card text-lg font-extrabold text-white" data-k={q.node.facing === null ? "allin" : "call"}>
                     {act} <span className="text-xs opacity-90">J</span>
                   </button>
                 </div>
@@ -135,7 +135,7 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
                   </div>
                   <p className="text-sm">{t("icm.drill.mix", { act, pct: Math.round(answer.actFreq * 100) })}</p>
                   <p className="text-xs text-muted">{t("icm.drill.ev", { act, evAct: answer.evAct.toFixed(2), evFold: answer.evFold.toFixed(2) })}</p>
-                  <button type="button" data-testid="icm-drill-next" onClick={() => next()} className="min-h-12 w-full rounded-xl bg-accent font-bold text-accent-ink">
+                  <button type="button" data-testid="icm-drill-next" onClick={() => next()} className="min-h-tap-lg w-full rounded-control bg-accent font-bold text-accent-ink">
                     {t("icm.drill.next")}
                   </button>
                 </div>
@@ -147,7 +147,7 @@ export function IcmDrill({ sol, stacks, positions, hero }: Props) {
           </p>
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-muted">{t("icm.drill.note")}</p>
-            <button type="button" onClick={() => setActive(false)} className="min-h-10 shrink-0 rounded-lg border border-line px-3 text-sm font-semibold">
+            <button type="button" onClick={() => setActive(false)} className="min-h-tap shrink-0 rounded-control border border-line px-3 text-sm font-semibold">
               {t("icm.drill.end")}
             </button>
           </div>

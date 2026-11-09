@@ -39,7 +39,7 @@ export function PostTable({ seats, hero, board, pot, streetInv, stacks, actor, l
           <PlayingCard card={heroCards[1]} size="tbl" flip delay={0.16} />
         </div>
       )}
-      <div className={`mx-auto inline-block min-w-[4rem] rounded-xl border px-2.5 py-1 leading-tight shadow ${actor === p ? "border-accent bg-surface text-ink ring-2 ring-accent" : "border-white/20 bg-black/55 text-white"} ${folded === p ? "opacity-40" : ""}`}>
+      <div className={`mx-auto inline-block min-w-[4rem] rounded-control border px-2.5 py-1 leading-tight shadow ${actor === p ? "border-accent bg-surface text-ink ring-2 ring-accent" : "border-white/20 bg-black/55 text-white"} ${folded === p ? "opacity-40" : ""}`}>
         <div className="text-xs font-extrabold">{seats[p]}</div>
         <div className="text-[0.68rem] font-semibold opacity-85">{fmtBB(stacks[p])}</div>
       </div>
@@ -92,7 +92,7 @@ export function PostTable({ seats, hero, board, pot, streetInv, stacks, actor, l
 /** one-line summary of the table (board, hero's cards, pot) used next to the result card */
 export function PostTableMini({ board, heroCards, pot, potLabel, lastAction, hero }: { board: number[]; heroCards: [Card, Card] | null; pot: number; potLabel: string; lastAction: string | null; hero: string }) {
   return (
-    <div className="felt flex items-center justify-between gap-2 rounded-2xl px-3 py-2" role="group" aria-label={`Table, ${potLabel} ${fmtBB(pot)}bb`} data-testid="post-table-mini">
+    <div className="felt flex items-center justify-between gap-2 rounded-card px-3 py-2" role="group" aria-label={`Table, ${potLabel} ${fmtBB(pot)}bb`} data-testid="post-table-mini">
       <div className="flex gap-1" aria-label="board">
         {board.map((c) => (
           <PlayingCard key={c} card={cardOf(c)} size="sm" />

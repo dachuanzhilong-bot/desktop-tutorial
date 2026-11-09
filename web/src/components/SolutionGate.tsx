@@ -12,10 +12,10 @@ export function SolutionGate({ children, grid = true }: { children: (store: Solu
   if (store) return <>{children(store)}</>;
   if (error)
     return (
-      <div role="alert" className="rounded-2xl border border-line bg-surface p-5">
+      <div role="alert" className="rounded-card border border-line bg-surface p-5">
         <p className="font-bold">{t("common.error")}</p>
         <p className="mt-1 text-sm text-muted">{error}</p>
-        <button type="button" onClick={retry} className="mt-3 min-h-11 rounded-xl bg-accent px-4 font-bold text-accent-ink">
+        <button type="button" onClick={retry} className="mt-3 min-h-tap rounded-control bg-accent px-4 font-bold text-accent-ink">
           {t("common.retry")}
         </button>
       </div>

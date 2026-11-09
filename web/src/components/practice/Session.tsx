@@ -16,6 +16,7 @@ import { sessionIdOf } from "@/lib/util/hooks";
 import type { SolutionStore } from "@/lib/solution/loader";
 import { actionLabel, applyAction, fmtBB, initialState, spotType, stateAt } from "@/lib/solution/tree";
 import { ActionKind, PublicState, Terminal } from "@/lib/solution/types";
+import type { SpotType } from "@/lib/solution/types";
 import { getRepo } from "@/lib/storage/idb";
 import type { Attempt } from "@/lib/storage/types";
 import { cryptoRandom, weightedPick } from "@/lib/util/rng";
@@ -41,6 +42,10 @@ interface Round {
 type Phase = "loading" | "animating" | "asking" | "answered" | "handEnd" | "summary" | "empty";
 
 const STEP_MS = 520;
+
+/** glossary entries shown with the explanation of a preflop question */
+const SPOT_TERM: Partial<Record<SpotType, string>> = { rfi: "rfi", limp: "limp", vsOpen: "3bet", squeeze: "squeeze", vs3bet: "4bet", vsSqueeze: "squeeze", vs4bet: "4bet", vs5bet: "4bet" };
+const termsFor = (spot: SpotType) => ["ev", "evLoss", "equity", ...(SPOT_TERM[spot] ? [SPOT_TERM[spot]!] : []), "mixed"];
 
 export function Session({ store, config, onExit, onPostflop }: { store: SolutionStore; config: PracticeConfig; onExit: () => void; onPostflop?: (c: PostConfig) => void }) {
   const { t, settings } = useSettings();
@@ -344,9 +349,9 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
 
   if (phase === "empty")
     return (
-      <div className="space-y-4 rounded-2xl border border-line bg-surface p-5 text-center">
+      <div className="space-y-4 rounded-card border border-line bg-surface p-5 text-center">
         <p>{t("practice.noSpots")}</p>
-        <button type="button" onClick={onExit} className="min-h-12 rounded-xl bg-accent px-6 font-bold text-accent-ink">
+        <button type="button" onClick={onExit} className="min-h-tap-lg rounded-control bg-accent px-6 font-bold text-accent-ink">
           {t("common.back")}
         </button>
       </div>
@@ -430,10 +435,10 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
               </span>
             </div>
             {round.q.roll !== null && (
-              <div className="rounded-2xl border border-accent/60 bg-accent/10 p-3" data-testid="rng-panel">
+              <div className="rounded-card border border-accent/60 bg-accent/10 p-3" data-testid="rng-panel">
                 <div className="mb-2 flex items-center justify-between">
                   <span className="text-sm font-bold">{t("practice.rngInstruction")}</span>
-                  <span className="rounded-lg bg-accent px-2.5 py-1 text-xl font-black text-accent-ink" data-testid="rng-roll" aria-label={t("practice.rngRoll")}>
+                  <span className="rounded-control bg-accent px-2.5 py-1 text-xl font-black text-accent-ink" data-testid="rng-roll" aria-label={t("practice.rngRoll")}>
                     {rngRoll}
                   </span>
                 </div>
@@ -473,16 +478,17 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
             onTogglePane={() => setPane((p) => (p === "result" ? "explain" : "result"))}
             nextLabel={link ? t("practice.toFlop") : config.mode === "hand" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")}
             approx={t("approx.grading", { depth: m.stack })}
+            terms={termsFor(spotType(m, round.q.nodeId))}
           />
         )}
 
         {phase === "handEnd" && round && (
-          <div className="rounded-3xl border border-line bg-surface p-4 text-center shadow-xl" data-testid="hand-end">
+          <div className="rounded-sheet border border-line bg-surface p-4 text-center shadow-xl" data-testid="hand-end">
             <p className="mb-3 font-bold">
               {round.endedWith === Terminal.Fold ? t("term.fold") : round.endedWith === Terminal.Flop ? t("term.flop") : round.endedWith === Terminal.FlopMulti ? t("term.flopMulti") : round.endedWith === Terminal.AllIn ? t("term.allin") : t("term.pruned")}
             </p>
             {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the answer buttons this replaces are gone: move focus here instead of losing it (the result is announced by a live region) */}
-            <button type="button" onClick={next} autoFocus data-testid="hand-end-next" className="min-h-14 w-full rounded-2xl bg-accent text-lg font-extrabold text-accent-ink">
+            <button type="button" onClick={next} autoFocus data-testid="hand-end-next" className="min-h-cta w-full rounded-card bg-accent text-lg font-extrabold text-accent-ink">
               {link ? t("practice.toFlop") : t("practice.nextHand")}
             </button>
           </div>

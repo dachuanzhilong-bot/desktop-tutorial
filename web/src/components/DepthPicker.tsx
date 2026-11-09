@@ -13,9 +13,9 @@ export function DepthPicker({ className = "" }: { className?: string }) {
         {t("depth.label")}
         {loading ? <span className="ml-2 text-xs font-normal" role="status">{t("depth.loading")}</span> : null}
       </p>
-      <div role="radiogroup" aria-labelledby="depth-label" className="grid grid-cols-5 gap-1 rounded-2xl bg-surface p-1" data-testid="depth-picker">
+      <div role="radiogroup" aria-labelledby="depth-label" className="grid grid-cols-5 gap-1 rounded-card bg-surface p-1" data-testid="depth-picker">
         {DEPTHS.map((d) => (
-          <button key={d} type="button" role="radio" aria-checked={depth === d} data-testid={`depth-${d}`} onClick={() => setDepth(d)} className={`min-h-11 rounded-xl text-sm font-bold ${depth === d ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`}>
+          <button key={d} type="button" role="radio" aria-checked={depth === d} data-testid={`depth-${d}`} onClick={() => setDepth(d)} className={`min-h-tap rounded-control text-sm font-bold ${depth === d ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`}>
             {t("depth.option", { n: d })}
           </button>
         ))}

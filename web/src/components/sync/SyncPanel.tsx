@@ -25,9 +25,9 @@ export function SyncPanel() {
     }
   };
 
-  const input = "mt-1 block min-h-11 w-full rounded-xl border border-line bg-surface-2 px-3 text-ink";
+  const input = "mt-1 block min-h-tap w-full rounded-control border border-line bg-surface-2 px-3 text-ink";
   return (
-    <section className="space-y-3 rounded-2xl border border-line bg-surface p-4" aria-label={t("sync.title")} data-testid="sync-panel">
+    <section className="space-y-3 rounded-card border border-line bg-surface p-4" aria-label={t("sync.title")} data-testid="sync-panel">
       <h2 className="font-bold">{t("sync.title")}</h2>
       {!sync.configured ? (
         <p className="text-sm text-muted" data-testid="sync-off">
@@ -49,10 +49,10 @@ export function SyncPanel() {
             </p>
           )}
           <div className="flex gap-2">
-            <button type="button" onClick={() => void sync.syncNow()} disabled={sync.status === "syncing"} className="min-h-11 flex-1 rounded-xl bg-accent font-bold text-accent-ink disabled:opacity-50">
+            <button type="button" onClick={() => void sync.syncNow()} disabled={sync.status === "syncing"} className="min-h-tap flex-1 rounded-control bg-accent font-bold text-accent-ink disabled:opacity-50">
               {t("sync.now")}
             </button>
-            <button type="button" onClick={() => void sync.signOut()} className="min-h-11 flex-1 rounded-xl border border-line font-semibold">
+            <button type="button" onClick={() => void sync.signOut()} className="min-h-tap flex-1 rounded-control border border-line font-semibold">
               {t("sync.logout")}
             </button>
           </div>
@@ -65,7 +65,7 @@ export function SyncPanel() {
             {t("sync.email")}
             <input type="email" autoComplete="email" inputMode="email" value={email} onChange={(e) => setEmail(e.target.value)} className={input} data-testid="sync-email" />
           </label>
-          <button type="button" disabled={busy || !/.+@.+\..+/.test(email)} data-testid="sync-send" onClick={() => run(async () => (await sync.sendCode(email.trim()), setSentTo(email.trim())))} className="min-h-11 w-full rounded-xl border border-accent font-bold text-accent-text disabled:opacity-50">
+          <button type="button" disabled={busy || !/.+@.+\..+/.test(email)} data-testid="sync-send" onClick={() => run(async () => (await sync.sendCode(email.trim()), setSentTo(email.trim())))} className="min-h-tap w-full rounded-control border border-accent font-bold text-accent-text disabled:opacity-50">
             {t("sync.sendCode")}
           </button>
           {sentTo && (
@@ -77,7 +77,7 @@ export function SyncPanel() {
                 {t("sync.code")}
                 <input inputMode="numeric" autoComplete="one-time-code" value={code} onChange={(e) => setCode(e.target.value)} className={input} data-testid="sync-code" />
               </label>
-              <button type="button" disabled={busy || code.trim().length < 6} data-testid="sync-verify" onClick={() => run(() => sync.verify(sentTo, code))} className="min-h-11 w-full rounded-xl bg-accent font-bold text-accent-ink disabled:opacity-50">
+              <button type="button" disabled={busy || code.trim().length < 6} data-testid="sync-verify" onClick={() => run(() => sync.verify(sentTo, code))} className="min-h-tap w-full rounded-control bg-accent font-bold text-accent-ink disabled:opacity-50">
                 {t("sync.login")}
               </button>
             </>

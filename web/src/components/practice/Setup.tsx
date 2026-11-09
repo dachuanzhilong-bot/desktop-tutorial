@@ -24,7 +24,7 @@ function Chip({ on, children, onClick, testid }: { on: boolean; children: React.
       aria-pressed={on}
       data-testid={testid}
       onClick={onClick}
-      className={`min-h-10 whitespace-nowrap rounded-full border px-3.5 text-sm font-semibold transition-colors ${on ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted hover:text-ink"}`}
+      className={`min-h-tap whitespace-nowrap rounded-full border px-3.5 text-sm font-semibold transition-colors ${on ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted hover:text-ink"}`}
     >
       {children}
     </button>
@@ -39,7 +39,7 @@ function Toggle({ label, desc, on, onChange, icon, testid }: { label: string; de
       aria-checked={on}
       data-testid={testid}
       onClick={() => onChange(!on)}
-      className="flex w-full items-center gap-3 rounded-2xl border border-line bg-surface p-3.5 text-left"
+      className="flex w-full items-center gap-3 rounded-card border border-line bg-surface p-3.5 text-left"
     >
       <span className="text-muted">{icon}</span>
       <span className="flex-1">
@@ -113,7 +113,7 @@ export function Setup({
             aria-pressed={mode === m}
             data-testid={`mode-${m}`}
             onClick={() => setMode(m)}
-            className={`rounded-2xl border p-3.5 text-left transition-colors ${mode === m ? "border-accent bg-accent/15" : "border-line bg-surface"}`}
+            className={`rounded-card border p-3.5 text-left transition-colors ${mode === m ? "border-accent bg-accent/15" : "border-line bg-surface"}`}
           >
             <span className="block font-extrabold">{t(`practice.mode.${m}` as Key)}</span>
             <span className="mt-0.5 block text-xs text-muted">{t(`practice.mode.${m}Desc` as Key)}</span>
@@ -135,11 +135,11 @@ export function Setup({
             </div>
           </div>
           {flopFixed !== null && flopNames[flopFixed] && (
-            <div className="flex items-center justify-between rounded-xl border border-accent/60 bg-accent/10 px-3 py-2 text-sm">
+            <div className="flex items-center justify-between rounded-control border border-accent/60 bg-accent/10 px-3 py-2 text-sm">
               <span>
                 {t("pf.flop")}: <b>{flopNames[flopFixed]}</b>
               </span>
-              <button type="button" onClick={() => setFlopFixed(null)} aria-label={t("common.reset")} className="grid h-8 w-8 place-items-center rounded-full border border-line text-muted">
+              <button type="button" onClick={() => setFlopFixed(null)} aria-label={t("common.reset")} className="grid h-tap w-tap place-items-center rounded-full border border-line text-muted">
                 ✕
               </button>
             </div>
@@ -220,7 +220,7 @@ export function Setup({
 
       <section className="space-y-2.5">
         <Toggle label={t("practice.rng")} desc={t("practice.rngDesc")} on={rng} onChange={setRng} icon={<IconDice width={22} height={22} />} testid="toggle-rng" />
-        <div className="rounded-2xl border border-line bg-surface p-3.5">
+        <div className="rounded-card border border-line bg-surface p-3.5">
           <p className="mb-2 flex items-center gap-2 font-bold">
             <IconTimer width={20} height={20} className="text-muted" />
             {t("practice.timer")}
@@ -238,6 +238,8 @@ export function Setup({
       {due > 0 && <p className="text-sm text-accent-text">{t("practice.due", { n: due })}</p>}
       <ApproxNote>{isPost ? t("pf.approx") : t("approx.grading", { depth })}</ApproxNote>
 
+      {/* always on screen above the tab bar: practice starts in two taps from anywhere (tab + this button) */}
+      <div className="sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 bg-gradient-to-t from-bg from-60% to-transparent px-4 pb-1 pt-4">
       <button
         type="button"
         data-testid="start-practice"
@@ -246,10 +248,11 @@ export function Setup({
             ? onStart({ type: "post", config: { kind: mode === "post" ? "through" : "spot", scenario, hero, streets, rng, timer, flop: flopFixed } })
             : onStart({ type: "pre", config: { mode: mode as "spot" | "hand", filter, rng, timer } })
         }
-        className="min-h-14 w-full rounded-2xl bg-accent text-lg font-extrabold text-accent-ink shadow-lg active:scale-[0.98]"
+        className="min-h-cta w-full rounded-card bg-accent text-lg font-extrabold text-accent-ink shadow-lg active:scale-[0.98]"
       >
         {t("practice.begin")}
       </button>
+      </div>
     </div>
   );
 }

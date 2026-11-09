@@ -9,9 +9,9 @@ import { getRepo } from "@/lib/storage/idb";
 
 function Seg<T extends string | number>({ value, options, onChange, label }: { value: T; options: { v: T; label: string }[]; onChange: (v: T) => void; label: string }) {
   return (
-    <div role="radiogroup" aria-label={label} className="flex gap-1 rounded-2xl bg-surface-2 p-1">
+    <div role="radiogroup" aria-label={label} className="flex gap-1 rounded-card bg-surface-2 p-1">
       {options.map((o) => (
-        <button key={String(o.v)} type="button" role="radio" aria-checked={value === o.v} onClick={() => onChange(o.v)} className={`min-h-11 flex-1 rounded-xl px-2 text-sm font-bold ${value === o.v ? "bg-accent text-accent-ink" : "text-muted"}`}>
+        <button key={String(o.v)} type="button" role="radio" aria-checked={value === o.v} onClick={() => onChange(o.v)} className={`min-h-tap flex-1 rounded-control px-2 text-sm font-bold ${value === o.v ? "bg-accent text-accent-ink" : "text-muted"}`}>
           {o.label}
         </button>
       ))}
@@ -21,7 +21,7 @@ function Seg<T extends string | number>({ value, options, onChange, label }: { v
 
 function Row({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-2 rounded-2xl border border-line bg-surface p-4">
+    <div className="space-y-2 rounded-card border border-line bg-surface p-4">
       <div>
         <p className="font-bold">{title}</p>
         {desc && <p className="text-xs text-muted">{desc}</p>}
@@ -33,7 +33,7 @@ function Row({ title, desc, children }: { title: string; desc?: string; children
 
 function Switch({ on, onChange, label }: { on: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className={`relative h-8 w-14 shrink-0 rounded-full transition-colors ${on ? "bg-accent" : "bg-surface-2"}`}>
+    <button type="button" role="switch" aria-checked={on} aria-label={label} onClick={() => onChange(!on)} className={`relative h-8 w-14 shrink-0 rounded-full after:absolute after:-inset-1.5 after:content-[''] transition-colors ${on ? "bg-accent" : "bg-surface-2"}`}>
       <span className={`absolute top-1 h-6 w-6 rounded-full bg-white shadow transition-all ${on ? "left-7" : "left-1"}`} />
     </button>
   );
@@ -80,7 +80,7 @@ export default function SettingsPage() {
         />
         <div className="flex gap-2" aria-hidden>
           {(["raise1", "call", "fold"] as const).map((k) => (
-            <span key={k} className="seg h-8 flex-1 rounded-lg" data-k={k} />
+            <span key={k} className="seg h-8 flex-1 rounded-control" data-k={k} />
           ))}
         </div>
         <div className="flex items-center justify-between gap-3">
@@ -141,13 +141,13 @@ export default function SettingsPage() {
           {t("settings.modelPost")}
         </p>
         <div className="flex flex-wrap gap-2">
-          <button type="button" onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))} className="min-h-11 rounded-xl border border-line px-4 text-sm font-semibold">
+          <button type="button" onClick={() => window.dispatchEvent(new Event(TOUR_EVENT))} className="min-h-tap rounded-control border border-line px-4 text-sm font-semibold">
             {t("settings.tour")}
           </button>
-          <Link href="/glossary/" className="grid min-h-11 place-items-center rounded-xl border border-line px-4 text-sm font-semibold">
+          <Link href="/glossary/" className="grid min-h-tap place-items-center rounded-control border border-line px-4 text-sm font-semibold">
             {t("gl.title")}
           </Link>
-          <Link href="/roadmap/" className="grid min-h-11 place-items-center rounded-xl border border-line px-4 text-sm font-semibold">
+          <Link href="/roadmap/" className="grid min-h-tap place-items-center rounded-control border border-line px-4 text-sm font-semibold">
             {t("settings.roadmap")}
           </Link>
         </div>
@@ -163,7 +163,7 @@ export default function SettingsPage() {
               setCleared(true);
             }
           }}
-          className="min-h-11 rounded-xl border border-line px-4 text-sm font-semibold text-[var(--g-blunder)]"
+          className="min-h-tap rounded-control border border-line px-4 text-sm font-semibold text-[var(--g-blunder)]"
         >
           {t("settings.clear")}
         </button>

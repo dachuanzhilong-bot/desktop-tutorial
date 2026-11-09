@@ -17,14 +17,14 @@ async function startPractice(page: Page, opts: { rng?: boolean; hand?: boolean }
 }
 
 test.describe("onboarding", () => {
-  test("shows a 5 step tour on first launch and remembers it", async ({ browser }) => {
+  test("shows a 3 step tour on first launch and remembers it", async ({ browser }) => {
     const ctx = await browser.newContext();
     const page = await ctx.newPage();
     await page.goto("/");
     const dlg = page.getByTestId("onboarding");
     await expect(dlg).toBeVisible();
-    for (let i = 0; i < 4; i++) await dlg.getByRole("button", { name: "次へ" }).click();
-    await expect(dlg.getByText("5 / 5")).toBeVisible();
+    for (let i = 0; i < 2; i++) await dlg.getByRole("button", { name: "次へ" }).click();
+    await expect(dlg.getByText("3 / 3")).toBeVisible();
     await dlg.getByRole("button", { name: "練習をはじめる" }).click();
     await expect(page).toHaveURL(/\/practice\//);
     await page.goto("/");

@@ -28,7 +28,7 @@ function MiniChart() {
 
 function EvLossDemo() {
   return (
-    <div aria-hidden className="mx-auto w-44 rounded-2xl bg-surface-2 py-3 text-center">
+    <div aria-hidden className="mx-auto w-44 rounded-card bg-surface-2 py-3 text-center">
       <div className="text-xs text-muted">EV</div>
       <div className="text-4xl font-extrabold leading-none text-accent-text">−0.32</div>
       <div className="mt-1 text-xs text-muted">bb</div>
@@ -36,12 +36,11 @@ function EvLossDemo() {
   );
 }
 
+/** three short screens: how to read a chart, how answers are graded, how to play one-handed */
 const STEPS: { t: Key; d: Key; art?: "chart" | "ev" }[] = [
-  { t: "onb.s1.t", d: "onb.s1.d" },
-  { t: "onb.s2.t", d: "onb.s2.d", art: "chart" },
-  { t: "onb.s3.t", d: "onb.s3.d", art: "ev" },
-  { t: "onb.s4.t", d: "onb.s4.d" },
-  { t: "onb.s5.t", d: "onb.s5.d" },
+  { t: "onb.s1.t", d: "onb.s1.d", art: "chart" },
+  { t: "onb.s2.t", d: "onb.s2.d", art: "ev" },
+  { t: "onb.s3.t", d: "onb.s3.d" },
 ];
 
 export function Onboarding() {
@@ -83,7 +82,7 @@ export function Onboarding() {
       closedby="any"
       onClose={() => !settings.onboarded && set({ onboarded: true })}
       data-testid="onboarding"
-      className="m-auto w-[min(92vw,26rem)] rounded-3xl border border-line bg-surface p-0 text-ink shadow-2xl"
+      className="m-auto w-[min(92vw,26rem)] rounded-sheet border border-line bg-surface p-0 text-ink shadow-2xl"
     >
       <div className="flex flex-col gap-4 p-6">
         <p className="text-xs font-semibold tracking-wide text-muted">{t("onb.step", { i: step + 1, n: STEPS.length })}</p>
@@ -101,11 +100,11 @@ export function Onboarding() {
         </div>
         <div className="flex gap-3">
           {step > 0 ? (
-            <button type="button" onClick={() => setStep(step - 1)} className="min-h-12 flex-1 rounded-xl border border-line px-4 font-semibold">
+            <button type="button" onClick={() => setStep(step - 1)} className="min-h-tap-lg flex-1 rounded-control border border-line px-4 font-semibold">
               {t("common.back")}
             </button>
           ) : (
-            <button type="button" onClick={() => finish(false)} className="min-h-12 flex-1 rounded-xl border border-line px-4 font-semibold">
+            <button type="button" onClick={() => finish(false)} className="min-h-tap-lg flex-1 rounded-control border border-line px-4 font-semibold">
               {t("common.skip")}
             </button>
           )}
@@ -114,7 +113,7 @@ export function Onboarding() {
               type="button"
               // eslint-disable-next-line jsx-a11y/no-autofocus -- initial focus inside the modal dialog
               autoFocus
-              onClick={() => finish(true)} className="min-h-12 flex-[2] rounded-xl bg-accent px-4 font-bold text-accent-ink">
+              onClick={() => finish(true)} className="min-h-tap-lg flex-[2] rounded-control bg-accent px-4 font-bold text-accent-ink">
               {t("onb.start")}
             </button>
           ) : (
@@ -122,7 +121,7 @@ export function Onboarding() {
               type="button"
               // eslint-disable-next-line jsx-a11y/no-autofocus -- keeps focus in the dialog when the step changes
               autoFocus
-              onClick={() => setStep(step + 1)} className="min-h-12 flex-[2] rounded-xl bg-accent px-4 font-bold text-accent-ink">
+              onClick={() => setStep(step + 1)} className="min-h-tap-lg flex-[2] rounded-control bg-accent px-4 font-bold text-accent-ink">
               {t("common.next")}
             </button>
           )}

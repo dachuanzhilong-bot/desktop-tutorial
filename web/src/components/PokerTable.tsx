@@ -80,7 +80,7 @@ export function PokerTable({ seats, hero, state, stack, actor, lastAction, heroC
                 </div>
               )}
               <div
-                className={`relative mx-auto inline-block min-w-[3.6rem] rounded-xl border px-2 py-1 leading-tight shadow ${
+                className={`relative mx-auto inline-block min-w-[3.6rem] rounded-control border px-2 py-1 leading-tight shadow ${
                   actor === i ? "border-accent bg-surface text-ink ring-2 ring-accent" : "border-white/20 bg-black/55 text-white"
                 } ${folded ? "opacity-40" : ""}`}
               >

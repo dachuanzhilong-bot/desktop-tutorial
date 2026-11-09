@@ -112,8 +112,8 @@ export default function IcmPage() {
   const total = result ? result.input.stacks.reduce((a, b) => a + b, 0) : 0;
   const pos = result ? POSITIONS[result.sol.players] : positions;
   const facingChoices = result ? result.sol.nodes.filter((n) => n.player === view.player).sort((a, b) => (a.facing ?? -1) - (b.facing ?? -1)) : [];
-  const chip = (on: boolean) => `min-h-10 rounded-full border px-3 text-sm font-semibold ${on ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`;
-  const input = "mt-1 block min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-ink";
+  const chip = (on: boolean) => `min-h-tap rounded-full border px-3 text-sm font-semibold ${on ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`;
+  const input = "mt-1 block min-h-tap w-full rounded-control border border-line bg-surface px-3 text-ink";
 
   return (
     <div className="space-y-5">
@@ -128,7 +128,7 @@ export default function IcmPage() {
       </header>
       <SolveTabs />
       {!wasmOk && (
-        <p role="alert" className="rounded-2xl border border-line bg-surface p-4 text-sm">
+        <p role="alert" className="rounded-card border border-line bg-surface p-4 text-sm">
           {t("icm.noWasm")}
         </p>
       )}
@@ -138,7 +138,7 @@ export default function IcmPage() {
           <h2 className="font-bold">{t("icm.quick")}</h2>
           <div className="flex flex-wrap gap-2">
             {(["ft9", "bubble", "hu"] as const).map((q) => (
-              <button key={q} type="button" data-testid={`icm-quick-${q}`} onClick={() => setD(QUICK[q])} className="min-h-11 rounded-xl border border-line bg-surface px-3.5 text-sm font-semibold">
+              <button key={q} type="button" data-testid={`icm-quick-${q}`} onClick={() => setD(QUICK[q])} className="min-h-tap rounded-control border border-line bg-surface px-3.5 text-sm font-semibold">
                 {t(`icm.q.${q}` as Key)}
               </button>
             ))}
@@ -147,9 +147,9 @@ export default function IcmPage() {
 
         <section className="space-y-3" aria-label={t("icm.players")}>
           <h2 className="font-bold">{t("icm.players")}</h2>
-          <div role="group" aria-label={t("icm.players")} className="grid grid-cols-8 gap-1 rounded-2xl bg-surface p-1">
+          <div role="group" aria-label={t("icm.players")} className="grid grid-cols-4 gap-1 rounded-card bg-surface p-1 sm:grid-cols-8">
             {[2, 3, 4, 5, 6, 7, 8, 9].map((n) => (
-              <button key={n} type="button" aria-pressed={d.n === n} data-testid={`icm-n-${n}`} onClick={() => setN(n)} className={`min-h-11 rounded-xl text-sm font-bold ${d.n === n ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`}>
+              <button key={n} type="button" aria-pressed={d.n === n} data-testid={`icm-n-${n}`} onClick={() => setN(n)} className={`min-h-tap rounded-control text-sm font-bold ${d.n === n ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`}>
                 {n}
               </button>
             ))}
@@ -168,10 +168,10 @@ export default function IcmPage() {
                   step={0.5}
                   value={d.stacks[i]}
                   onChange={(e) => setD((prev) => ({ ...prev, stacks: prev.stacks.map((s, k) => (k === i ? e.target.value : s)) }))}
-                  className="min-h-11 w-full rounded-xl border border-line bg-surface px-3 text-ink"
+                  className="min-h-tap w-full rounded-control border border-line bg-surface px-3 text-ink"
                 />
                 <button type="button" aria-pressed={d.hero === i} aria-label={t("icm.heroPick", { pos: p })} onClick={() => setD((prev) => ({ ...prev, hero: i }))} className={chip(d.hero === i)}>
-                  {d.hero === i ? t("icm.hero") : "·"}
+                  {d.hero === i ? t("icm.hero") : t("icm.pick")}
                 </button>
               </li>
             ))}
@@ -209,9 +209,9 @@ export default function IcmPage() {
 
         <section className="space-y-2" aria-label={t("icm.accuracy")}>
           <h2 className="font-bold">{t("icm.accuracy")}</h2>
-          <div role="group" aria-label={t("icm.accuracy")} className="grid grid-cols-3 gap-1 rounded-2xl bg-surface p-1">
+          <div role="group" aria-label={t("icm.accuracy")} className="grid grid-cols-3 gap-1 rounded-card bg-surface p-1">
             {(["fast", "std", "high"] as const).map((a) => (
-              <button key={a} type="button" aria-pressed={d.acc === a} data-testid={`icm-acc-${a}`} onClick={() => setD((p) => ({ ...p, acc: a }))} className={`min-h-11 rounded-xl text-sm font-bold ${d.acc === a ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`}>
+              <button key={a} type="button" aria-pressed={d.acc === a} data-testid={`icm-acc-${a}`} onClick={() => setD((p) => ({ ...p, acc: a }))} className={`min-h-tap rounded-control text-sm font-bold ${d.acc === a ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`}>
                 {t(`icm.acc.${a}` as Key)}
               </button>
             ))}
@@ -220,13 +220,13 @@ export default function IcmPage() {
         </section>
       </fieldset>
 
-      <section className="space-y-3 rounded-2xl border border-line bg-surface p-4" aria-label={t("icm.run")}>
+      <section className="space-y-3 rounded-card border border-line bg-surface p-4" aria-label={t("icm.run")}>
         <div className="grid grid-cols-[1fr_auto] gap-2">
-          <button type="button" data-testid="icm-run" disabled={!canRun} onClick={run} className="min-h-14 rounded-2xl bg-accent text-lg font-extrabold text-accent-ink shadow disabled:opacity-50">
+          <button type="button" data-testid="icm-run" disabled={!canRun} onClick={run} className="min-h-cta rounded-card bg-accent text-lg font-extrabold text-accent-ink shadow disabled:opacity-50">
             {busy ? t("solve.running") : t("icm.run")}
           </button>
           {busy && (
-            <button type="button" data-testid="icm-stop" onClick={() => clientRef.current?.cancel()} className="min-h-14 rounded-2xl border border-line px-5 font-bold">
+            <button type="button" data-testid="icm-stop" onClick={() => clientRef.current?.cancel()} className="min-h-cta rounded-card border border-line px-5 font-bold">
               {t("icm.stop")}
             </button>
           )}
@@ -248,7 +248,7 @@ export default function IcmPage() {
 
       {result && (
         <div className="space-y-5" data-testid="icm-result">
-          <section className="space-y-2 rounded-2xl border border-line bg-surface p-4" aria-label={t("icm.equity")}>
+          <section className="space-y-2 rounded-card border border-line bg-surface p-4" aria-label={t("icm.equity")}>
             <h2 className="font-bold">{result.stopped ? t("icm.stopped") : t("icm.done")}</h2>
             <p className="text-sm text-muted" data-testid="icm-exploit">
               {t("icm.exploit", { x: result.exploit.toFixed(2) })} · {t("solve.iterCount", { n: result.iterations })}
@@ -323,7 +323,7 @@ export default function IcmPage() {
                   <span className="ml-2 text-xs text-muted">{t("icm.legend")}</span>
                 </p>
                 {selected !== null && (
-                  <div className="rounded-2xl border border-line bg-surface p-3" data-testid="icm-hand">
+                  <div className="rounded-card border border-line bg-surface p-3" data-testid="icm-hand">
                     <p className="text-xl font-extrabold">{classInfo(selected).name}</p>
                     {node.weight[selected] < 0.02 ? (
                       <p className="text-sm text-muted">{t("icm.notReached")}</p>

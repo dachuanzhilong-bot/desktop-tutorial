@@ -36,7 +36,7 @@ export interface AnswerInfo {
   endText: string | null;
 }
 
-function ExplainLines({ q, a, actions, state }: { q: Question; a: AnswerInfo; actions: GridAction[]; state: PublicState }) {
+function ExplainLines({ q, a, actions, state, terms }: { q: Question; a: AnswerInfo; actions: GridAction[]; state: PublicState; terms: string[] }) {
   const { t } = useSettings();
   void state;
   const meta = q.stats;
@@ -59,6 +59,14 @@ function ExplainLines({ q, a, actions, state }: { q: Question; a: AnswerInfo; ac
       )}
       {q.roll !== null && q.rngAction !== null && <li>{t("explain.rng", { roll: Math.floor(q.roll * 100) + 1, action: actions[q.rngAction].label })}</li>}
       <li>{t("explain.range", { w: Math.round((q.bars ? q.bars.sol.weight[q.bars.h] : q.sol.weight[q.hand]) * 100) })}</li>
+      {terms.length > 0 && (
+        <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1" data-testid="explain-terms">
+          <span className="text-muted">{t("explain.terms")}</span>
+          {terms.map((id) => (
+            <Term key={id} id={id} />
+          ))}
+        </li>
+      )}
     </ul>
   );
 }
@@ -91,6 +99,7 @@ export function ResultPanel({
   onTogglePane,
   nextLabel,
   approx,
+  terms = ["ev", "evLoss", "equity"],
 }: {
   q: Question;
   a: AnswerInfo;
@@ -102,6 +111,8 @@ export function ResultPanel({
   nextLabel: string;
   /** "graded against an approximation" text, shown with the explanation */
   approx?: string;
+  /** glossary entries relevant to this question (tap to explain) */
+  terms?: string[];
 }) {
   const { t } = useSettings();
   const j = a.j;
@@ -113,7 +124,7 @@ export function ResultPanel({
   return (
     <motion.section
       aria-label={t("practice.evLoss")}
-      className="rounded-3xl border border-line bg-surface p-4 shadow-xl"
+      className="rounded-sheet border border-line bg-surface p-4 shadow-xl"
       style={{ touchAction: "pan-y" }}
       drag="x"
       dragConstraints={{ left: 0, right: 0 }}
@@ -169,7 +180,7 @@ export function ResultPanel({
         </div>
       ) : (
         <div className="mt-3 space-y-3">
-          <ExplainLines q={q} a={a} actions={actions} state={state} />
+          <ExplainLines q={q} a={a} actions={actions} state={state} terms={terms} />
           {approx && <ApproxNote>{approx}</ApproxNote>}
           <div className="mx-auto w-56" role="img" aria-label={t("practice.rangePos")} inert>
             <RangeGrid sol={q.sol} actions={actions} mode="strategy" selected={null} marker={q.hand} showNumbers={false} bare ariaLabel={t("practice.rangePos")} />
@@ -177,14 +188,14 @@ export function ResultPanel({
         </div>
       )}
 
-      {a.endText && <p className="mt-3 rounded-xl bg-surface-2 px-3 py-2 text-sm font-semibold">{a.endText}</p>}
+      {a.endText && <p className="mt-3 rounded-control bg-surface-2 px-3 py-2 text-sm font-semibold">{a.endText}</p>}
 
       <div className="mt-3 grid grid-cols-[1fr_2fr] gap-2.5">
-        <button type="button" onClick={onTogglePane} data-testid="explain-toggle" className="min-h-14 rounded-2xl border border-line font-bold text-muted">
+        <button type="button" onClick={onTogglePane} data-testid="explain-toggle" className="min-h-cta rounded-card border border-line font-bold text-muted">
           {pane === "result" ? t("practice.explain") : t("common.back")}
         </button>
         {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the answer buttons this replaces are gone: move focus here instead of losing it (the result is announced by a live region) */}
-        <button type="button" onClick={onNext} autoFocus data-testid="next-hand" className="min-h-14 rounded-2xl bg-accent text-lg font-extrabold text-accent-ink active:scale-[0.98]">
+        <button type="button" onClick={onNext} autoFocus data-testid="next-hand" className="min-h-cta rounded-card bg-accent text-lg font-extrabold text-accent-ink active:scale-[0.98]">
           {nextLabel}
         </button>
       </div>

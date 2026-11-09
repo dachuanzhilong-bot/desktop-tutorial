@@ -54,7 +54,7 @@ function SetStarter({ store, pending, onStart }: { store: SolutionStore; pending
   useEffect(() => {
     if (store.manifest.id === (pending.solution ?? "cash6max-100bb")) onStart();
   }, [store, pending, onStart]);
-  return <div className="h-40 animate-pulse rounded-2xl bg-surface" aria-busy="true" />;
+  return <div className="h-40 animate-pulse rounded-card bg-surface" aria-busy="true" />;
 }
 
 export default function PracticePage() {

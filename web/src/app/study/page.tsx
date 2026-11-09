@@ -142,6 +142,9 @@ function Study({ store }: { store: SolutionStore }) {
 
       <LineBar steps={steps} players={m.players} currentLabel={`${m.players[node.actor]} ?`} onJump={go} />
 
+      {/* wide screens: chart on the left, details on the right */}
+      <div className="space-y-4 lg:grid lg:grid-cols-[minmax(0,1fr)_minmax(20rem,25rem)] lg:items-start lg:gap-6 lg:space-y-0">
+      <div className="space-y-4">
       {/* next actions */}
       <section aria-label={t("study.next")} className="space-y-2">
         <div className="flex flex-wrap items-baseline justify-between gap-x-3">
@@ -164,7 +167,7 @@ function Study({ store }: { store: SolutionStore }) {
                 data-testid={`next-${a.kind}`}
                 onClick={() => can && go(a.child)}
                 title={a.child === -2 ? t("term.pruned") : a.term !== Terminal.None ? t(termKey(a.term)) : undefined}
-                className="seg flex min-h-14 flex-col items-center justify-center rounded-2xl px-1 py-1.5 text-white shadow transition-transform active:scale-[0.97] disabled:opacity-60"
+                className="seg flex min-h-cta flex-col items-center justify-center rounded-card px-1 py-1.5 text-white shadow transition-transform active:scale-[0.97] disabled:opacity-60"
                 data-k={actions[i].tone}
               >
                 <span className="text-sm font-extrabold">
@@ -180,7 +183,7 @@ function Study({ store }: { store: SolutionStore }) {
       </section>
 
       {/* mode tabs */}
-      <div role="tablist" aria-label={t("study.modeLabel")} className="grid grid-cols-4 gap-1 rounded-2xl bg-surface p-1">
+      <div role="tablist" aria-label={t("study.modeLabel")} className="grid grid-cols-4 gap-1 rounded-card bg-surface p-1">
         {MODES.map((md) => (
           <button
             key={md}
@@ -188,7 +191,7 @@ function Study({ store }: { store: SolutionStore }) {
             type="button"
             aria-selected={mode === md}
             onClick={() => setMode(md)}
-            className={`min-h-11 rounded-xl text-sm font-bold transition-colors ${mode === md ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`}
+            className={`min-h-tap rounded-control text-sm font-bold transition-colors ${mode === md ? "bg-accent text-accent-ink" : "text-muted hover:text-ink"}`}
           >
             {t(`study.mode.${md}` as Key)}
           </button>
@@ -198,7 +201,7 @@ function Study({ store }: { store: SolutionStore }) {
       {/* chart */}
       <div className="relative">
         {error ? (
-          <p role="alert" className="rounded-xl border border-line p-4 text-sm">
+          <p role="alert" className="rounded-control border border-line p-4 text-sm">
             {t("study.noData")}: {error}
           </p>
         ) : !sol ? (
@@ -220,7 +223,7 @@ function Study({ store }: { store: SolutionStore }) {
           />
         )}
         {sol && peek !== null && (
-          <div role="status" className="absolute inset-x-2 top-2 z-10 rounded-2xl border border-line bg-surface/95 p-3 shadow-xl backdrop-blur">
+          <div role="status" className="absolute inset-x-2 top-2 z-10 rounded-card border border-line bg-surface/95 p-3 shadow-xl backdrop-blur">
             <p className="mb-1 text-sm font-extrabold">{ALL_CLASSES[peek].name}</p>
             <FreqBars sol={sol} h={peek} actions={actions} />
           </div>
@@ -231,16 +234,18 @@ function Study({ store }: { store: SolutionStore }) {
         <span className="text-xs text-muted">{t("study.longPress")}</span>
       </div>
 
+      </div>
+      <div className="space-y-4 lg:sticky lg:top-4">
       {/* hand details */}
       {sol && selected !== null ? (
         <HandPanel sol={sol} h={selected} actions={actions} />
       ) : (
-        <p className="rounded-2xl border border-dashed border-line p-4 text-center text-sm text-muted">{t("study.selectHand")}</p>
+        <p className="rounded-card border border-dashed border-line p-4 text-center text-sm text-muted">{t("study.selectHand")}</p>
       )}
 
       {/* summary */}
       {sol && (
-        <section className="rounded-2xl border border-line bg-surface p-4" aria-label={t("study.actionMix")}>
+        <section className="rounded-card border border-line bg-surface p-4" aria-label={t("study.actionMix")}>
           <div className="mb-2 flex items-baseline justify-between">
             <h3 className="font-bold">
               <Term id="range">{t("study.rangeWidth")}</Term>
@@ -256,7 +261,7 @@ function Study({ store }: { store: SolutionStore }) {
           </div>
           <ul className="mt-2 grid gap-2 text-center text-sm" style={{ gridTemplateColumns: `repeat(${actions.length}, minmax(0, 1fr))` }}>
             {actions.map((a, i) => (
-              <li key={i} className="rounded-xl bg-surface-2 py-1.5">
+              <li key={i} className="rounded-control bg-surface-2 py-1.5">
                 <div className="text-xs text-muted">{a.label}</div>
                 <div className="font-extrabold">{(mix[i] * 100).toFixed(1)}%</div>
                 <div className="text-xs text-muted">
@@ -278,7 +283,7 @@ function Study({ store }: { store: SolutionStore }) {
               type="button"
               aria-pressed={filter === f}
               onClick={() => setFilter(f)}
-              className={`min-h-9 whitespace-nowrap rounded-full border px-3 text-sm font-semibold ${filter === f ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}
+              className={`min-h-tap whitespace-nowrap rounded-full border px-3 text-sm font-semibold ${filter === f ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}
             >
               {t(`hf.${f}` as Key)}
             </button>
@@ -295,7 +300,7 @@ function Study({ store }: { store: SolutionStore }) {
               aria-pressed={blocker === r}
               aria-label={`${RANK_CHARS[r]}`}
               onClick={() => setBlocker(blocker === r ? null : r)}
-              className={`grid min-h-9 min-w-9 place-items-center rounded-full border text-sm font-bold ${blocker === r ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}
+              className={`grid min-h-tap min-w-tap place-items-center rounded-full border text-sm font-bold ${blocker === r ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}
             >
               {RANK_CHARS[r]}
             </button>
@@ -305,12 +310,12 @@ function Study({ store }: { store: SolutionStore }) {
 
       {/* equity distribution + range comparison */}
       {sol && (
-        <section className="space-y-3 rounded-2xl border border-line bg-surface p-4" aria-label={t("study.compare")}>
-          <div role="tablist" className="grid grid-cols-2 gap-1 rounded-xl bg-surface-2 p-1">
-            <button role="tab" type="button" aria-selected={tab === "range"} onClick={() => setTab("range")} className={`min-h-10 rounded-lg text-sm font-bold ${tab === "range" ? "bg-accent text-accent-ink" : "text-muted"}`}>
+        <section className="space-y-3 rounded-card border border-line bg-surface p-4" aria-label={t("study.compare")}>
+          <div role="tablist" className="grid grid-cols-2 gap-1 rounded-control bg-surface-2 p-1">
+            <button role="tab" type="button" aria-selected={tab === "range"} onClick={() => setTab("range")} className={`min-h-tap rounded-control text-sm font-bold ${tab === "range" ? "bg-accent text-accent-ink" : "text-muted"}`}>
               {t("study.eqDist")}
             </button>
-            <button role="tab" type="button" aria-selected={tab === "compare"} onClick={() => setTab("compare")} className={`min-h-10 rounded-lg text-sm font-bold ${tab === "compare" ? "bg-accent text-accent-ink" : "text-muted"}`}>
+            <button role="tab" type="button" aria-selected={tab === "compare"} onClick={() => setTab("compare")} className={`min-h-tap rounded-control text-sm font-bold ${tab === "compare" ? "bg-accent text-accent-ink" : "text-muted"}`}>
               {t("study.compare")}
             </button>
           </div>
@@ -331,7 +336,7 @@ function Study({ store }: { store: SolutionStore }) {
                 {aggRange && aggStep ? (
                   <MiniRange title={`${t("study.aggressor")} · ${m.players[aggStep.actor]}`} range={aggRange} combos={rangeCombosOf(aggRange)} tone="raise1" />
                 ) : (
-                  <p className="grid place-items-center rounded-xl border border-dashed border-line p-3 text-center text-xs text-muted">—</p>
+                  <p className="grid place-items-center rounded-control border border-dashed border-line p-3 text-center text-xs text-muted">—</p>
                 )}
               </div>
             </div>
@@ -339,6 +344,8 @@ function Study({ store }: { store: SolutionStore }) {
         </section>
       )}
 
+      </div>
+      </div>
       <ApproxNote>{t(m.stack === 100 ? "approx.preflop" : "approx.preflopRough", { depth: m.stack, iters: Number(info.iterations ?? 0) + Number(info.polish ?? 0) })}</ApproxNote>
       {loading && (
         <span className="sr-only-live" role="status">

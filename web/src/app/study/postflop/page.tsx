@@ -31,13 +31,13 @@ function SavedView({ id }: { id: string }) {
   if (saved === undefined) return <GridSkeleton />;
   if (saved === null || !flop)
     return (
-      <p role="alert" className="rounded-2xl border border-line bg-surface p-4 text-sm">
+      <p role="alert" className="rounded-card border border-line bg-surface p-4 text-sm">
         {t("pf.missing")}
       </p>
     );
   return (
     <>
-      <section className="rounded-2xl border border-line bg-surface p-3" aria-label={t("solve.mine")}>
+      <section className="rounded-card border border-line bg-surface p-3" aria-label={t("solve.mine")}>
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 className="font-extrabold" data-testid="saved-title">
@@ -47,7 +47,7 @@ function SavedView({ id }: { id: string }) {
               {saved.oopName} {t("pf.oop")} · {saved.ipName} {t("pf.ip")} · {t("pf.pot", { pot: fmtBB(flop.pot), stack: fmtBB(flop.stack) })}
             </p>
           </div>
-          <Link href={`/solve/#from=${saved.id}`} className="min-h-10 rounded-full border border-accent px-3.5 py-2 text-sm font-bold text-accent-text">
+          <Link href={`/solve/#from=${saved.id}`} className="min-h-tap rounded-full border border-accent px-3.5 py-2 text-sm font-bold text-accent-text">
             {t("solve.reload")}
           </Link>
         </div>
@@ -130,7 +130,7 @@ function PostflopStudy() {
 
   if (error)
     return (
-      <p role="alert" className="rounded-2xl border border-line bg-surface p-4 text-sm">
+      <p role="alert" className="rounded-card border border-line bg-surface p-4 text-sm">
         {t("pf.missing")} {error}
       </p>
     );
@@ -160,7 +160,7 @@ function PostflopStudy() {
                 setScenario(s.id);
                 setNodeId(0);
               }}
-              className={`min-h-10 whitespace-nowrap rounded-full border px-3.5 text-sm font-semibold ${s.id === scenario ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}
+              className={`min-h-tap whitespace-nowrap rounded-full border px-3.5 text-sm font-semibold ${s.id === scenario ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}
             >
               {s.title}
             </button>
@@ -180,7 +180,7 @@ function PostflopStudy() {
                   setFlopIdx(i);
                   setNodeId(0);
                   }}
-                className={`flex shrink-0 gap-0.5 rounded-xl border-2 p-1.5 ${i === flopIdx ? "border-accent bg-surface-2" : "border-transparent bg-surface"}`}
+                className={`flex shrink-0 gap-0.5 rounded-control border-2 p-1.5 ${i === flopIdx ? "border-accent bg-surface-2" : "border-transparent bg-surface"}`}
               >
                 {cards.map((c) => (
                   <PlayingCard key={c} card={cardOf("23456789TJQKA".indexOf(c[0]) * 4 + "cdhs".indexOf(c[1]))} size="sm" />
@@ -190,7 +190,7 @@ function PostflopStudy() {
           })}
         </div>
         <p className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted">
-          <Link href={`/practice/#mode=postSpot&scenario=${scenario}&flop=${flopIdx}`} data-testid="practice-this-flop" className="rounded-full border border-accent px-3 py-1.5 text-sm font-bold text-accent-text">
+          <Link href={`/practice/#mode=postSpot&scenario=${scenario}&flop=${flopIdx}`} data-testid="practice-this-flop" className="inline-flex min-h-tap items-center rounded-full border border-accent px-4 text-sm font-bold text-accent-text">
             {t("pf.practice")}
           </Link>
           <span>

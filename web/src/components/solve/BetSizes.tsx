@@ -19,7 +19,7 @@ export function BetSizes({ cfg, startStreet, onChange }: { cfg: SolveConfig; sta
     const raiseSizes = cfg.raiseSizes.map((x, i) => (i === street ? on : x)) as SolveConfig["raiseSizes"];
     onChange({ ...cfg, raiseSizes });
   };
-  const chip = (on: boolean) => `min-h-11 min-w-12 rounded-full border px-3 text-sm font-bold ${on ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`;
+  const chip = (on: boolean) => `min-h-tap min-w-12 rounded-full border px-3 text-sm font-bold ${on ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`;
   return (
     <section className="space-y-3" aria-label={t("solve.bets")}>
       <h2 className="font-bold">{t("solve.bets")}</h2>
@@ -41,7 +41,7 @@ export function BetSizes({ cfg, startStreet, onChange }: { cfg: SolveConfig; sta
           </div>
         ),
       )}
-      <label className="flex min-h-11 items-center gap-2 text-sm font-semibold">
+      <label className="flex min-h-tap items-center gap-2 text-sm font-semibold">
         <input type="checkbox" checked={cfg.allowAllin} onChange={(e) => onChange({ ...cfg, allowAllin: e.target.checked })} className="h-5 w-5" />
         {t("solve.allin")}
       </label>

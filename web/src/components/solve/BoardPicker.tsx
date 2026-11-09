@@ -36,23 +36,24 @@ export function BoardPicker({ board, onChange }: { board: number[]; onChange: (b
         </span>
       </div>
       <p className="text-xs text-muted">{t("solve.boardHint")}</p>
-      <div className="flex min-h-[4.2rem] items-center gap-1.5 rounded-2xl bg-surface p-2" data-testid="board-cards" aria-live="polite">
+      <div className="flex min-h-[4.2rem] items-center gap-1.5 rounded-card bg-surface p-2" data-testid="board-cards" aria-live="polite">
         {board.map((c, i) => (
-          <button key={c} type="button" onClick={() => toggle(c)} className={`rounded-lg ${i === 3 ? "ml-2" : ""} ${i === 4 ? "ml-1" : ""}`} aria-label={t("solve.removeCard", { card: cardLabel(cardOf(c)) })}>
+          <button key={c} type="button" onClick={() => toggle(c)} className={`grid min-h-tap min-w-tap place-items-center rounded-lg ${i === 3 ? "ml-2" : ""} ${i === 4 ? "ml-1" : ""}`} aria-label={t("solve.removeCard", { card: cardLabel(cardOf(c)) })}>
             <PlayingCard card={cardOf(c)} size="tbl" />
           </button>
         ))}
         {board.length < 3 && <span className="px-1 text-sm text-muted">{t("solve.boardHint")}</span>}
       </div>
       <div className="flex gap-2">
-        <button type="button" data-testid="board-random" onClick={() => onChange(randomFlop())} className="min-h-11 rounded-xl border border-line bg-surface px-3.5 text-sm font-semibold">
+        <button type="button" data-testid="board-random" onClick={() => onChange(randomFlop())} className="min-h-tap rounded-control border border-line bg-surface px-3.5 text-sm font-semibold">
           {t("solve.random")}
         </button>
-        <button type="button" onClick={() => onChange([])} className="min-h-11 rounded-xl border border-line bg-surface px-3.5 text-sm font-semibold">
+        <button type="button" onClick={() => onChange([])} className="min-h-tap rounded-control border border-line bg-surface px-3.5 text-sm font-semibold">
           {t("solve.clear")}
         </button>
       </div>
-      <div className="space-y-[3px]" role="group" aria-label={t("solve.board")}>
+      {/* 52 cards have to fit a phone width: about 27 x 40 px each (WCAG 2.5.8 minimum is 24) */}
+      <div className="space-y-[3px]" role="group" aria-label={t("solve.board")} data-card-picker>
         {SUIT_ORDER.map((s) => (
           <div key={s} className="grid grid-cols-13 gap-[2px]" style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}>
             {RANKS.split("").map((r, i) => {

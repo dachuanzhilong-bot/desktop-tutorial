@@ -75,11 +75,11 @@ export function LockPanel({ d, actions, selected, inFilter, seat, locked, busy, 
   }
 
   const sum = mix.reduce((s, x) => s + x, 0);
-  const chip = (on: boolean) => `min-h-10 rounded-full border px-3 text-sm font-semibold ${on ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`;
+  const chip = (on: boolean) => `min-h-tap rounded-full border px-3 text-sm font-semibold ${on ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`;
   const disabled = busy || hands.length === 0 || !!unavailable;
 
   return (
-    <section className="space-y-3 rounded-2xl border border-line bg-surface p-4" aria-label={t("solve.lock.title")} data-testid="lock-panel">
+    <section className="space-y-3 rounded-card border border-line bg-surface p-4" aria-label={t("solve.lock.title")} data-testid="lock-panel">
       <div className="flex items-center justify-between gap-2">
         <h3 className="font-bold">{t("solve.lock.at", { seat })}</h3>
         {locked && (
@@ -133,7 +133,7 @@ export function LockPanel({ d, actions, selected, inFilter, seat, locked, busy, 
       <div className="flex flex-wrap items-center gap-2">
         <label className="flex items-center gap-1.5 text-xs text-muted">
           {t("solve.lock.iters")}
-          <select value={iters} onChange={(e) => setIters(Number(e.target.value))} className="min-h-10 rounded-lg border border-line bg-surface-2 px-2 text-sm text-ink">
+          <select value={iters} onChange={(e) => setIters(Number(e.target.value))} className="min-h-tap rounded-control border border-line bg-surface-2 px-2 text-sm text-ink">
             {ITERS.map((n) => (
               <option key={n} value={n}>
                 {n}
@@ -143,10 +143,10 @@ export function LockPanel({ d, actions, selected, inFilter, seat, locked, busy, 
         </label>
       </div>
       <div className="grid grid-cols-2 gap-2">
-        <button type="button" data-testid="lock-apply" disabled={disabled} onClick={() => onApply(buildLock(d, na, hands, mix), iters)} className="min-h-12 rounded-xl bg-accent font-bold text-accent-ink disabled:opacity-50">
+        <button type="button" data-testid="lock-apply" disabled={disabled} onClick={() => onApply(buildLock(d, na, hands, mix), iters)} className="min-h-tap-lg rounded-control bg-accent font-bold text-accent-ink disabled:opacity-50">
           {busy ? t("solve.lock.running") : t("solve.lock.apply")}
         </button>
-        <button type="button" data-testid="lock-unlock" disabled={busy || !locked || !!unavailable} onClick={() => onUnlock(iters)} className="min-h-12 rounded-xl border border-line font-bold disabled:opacity-50">
+        <button type="button" data-testid="lock-unlock" disabled={busy || !locked || !!unavailable} onClick={() => onUnlock(iters)} className="min-h-tap-lg rounded-control border border-line font-bold disabled:opacity-50">
           {t("solve.lock.unlock")}
         </button>
       </div>

@@ -46,18 +46,18 @@ function Report({ index }: { index: PfIndex }) {
 
       <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4">
         {index.scenarios.map((s) => (
-          <button key={s.id} type="button" aria-pressed={s.id === scenario} onClick={() => setScenario(s.id)} className={`min-h-10 whitespace-nowrap rounded-full border px-3.5 text-sm font-semibold ${s.id === scenario ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}>
+          <button key={s.id} type="button" aria-pressed={s.id === scenario} onClick={() => setScenario(s.id)} className={`min-h-tap whitespace-nowrap rounded-full border px-3.5 text-sm font-semibold ${s.id === scenario ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface text-muted"}`}>
             {s.title}
           </button>
         ))}
       </div>
 
-      <section className="space-y-3 rounded-2xl border border-line bg-surface p-4" aria-label={t("rep.by")}>
+      <section className="space-y-3 rounded-card border border-line bg-surface p-4" aria-label={t("rep.by")}>
         <div>
           <p className="mb-1 text-xs font-bold text-muted">{t("rep.by")}</p>
           <div className="flex flex-wrap gap-1.5">
             {GROUPS.map((g) => (
-              <button key={g} type="button" aria-pressed={group === g} onClick={() => setGroup(g)} className={`min-h-9 rounded-full border px-3 text-sm font-semibold ${group === g ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface-2 text-muted"}`}>
+              <button key={g} type="button" aria-pressed={group === g} onClick={() => setGroup(g)} className={`min-h-tap rounded-full border px-3 text-sm font-semibold ${group === g ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface-2 text-muted"}`}>
                 {t(`rep.by.${g}` as Key)}
               </button>
             ))}
@@ -67,7 +67,7 @@ function Report({ index }: { index: PfIndex }) {
           <p className="mb-1 text-xs font-bold text-muted">{t("rep.metric")}</p>
           <div className="flex flex-wrap gap-1.5">
             {METRICS.map((m) => (
-              <button key={m} type="button" aria-pressed={metric === m} onClick={() => setMetric(m)} className={`min-h-9 rounded-full border px-3 text-sm font-semibold ${metric === m ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface-2 text-muted"}`}>
+              <button key={m} type="button" aria-pressed={metric === m} onClick={() => setMetric(m)} className={`min-h-tap rounded-full border px-3 text-sm font-semibold ${metric === m ? "border-accent bg-accent text-accent-ink" : "border-line bg-surface-2 text-muted"}`}>
                 {t(`rep.m.${m}` as Key)}
               </button>
             ))}
@@ -93,10 +93,10 @@ function Report({ index }: { index: PfIndex }) {
         </p>
       </section>
 
-      <section className="rounded-2xl border border-line bg-surface p-4" aria-label={t("rep.table")}>
+      <section className="rounded-card border border-line bg-surface p-4" aria-label={t("rep.table")}>
         <div className="mb-2 flex items-center justify-between">
           <h2 className="font-bold">{t("rep.table")}</h2>
-          <button type="button" onClick={() => setSort(sort === "order" ? "desc" : "order")} className="min-h-9 rounded-full border border-line px-3 text-xs font-semibold text-muted">
+          <button type="button" onClick={() => setSort(sort === "order" ? "desc" : "order")} className="min-h-tap rounded-full border border-line px-3 text-xs font-semibold text-muted">
             {sort === "order" ? "↓ " : "# "}
             {t(`rep.m.${metric}` as Key)}
           </button>
@@ -130,7 +130,7 @@ function Report({ index }: { index: PfIndex }) {
                   <td className="text-right font-bold tabular-nums">{r.v === null ? "–" : `${(r.v * 100).toFixed(0)}%`}</td>
                   <td className="text-right tabular-nums text-muted">{r.stats ? `${(r.stats.eqIp * 100).toFixed(0)}%` : "–"}</td>
                   <td className="text-right">
-                    <Link href={`/study/postflop/#s=${scenario}&f=${r.i}&n=0`} className="rounded-lg border border-line px-2 py-1 text-xs font-semibold text-muted">
+                    <Link href={`/study/postflop/#s=${scenario}&f=${r.i}&n=0`} aria-label={`${t("rep.open")}: ${r.text}`} className="inline-flex min-h-tap items-center whitespace-nowrap rounded-control border border-line px-3 text-xs font-semibold text-muted">
                       {t("rep.open")}
                     </Link>
                   </td>
@@ -151,7 +151,7 @@ export default function ReportPage() {
   useEffect(() => {
     loadIndex().then(setIndex).catch((e) => setErr(String(e?.message ?? e)));
   }, []);
-  if (err) return <p role="alert" className="rounded-2xl border border-line bg-surface p-4 text-sm">{t("pf.missing")} {err}</p>;
+  if (err) return <p role="alert" className="rounded-card border border-line bg-surface p-4 text-sm">{t("pf.missing")} {err}</p>;
   if (!index)
     return (
       <div className="space-y-3">

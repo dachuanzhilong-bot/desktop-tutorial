@@ -15,7 +15,7 @@ export function LineBar({ steps, players, currentLabel, onJump }: { steps: Step[
     <nav aria-label={t("study.line")}>
       <ol ref={ref} className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4 pb-1">
         <li>
-          <button type="button" onClick={() => onJump(0)} className="min-h-9 whitespace-nowrap rounded-full border border-line bg-surface px-3 text-sm font-semibold text-muted hover:text-ink">
+          <button type="button" onClick={() => onJump(0)} className="min-h-tap whitespace-nowrap rounded-full border border-line bg-surface px-3 text-sm font-semibold text-muted hover:text-ink">
             {t("study.root")}
           </button>
         </li>
@@ -27,7 +27,7 @@ export function LineBar({ steps, players, currentLabel, onJump }: { steps: Step[
               <button
                 type="button"
                 onClick={() => onJump(s.node.id)}
-                className="seg flex min-h-9 items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-sm font-bold text-white"
+                className="seg flex min-h-tap items-center gap-1.5 whitespace-nowrap rounded-full px-3 text-sm font-bold text-white"
                 data-k={tone}
               >
                 <span>{players[s.actor]}</span>
@@ -40,7 +40,7 @@ export function LineBar({ steps, players, currentLabel, onJump }: { steps: Step[
           );
         })}
         <li aria-current="step">
-          <span className="flex min-h-9 items-center whitespace-nowrap rounded-full border-2 border-accent bg-surface px-3 text-sm font-extrabold text-accent-text">{currentLabel}</span>
+          <span className="flex min-h-tap items-center whitespace-nowrap rounded-full border-2 border-accent bg-surface px-3 text-sm font-extrabold text-accent-text">{currentLabel}</span>
         </li>
       </ol>
     </nav>

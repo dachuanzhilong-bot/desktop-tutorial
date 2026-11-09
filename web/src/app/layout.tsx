@@ -27,7 +27,7 @@ export const viewport: Viewport = {
 
 export default function RootLayout({ children }: { children: ReactNode }) {
   return (
-    <html lang="ja" data-theme="dark" data-palette="standard" data-pattern="off" data-labels="on" suppressHydrationWarning>
+    <html lang="ja" data-theme="dark" data-palette="standard" data-pattern="on" data-labels="on" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
       </head>

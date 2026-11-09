@@ -63,7 +63,7 @@ export function ActionBar({
             }
             onChoose(i);
           }}
-          className="seg relative flex min-h-16 select-none flex-col items-center justify-center gap-0.5 rounded-2xl px-2 py-2 text-white shadow-lg transition-transform duration-100 active:scale-[0.96] disabled:opacity-45"
+          className="seg relative flex min-h-16 select-none flex-col items-center justify-center gap-0.5 rounded-card px-2 py-2 text-white shadow-lg transition-transform duration-100 active:scale-[0.96] disabled:opacity-45"
           data-k={a.tone}
           style={highlight === i ? { outline: "4px solid var(--accent)", outlineOffset: 2 } : undefined}
         >

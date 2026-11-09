@@ -51,7 +51,7 @@ export function HandPanel({ sol, h, actions }: { sol: NodeSolution; h: number; a
   for (let a = 1; a < sol.na; a++) if (sol.ev[a * K + h] > sol.ev[best * K + h]) best = a;
   const combos = classCombos(h);
   return (
-    <section aria-label={t("study.hand")} className="rounded-2xl border border-line bg-surface p-4" data-testid="hand-panel">
+    <section aria-label={t("study.hand")} className="rounded-card border border-line bg-surface p-4" data-testid="hand-panel">
       <div className="mb-3 flex items-baseline justify-between">
         <h3 className="text-2xl font-extrabold">{info.name}</h3>
         <span className="text-sm text-muted">
@@ -60,19 +60,19 @@ export function HandPanel({ sol, h, actions }: { sol: NodeSolution; h: number; a
       </div>
       <FreqBars sol={sol} h={h} actions={actions} best={best} />
       <dl className="mt-4 grid grid-cols-3 gap-2 text-center">
-        <div className="rounded-xl bg-surface-2 py-2">
+        <div className="rounded-control bg-surface-2 py-2">
           <dt className="text-xs text-muted">
             <Term id="equity">{t("study.equity")}</Term>
           </dt>
           <dd className="text-lg font-bold">{(sol.equity[h] * 100).toFixed(1)}%</dd>
         </div>
-        <div className="rounded-xl bg-surface-2 py-2">
+        <div className="rounded-control bg-surface-2 py-2">
           <dt className="text-xs text-muted">
             <Term id="eqr">{t("study.eqr")}</Term>
           </dt>
           <dd className="text-lg font-bold">{sol.eqr ? sol.eqr[h].toFixed(2) : "–"}</dd>
         </div>
-        <div className="rounded-xl bg-surface-2 py-2">
+        <div className="rounded-control bg-surface-2 py-2">
           <dt className="text-xs text-muted">{t("study.weight")}</dt>
           <dd className="text-lg font-bold">{Math.round(sol.weight[h] * 100)}%</dd>
         </div>

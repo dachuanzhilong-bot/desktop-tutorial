@@ -15,16 +15,16 @@ export default function RouteError({ error, retry }: { error: unknown; retry: ()
       <h1 className="text-2xl font-extrabold">{t("err.title")}</h1>
       <p className="text-muted">{t("err.body")}</p>
       <div className="grid gap-2">
-        <button type="button" onClick={() => retry()} className="min-h-12 rounded-2xl bg-accent font-bold text-accent-ink">
+        <button type="button" onClick={() => retry()} className="min-h-tap-lg rounded-card bg-accent font-bold text-accent-ink">
           {t("err.retry")}
         </button>
-        <Link href="/" className="grid min-h-12 place-items-center rounded-2xl border border-line font-bold">
+        <Link href="/" className="grid min-h-tap-lg place-items-center rounded-card border border-line font-bold">
           {t("err.home")}
         </Link>
       </div>
       <details className="text-left text-xs text-muted">
-        <summary className="min-h-11 cursor-pointer py-3">{t("err.detail")}</summary>
-        <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-xl bg-surface p-3">{msg}</pre>
+        <summary className="min-h-tap cursor-pointer py-3">{t("err.detail")}</summary>
+        <pre className="overflow-x-auto whitespace-pre-wrap break-all rounded-control bg-surface p-3">{msg}</pre>
       </details>
     </section>
   );

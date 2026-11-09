@@ -96,6 +96,22 @@
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
+/* sizes and radii: the one place that defines them (see docs/12-design-tokens.md) */
+@theme {
+  /* every tappable control is at least this tall / wide (44px, also when the text size is reduced) */
+  --spacing-tap: max(44px, 2.75rem);
+  /* primary buttons inside a form */
+  --spacing-tap-lg: max(48px, 3rem);
+  /* the main action of a screen */
+  --spacing-cta: max(56px, 3.5rem);
+  /* buttons, inputs, segmented controls */
+  --radius-control: 0.75rem;
+  /* cards and panels */
+  --radius-card: 1rem;
+  /* dialogs and result sheets */
+  --radius-sheet: 1.5rem;
+}
+
 /* ------------------------------------------------------------------ base */
 html {
   font-size: calc(16px * var(--text-scale, 1));
