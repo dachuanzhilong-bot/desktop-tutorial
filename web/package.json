@@ -11,6 +11,7 @@
     "typecheck": "tsc --noEmit",
     "lint": "eslint . --max-warnings 0",
     "test": "vitest run",
+    "validate:data": "vitest run src/lib/__tests__/data.validate.test.ts",
     "test:watch": "vitest",
     "e2e": "node scripts/e2e.mjs",
     "solutions:pack": "node scripts/pack-solutions.mjs",

@@ -184,6 +184,44 @@ mod tests {
         assert!(eval7(&parse("AsKs9s5s2s3c4d")) > eval7(&parse("KsQs9s5s2s3c4d")));
     }
 
+    /// Showdown edge cases that decide pots: ties, the board playing, category order.
+    #[test]
+    fn showdown_edge_cases() {
+        let e = |h: &str| eval7(&parse(h));
+        // the board plays: both players split (same 5 best cards)
+        assert_eq!(e("2c3dAsKsQsJsTs"), e("4h5hAsKsQsJsTs"));
+        assert_eq!(e("2c3dAhAdKhKdQc"), e("2h3hAhAdKhKdQc")); // AAKKQ on board
+        // a kicker only counts when it is among the best five cards
+        assert_eq!(e("Ac2dKhKsQcJd9h"), e("Ad3dKhKsQcJd9h")); // KK + AQJ: the 2 vs 3 does not play
+        assert!(e("AdJdKhKs7c5d2h") > e("AcTdKhKs7c5d2h")); // KK+AJ7 beats KK+AT7
+        // category order: straight flush > quads > full house > flush > straight > trips > two pair > pair > high
+        let ranks = [
+            e("9s8s7s6s5s2c2d"),
+            e("AsAhAdAcKs2c3d"),
+            e("KsKhKdQcQs2c3d"),
+            e("As9s7s6s3sKcJd"),
+            e("Ts9h8d7c6sAcAd"),
+            e("QsQhQd9c7s3c2d"),
+            e("JsJh9d9c7s3c2d"),
+            e("JsJh9d8c7s3c2d"),
+            e("AsKh9d8c6s3c2d"),
+        ];
+        for w in ranks.windows(2) {
+            assert!(w[0] > w[1], "category order");
+        }
+        assert_eq!(ranks.iter().map(|&r| category(r)).collect::<Vec<_>>(), vec![8, 7, 6, 5, 4, 3, 2, 1, 0]);
+        // steel wheel is the lowest straight flush, but still beats quads
+        assert!(e("As2s3s4s5sKdKc") > e("KsKhKdKcAs2d3d"));
+        assert!(e("6s2s3s4s5sKdKc") > e("As2s3s4s5sKdKc"));
+        // six to a straight: the higher five play
+        assert_eq!(e("2c3d4h5s6c7dKs"), e("Ac3d4h5s6c7dKs"));
+        // quads: the kicker comes from the best remaining card
+        assert!(e("9s9h9d9cAs2c3d") > e("9s9h9d9cKs2c3d"));
+        // two full houses: trips rank first, then the pair
+        assert!(e("AsAhAd2c2s7c8d") > e("KsKhKdQcQs7c8d"));
+        assert!(e("KsKhKdQcQs7c8d") > e("KsKhKdJcJs7c8d"));
+    }
+
     /// Exact category frequencies over all C(52,7) hands would be 133M evals;
     /// sample instead and compare with the textbook probabilities.
     #[test]

@@ -24,6 +24,8 @@ export function candidateNodes(m: Manifest, f: PracticeFilter): number[] {
   const out: number[] = [];
   for (const n of m.nodes) {
     if (n.reach < 1e-5) continue;
+    // a forced move (e.g. folding behind an all-in and a call) is not a decision
+    if (n.actions.length < 2) continue;
     if (f.seats.length && !f.seats.includes(n.actor)) continue;
     if (f.spots.length && !f.spots.includes(spotType(m, n.id))) continue;
     out.push(n.id);
