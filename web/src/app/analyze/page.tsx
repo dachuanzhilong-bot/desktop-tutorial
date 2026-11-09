@@ -45,8 +45,19 @@ const MAX_FILE_BYTES = 50 * 1024 * 1024;
 /** analysed hands are saved in batches, so stopping keeps what is done */
 const SAVE_EVERY = 200;
 
+/** the page frame is static HTML (painted at once); importing and grading wait for the solution data */
 export default function AnalyzePage() {
-  return <SolutionGate grid={false}>{(store) => <Analyze store={store} />}</SolutionGate>;
+  const { t } = useSettings();
+  return (
+    <div className="space-y-5">
+      <header>
+        <h1 className="text-2xl font-extrabold">{t("analyze.title")}</h1>
+        <p className="text-sm text-muted">{t("analyze.subtitle")}</p>
+      </header>
+      <ReviewTabs />
+      <SolutionGate grid={false}>{(store) => <Analyze store={store} />}</SolutionGate>
+    </div>
+  );
 }
 
 function Analyze({ store }: { store: SolutionStore }) {
@@ -181,12 +192,6 @@ function Analyze({ store }: { store: SolutionStore }) {
 
   return (
     <div className="space-y-5">
-      <header>
-        <h1 className="text-2xl font-extrabold">{t("analyze.title")}</h1>
-        <p className="text-sm text-muted">{t("analyze.subtitle")}</p>
-      </header>
-      <ReviewTabs />
-
       {/* import */}
       <section className="space-y-3 rounded-card border border-line bg-surface p-4" aria-label={t("analyze.import")}>
         <h2 className="font-bold">{t("analyze.import")}</h2>

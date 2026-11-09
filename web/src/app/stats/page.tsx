@@ -66,22 +66,30 @@ export default function StatsPage() {
     }
   };
 
-  if (!list)
-    return (
-      <div className="space-y-3">
-        <Skeleton className="h-8 w-1/3" />
-        <Skeleton className="h-28 w-full" />
-        <Skeleton className="h-40 w-full" />
-      </div>
-    );
-
-  return (
-    <div className="space-y-5">
+  // the title and tabs are static HTML; the records (IndexedDB) fill in below
+  const frame = (
+    <>
       <header>
         <h1 className="text-2xl font-extrabold">{t("stats.title")}</h1>
         <p className="text-sm text-muted">{t("stats.subtitle")}</p>
       </header>
       <ReviewTabs />
+    </>
+  );
+  if (!list)
+    return (
+      <div className="space-y-5">
+        {frame}
+        <div className="space-y-3" aria-busy="true">
+          <Skeleton className="h-28 w-full" />
+          <Skeleton className="h-40 w-full" />
+        </div>
+      </div>
+    );
+
+  return (
+    <div className="space-y-5">
+      {frame}
 
       <section className="grid grid-cols-[auto_1fr] items-center gap-4 rounded-sheet border border-line bg-surface p-4">
         <Ring value={today} max={settings.dailyGoal} label={t("stats.goalHands", { n: today, goal: settings.dailyGoal })}>
