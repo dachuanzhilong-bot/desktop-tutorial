@@ -4,6 +4,7 @@ import { usePathname } from "next/navigation";
 import { ReactNode, useEffect, useRef } from "react";
 import type { Key } from "@/lib/i18n/ja";
 import { useSettings } from "@/lib/settings";
+import { withBase } from "@/lib/util/base";
 import { IconBolt, IconChart, IconGear, IconGrid, IconHome, IconTarget } from "./icons";
 import { CrashProbe } from "./CrashProbe";
 import { OfflineBanner } from "./OfflineBanner";
@@ -30,7 +31,7 @@ export function AppShell({ children }: { children: ReactNode }) {
     if (registered.current || process.env.NODE_ENV !== "production") return;
     if (!("serviceWorker" in navigator)) return;
     registered.current = true;
-    navigator.serviceWorker.register("/sw.js").catch(() => {});
+    navigator.serviceWorker.register(withBase("/sw.js")).catch(() => {});
   }, []);
 
   const isActive = (href: string, also: string[] = []) => (href === "/" ? path === "/" : [href, ...also].some((h) => path.startsWith(h.replace(/\/$/, ""))));

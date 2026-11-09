@@ -3,6 +3,8 @@ import { defineConfig, devices } from "@playwright/test";
 /** E2E runs against the static export (`npm run build` first): the same artefact that gets deployed. */
 export default defineConfig({
   testDir: "e2e",
+  // the sub-path checks need their own build and server: `npm run e2e:subpath`
+  testIgnore: "subpath.spec.ts",
   fullyParallel: true,
   workers: 2,
   retries: 0,

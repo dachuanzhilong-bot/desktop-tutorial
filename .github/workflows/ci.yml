@@ -29,3 +29,5 @@ jobs:
       - run: npm test
       - run: npx playwright install --with-deps chromium
       - run: npm run e2e
+      # the export must also work under a sub-path (GitHub Pages project site)
+      - run: npm run e2e:subpath

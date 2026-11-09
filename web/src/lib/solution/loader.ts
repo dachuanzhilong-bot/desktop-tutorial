@@ -1,4 +1,5 @@
 import { decodeChunk, gunzip, parseManifest } from "./decode";
+import { withBase } from "../util/base";
 import type { Manifest, NodeSolution } from "./types";
 
 /** effective stack depths (bb) a preflop solution exists for */
@@ -37,7 +38,7 @@ export class SolutionStore {
     this.base = base;
   }
 
-  static async open(id: string = DEFAULT_SOLUTION, base = "/solutions"): Promise<SolutionStore> {
+  static async open(id: string = DEFAULT_SOLUTION, base = withBase("/solutions")): Promise<SolutionStore> {
     const res = await fetch(`${base}/${id}/manifest.json.gz`);
     if (!res.ok) throw new Error(`manifest ${res.status}`);
     const bytes = await gunzip(await res.arrayBuffer());

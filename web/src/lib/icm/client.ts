@@ -1,4 +1,5 @@
 import { decodeIcm, IcmInput, IcmSolution, toConfig } from "./model";
+import { withBase } from "../util/base";
 
 export interface IcmProgress {
   done: number;
@@ -16,7 +17,7 @@ export class IcmClient {
   private pending = new Map<number, Pending>();
   private ready = false;
 
-  constructor(url = "/solver-worker.js") {
+  constructor(url = withBase("/solver-worker.js")) {
     this.worker = new Worker(url);
     this.worker.onmessage = (e: MessageEvent) => {
       const m = e.data;
@@ -43,7 +44,7 @@ export class IcmClient {
 
   private async init() {
     if (this.ready) return;
-    const res = await fetch("/data/equity169.bin");
+    const res = await fetch(withBase("/data/equity169.bin"));
     if (!res.ok) throw new Error(`equity table ${res.status}`);
     const buf = await res.arrayBuffer();
     await this.call({ type: "icmInit", eq: new Uint16Array(buf) });

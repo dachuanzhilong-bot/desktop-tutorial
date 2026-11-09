@@ -1,5 +1,6 @@
 // Tiny static file server for the exported app (out/) – used by Playwright and for local previews.
 //   node scripts/serve-static.mjs [port] [dir]
+//   BASE_PATH=/desktop-tutorial node scripts/serve-static.mjs …   serves the export under a sub-path, like a GitHub Pages project site
 import { createServer } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { gzipSync } from "node:zlib";
@@ -7,6 +8,7 @@ import { extname, join, normalize, resolve } from "node:path";
 
 const port = Number(process.argv[2] ?? process.env.PORT ?? 3100);
 const root = resolve(process.argv[3] ?? "out");
+const base = (process.env.BASE_PATH ?? "").replace(/\/+$/, "");
 const TYPES = {
   ".html": "text/html; charset=utf-8",
   ".js": "text/javascript; charset=utf-8",
@@ -28,7 +30,22 @@ const gz = new Map();
 
 createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
-  let p = normalize(decodeURIComponent(url.pathname)).replace(/^(\.\.[/\\])+/, "");
+  let pathname = decodeURIComponent(url.pathname);
+  if (base) {
+    // like a project site: <base> without the slash redirects, anything outside <base> is not ours
+    if (pathname === base) {
+      res.writeHead(301, { location: `${base}/${url.search}` });
+      res.end();
+      return;
+    }
+    if (!pathname.startsWith(`${base}/`)) {
+      res.writeHead(404, { "content-type": "text/plain; charset=utf-8" });
+      res.end("not found");
+      return;
+    }
+    pathname = pathname.slice(base.length);
+  }
+  let p = normalize(pathname).replace(/^(\.\.[/\\])+/, "");
   let file = join(root, p);
   if (existsSync(file) && statSync(file).isDirectory()) file = join(file, "index.html");
   if (!existsSync(file) && existsSync(file + ".html")) file += ".html";

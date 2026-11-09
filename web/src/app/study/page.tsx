@@ -22,6 +22,7 @@ import { ActionKind, Terminal } from "@/lib/solution/types";
 import type { Key } from "@/lib/i18n/ja";
 import { actionCombos, actionMix, actionRange, equityBins, rangeCombosOf, rangeWidth } from "@/lib/study/summary";
 import { haptic } from "@/lib/util/haptics";
+import { withBase } from "@/lib/util/base";
 
 const MODES: GridMode[] = ["strategy", "ev", "equity", "weight"];
 
@@ -385,8 +386,8 @@ function MiniRange({ title, range, combos, tone }: { title: string; range: Array
 export default function StudyPage() {
   const { t } = useSettings();
   // the default (100bb) solution starts downloading from the static HTML; other depths load when chosen
-  preload("/solutions/cash6max-100bb/manifest.json.gz", { as: "fetch", crossOrigin: "anonymous" });
-  preload("/solutions/cash6max-100bb/chunk-0.bin.gz", { as: "fetch", crossOrigin: "anonymous" });
+  preload(withBase("/solutions/cash6max-100bb/manifest.json.gz"), { as: "fetch", crossOrigin: "anonymous" });
+  preload(withBase("/solutions/cash6max-100bb/chunk-0.bin.gz"), { as: "fetch", crossOrigin: "anonymous" });
   return (
     <div className="space-y-4">
       <header>

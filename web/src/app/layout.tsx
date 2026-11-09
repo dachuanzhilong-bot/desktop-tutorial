@@ -4,14 +4,15 @@ import "./globals.css";
 import { THEME_INIT_SCRIPT } from "@/lib/settings";
 import { Providers } from "@/components/Providers";
 import { AppShell } from "@/components/AppShell";
+import { withBase } from "@/lib/util/base";
 
 export const metadata: Metadata = {
   title: { default: "Tessera – Poker GTO", template: "%s · Tessera" },
   description: "Study, practice and analyse poker GTO strategies. Works offline.",
   applicationName: "Tessera",
-  manifest: "/manifest.webmanifest",
+  manifest: withBase("/manifest.webmanifest"),
   appleWebApp: { capable: true, title: "Tessera", statusBarStyle: "black-translucent" },
-  icons: { icon: [{ url: "/icons/icon.svg", type: "image/svg+xml" }, { url: "/icons/icon-192.png", sizes: "192x192", type: "image/png" }], apple: "/icons/apple-touch-icon.png" },
+  icons: { icon: [{ url: withBase("/icons/icon.svg"), type: "image/svg+xml" }, { url: withBase("/icons/icon-192.png"), sizes: "192x192", type: "image/png" }], apple: withBase("/icons/apple-touch-icon.png") },
 };
 
 export const viewport: Viewport = {

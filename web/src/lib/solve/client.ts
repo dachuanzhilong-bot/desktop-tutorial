@@ -1,4 +1,5 @@
 import { buildConfig, solverRanges } from "./config";
+import { withBase } from "../util/base";
 import type { SolveInput } from "./config";
 
 export interface Progress {
@@ -44,7 +45,7 @@ export class SolverClient {
   private handle = -1;
   nodes = 0;
 
-  constructor(url = "/solver-worker.js") {
+  constructor(url = withBase("/solver-worker.js")) {
     this.worker = new Worker(url);
     this.worker.onmessage = (e: MessageEvent) => {
       const m = e.data;

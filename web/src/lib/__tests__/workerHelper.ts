@@ -4,16 +4,19 @@ import vm from "node:vm";
 
 export const PUBLIC = path.resolve(__dirname, "../../../public");
 
-/** runs the real public/solver-worker.js in a vm sandbox, with the real .wasm */
-export function startWorker() {
+/**
+ * runs the real public/solver-worker.js in a vm sandbox, with the real .wasm.
+ * `base` is the sub-path the app is hosted under ("" = the root); `fetched` collects the URLs the worker asks for.
+ */
+export function startWorker(base = "", fetched: string[] = []) {
   const wasm = readFileSync(path.join(PUBLIC, "wasm/tessera_solver.wasm"));
   /** a message from the worker (shape depends on the request type) */
   type Msg = Record<string, any>; // eslint-disable-line @typescript-eslint/no-explicit-any -- test harness: replies are checked by each test
   const waiting = new Map<number, { resolve: (m: Msg) => void; progress: Msg[] }>();
-  const self: { postMessage?: (m: Msg) => void; onmessage?: (e: { data: Msg }) => void } = {};
+  const self: { location: { pathname: string }; postMessage?: (m: Msg) => void; onmessage?: (e: { data: Msg }) => void } = { location: { pathname: `${base}/solver-worker.js` } };
   const sandbox = {
     self,
-    fetch: async () => ({ arrayBuffer: async () => wasm.buffer.slice(wasm.byteOffset, wasm.byteOffset + wasm.byteLength) }),
+    fetch: async (url: string) => (fetched.push(url), { arrayBuffer: async () => wasm.buffer.slice(wasm.byteOffset, wasm.byteOffset + wasm.byteLength) }),
     setTimeout,
     WebAssembly,
     Float32Array,

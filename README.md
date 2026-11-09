@@ -22,12 +22,14 @@ npm run dev            # http://localhost:3000   （開発。Service Workerは�
 
 npm run build          # 静的書き出し → web/out/（どの静的ホスティングにも置ける）
 node scripts/serve-static.mjs 3100   # out/ を http://localhost:3100 で配信（PWA/オフラインの確認用）
+# 公開の手順は docs/13-hosting.md（サブパスでも動く: NEXT_PUBLIC_BASE_PATH=/<repo> npm run build）
 
 # テスト・チェック（まとめて: npm run verify）
 npm run typecheck && npm run lint    # 型チェック、ESLint（警告0が条件）
 npm test                             # Vitest（ロジック・解データの検証・ファズ・表記ルール）
 npm run validate:data                # 同梱の解データを全部検証（全5深度・全63フロップ・エクイティ表）
 npm run e2e                          # ビルド(偽のSupabaseを設定) → Playwright（モバイル/デスクトップ、axe・タップ領域・コンソールエラー0）
+npm run e2e:subpath                  # サブパス（/desktop-tutorial/）でビルド・配信して、データ・Worker・オフラインを確認（GitHub Pages 用）
 
 # ソルバー（Rust 1.7x+, 依存crateなし）
 cd solver

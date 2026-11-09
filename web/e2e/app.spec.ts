@@ -200,7 +200,14 @@ test.describe("pwa", () => {
     });
     // wait until the install step finished caching the solution files
     await expect
-      .poll(async () => page.evaluate(async () => (await (await caches.open("tessera-data-v4")).keys()).length), { timeout: 20_000 })
+      .poll(
+        async () =>
+          page.evaluate(async () => {
+            const name = (await caches.keys()).find((k) => k.startsWith("tessera-data-"));
+            return name ? (await (await caches.open(name)).keys()).length : 0;
+          }),
+        { timeout: 20_000 },
+      )
       .toBeGreaterThanOrEqual(8);
     await page.reload(); // now controlled by the SW
     await context.setOffline(true);

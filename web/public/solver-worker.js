@@ -15,12 +15,14 @@
  *   icmExport { handle }                  -> { data:Float32Array, exploit }
  *   icmDestroy { handle }
  */
+// served from <base>/solver-worker.js: the wasm file is next to it, wherever the app is hosted
+const BASE = self.location.pathname.replace(/\/solver-worker\.js$/, "");
 let ex = null;
 let cancelled = false;
 
 async function load() {
   if (ex) return;
-  const res = await fetch("/wasm/tessera_solver.wasm");
+  const res = await fetch(BASE + "/wasm/tessera_solver.wasm");
   const { instance } = await WebAssembly.instantiate(await res.arrayBuffer(), {});
   ex = instance.exports;
 }

@@ -4,6 +4,7 @@ import { en } from "../i18n/en";
 import { ja, Key } from "../i18n/ja";
 import { DEPTHS, nearestDepth } from "../solution/loader";
 import { bool, int, LocalSchema, num, pick, readLocal, upgrade, writeLocal } from "../storage/local";
+import { BASE } from "../util/base";
 import { setHapticsEnabled } from "../util/haptics";
 
 export type Lang = "ja" | "en";
@@ -174,4 +175,4 @@ export function useT() {
 }
 
 /** inline script that runs before first paint to avoid a theme / text-size flash */
-export const THEME_INIT_SCRIPT = `(function(){try{var s=JSON.parse(localStorage.getItem('${STORAGE_KEY}')||'{}');var e=document.documentElement;var th=s.theme||'dark';if(th==='system')th=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';e.dataset.theme=th;e.dataset.palette=s.palette||'standard';e.dataset.pattern=(s.pattern===false&&(s._v||1)>=3)?'off':'on';e.dataset.labels=s.labels===false?'off':'on';e.style.setProperty('--text-scale',String(s.textScale||1));if(s.lang)e.lang=s.lang;if(!s.onboarded&&location.pathname==='/')e.dataset.tour='1';}catch(_){}})();`;
+export const THEME_INIT_SCRIPT = `(function(){try{var s=JSON.parse(localStorage.getItem('${STORAGE_KEY}')||'{}');var e=document.documentElement;var th=s.theme||'dark';if(th==='system')th=matchMedia('(prefers-color-scheme: light)').matches?'light':'dark';e.dataset.theme=th;e.dataset.palette=s.palette||'standard';e.dataset.pattern=(s.pattern===false&&(s._v||1)>=3)?'off':'on';e.dataset.labels=s.labels===false?'off':'on';e.style.setProperty('--text-scale',String(s.textScale||1));if(s.lang)e.lang=s.lang;if(!s.onboarded&&location.pathname==='${BASE}/')e.dataset.tour='1';}catch(_){}})();`;

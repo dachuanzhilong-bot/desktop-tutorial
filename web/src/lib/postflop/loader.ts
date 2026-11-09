@@ -1,4 +1,5 @@
 import { gunzip } from "../solution/decode";
+import { withBase } from "../util/base";
 import { decodeFlop, PfFlop } from "./decode";
 import { parseBoard } from "./combos";
 import indexJson from "../../../public/postflop/index.json";
@@ -34,7 +35,7 @@ export interface PfIndex {
   stats: Record<string, FlopStats>;
 }
 
-const base = "/postflop";
+const base = withBase("/postflop");
 const flopCache = new Map<string, Promise<PfFlop>>();
 
 /**
