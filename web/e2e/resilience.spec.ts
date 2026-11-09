@@ -28,6 +28,8 @@ test("an exception inside a screen shows the error view inside the app, and retr
 
 test("an exception in the app shell falls back to the global error page", async ({ page }) => {
   await page.goto("/");
+  // wait for hydration: before it, the router's initial history.replaceState can drop a hash set from outside
+  await expect(page.locator("main[data-ready=true]")).toBeVisible();
   await page.evaluate(() => (location.hash = "#e2e-crash-root"));
   await expect(page.getByRole("heading", { name: /問題が起きました/ })).toBeVisible();
   await expect(page.getByRole("button", { name: /もう一度/ })).toBeVisible();
