@@ -8,6 +8,10 @@
 //! * `postflop` – heads-up flop/turn/river solver over 1,326 combos
 //! * `icm`     – ICM push/fold for up to nine players
 //! * `games`   – tiny reference games (Kuhn, clairvoyant half street, push/fold)
+// The numerical kernels walk several parallel arrays (hands x actions) with one index;
+// iterator chains would hide that and are not faster here.
+#![allow(clippy::needless_range_loop)]
+
 pub mod cards;
 pub mod engine;
 pub mod equity;

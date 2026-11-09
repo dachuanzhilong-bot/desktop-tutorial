@@ -129,6 +129,8 @@ pub extern "C" fn tsr_alloc(len: usize) -> *mut u8 {
     p
 }
 
+/// # Safety
+/// `ptr`/`len` must be a buffer this module returned (tsr_export / tsr_out_ptr) and not freed yet.
 #[no_mangle]
 pub unsafe extern "C" fn tsr_free(ptr: *mut u8, len: usize) {
     drop(Vec::from_raw_parts(ptr, len.max(1), len.max(1)));
@@ -143,12 +145,17 @@ pub extern "C" fn tsr_alloc_f32(len: usize) -> *mut f32 {
     p
 }
 
+/// # Safety
+/// `ptr`/`len` must be an f32 buffer this module returned and not freed yet.
 #[no_mangle]
 pub unsafe extern "C" fn tsr_free_f32(ptr: *mut f32, len: usize) {
     drop(Vec::from_raw_parts(ptr, len.max(1), len.max(1)));
 }
 
 /// returns a handle (>= 0) or a negative error code (-1 bad config, -2 bad board)
+///
+/// # Safety
+/// `cfg` must point to `cfg_len` f32, `board` to `board_len` bytes, `r0` and `r1` to 1,326 f32 each.
 #[no_mangle]
 pub unsafe extern "C" fn tsr_create(cfg: *const f32, cfg_len: usize, board: *const u8, board_len: usize, r0: *const f32, r1: *const f32) -> i32 {
     let cfg = match config_from_f32(std::slice::from_raw_parts(cfg, cfg_len)) {
@@ -228,6 +235,9 @@ pub extern "C" fn tsr_map_len(h: i32) -> u32 {
 }
 
 /// lock `node` (a tree node id from the export map) to `strategy` (na * 1326 f32)
+///
+/// # Safety
+/// `strategy` must point to `len` readable f32.
 #[no_mangle]
 pub unsafe extern "C" fn tsr_lock(h: i32, node: u32, strategy: *const f32, len: usize) -> i32 {
     let v = std::slice::from_raw_parts(strategy, len).to_vec();
@@ -261,7 +271,7 @@ pub fn icm_spec_from_f32(c: &[f32]) -> Result<IcmSpec, String> {
         return Err("bad player / payout count".into());
     }
     let spec = IcmSpec { stacks: c[5..5 + n].to_vec(), sb: c[1], bb: c[2], ante: c[3], payouts: c[5 + n..5 + n + np].to_vec() };
-    if spec.stacks.iter().any(|&s| !(s > 0.0)) || spec.bb <= 0.0 || spec.payouts.iter().all(|&p| p <= 0.0) {
+    if spec.stacks.iter().any(|&s| !s.is_finite() || s <= 0.0) || spec.bb <= 0.0 || spec.payouts.iter().all(|&p| p <= 0.0) {
         return Err("stacks and the big blind must be positive and some prize must be paid".into());
     }
     Ok(spec)
@@ -352,6 +362,9 @@ fn with_icm<R>(h: i32, f: impl FnOnce(&mut IcmSession) -> R) -> Option<R> {
 }
 
 /// `eq`: 169*169 u16 values (equity * 65535), row = hand a, column = hand b
+///
+/// # Safety
+/// `eq` must point to 169 * 169 readable u16.
 #[no_mangle]
 pub unsafe extern "C" fn tsr_icm_set_equity(eq: *const u16) {
     let raw = std::slice::from_raw_parts(eq, NUM_CLASSES * NUM_CLASSES);
@@ -360,6 +373,9 @@ pub unsafe extern "C" fn tsr_icm_set_equity(eq: *const u16) {
 }
 
 /// handle (>= 0), -1 bad config, -2 equity table not loaded
+///
+/// # Safety
+/// `cfg` must point to `cfg_len` readable f32.
 #[no_mangle]
 pub unsafe extern "C" fn tsr_icm_create(cfg: *const f32, cfg_len: usize) -> i32 {
     let spec = match icm_spec_from_f32(std::slice::from_raw_parts(cfg, cfg_len)) {

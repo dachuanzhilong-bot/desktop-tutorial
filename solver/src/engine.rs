@@ -10,7 +10,7 @@
 //! Terminal payoffs (net chips for the hand):
 //!   * Fold   – last player standing wins `pot - inv`, every other loses `inv`.
 //!   * Showdown(x, y) – two contestants; the other players folded earlier.
-//!       u_x(a,b) = pot * s(a,b) - inv_x,   u_y(b,a) = pot * (1 - s(a,b)) - inv_y
+//!     u_x(a,b) = pot * s(a,b) - inv_x,   u_y(b,a) = pot * (1 - s(a,b)) - inv_y
 //!     where s is the pot share (raw equity for all-in, a realisation model otherwise).
 //!     The two "class" matrices hold `P * s` for each side so a showdown is two mat-vecs.
 //!

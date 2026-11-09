@@ -1082,7 +1082,7 @@ pub fn export_with_map(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32) -> 
                 let na = children.len();
                 // sparse: a bitmap of the hands that are in the range at this node, then per-hand arrays
                 let hands: Vec<usize> = (0..NC).filter(|&h| e.weight[h] >= 0.01).collect();
-                let mut bitmap = vec![0u8; (NC + 7) / 8];
+                let mut bitmap = vec![0u8; NC.div_ceil(8)];
                 for &h in &hands {
                     bitmap[h / 8] |= 1 << (h % 8);
                 }

@@ -206,9 +206,9 @@ mod tests {
             let gaps = s.br_gaps();
             assert!(gaps[0] + gaps[1] < 0.002, "b={} exploitability {:?}", b, gaps);
             // node 0 = P0 root, node 2 = P1 facing bet
-            let bluff = s.avg[0][1 * 3 + 1];
-            let value_bet = s.avg[0][1 * 3];
-            let call = s.avg[2][1 * 3 + 2];
+            let bluff = s.avg[0][3 + 1]; // hand 1 (bluff), action 1 (bet)
+            let value_bet = s.avg[0][3];
+            let call = s.avg[2][3 + 2];
             assert!(value_bet > 0.99, "nuts always bet");
             assert!((bluff - b / (1.0 + b)).abs() < 0.02, "b={} bluff {} vs {}", b, bluff, b / (1.0 + b));
             assert!((call - 1.0 / (1.0 + b)).abs() < 0.02, "b={} call {} vs {}", b, call, 1.0 / (1.0 + b));

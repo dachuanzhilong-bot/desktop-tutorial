@@ -67,17 +67,13 @@ pub fn eval7(cards: &[u8; 7]) -> u32 {
     for r in (0..13).rev() {
         match cnt[r] {
             4 => quad = r as i32,
-            3 => {
-                if nt < 2 {
-                    trips[nt] = r as i32;
-                    nt += 1;
-                }
+            3 if nt < 2 => {
+                trips[nt] = r as i32;
+                nt += 1;
             }
-            2 => {
-                if np < 3 {
-                    pairs[np] = r as i32;
-                    np += 1;
-                }
+            2 if np < 3 => {
+                pairs[np] = r as i32;
+                np += 1;
             }
             _ => {}
         }

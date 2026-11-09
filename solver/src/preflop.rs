@@ -659,6 +659,13 @@ pub fn export(
     Ok(ExportStats { nodes: order.len(), bytes: total_bytes })
 }
 
+/// the engine supports up to `MAXP` players; the preflop game has six
+fn pad_inv(inv: &[f32; 6]) -> [f32; MAXP] {
+    let mut v = [0f32; MAXP];
+    v[..6].copy_from_slice(inv);
+    v
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -681,9 +688,3 @@ mod tests {
     }
 }
 
-/// the engine supports up to `MAXP` players; the preflop game has six
-fn pad_inv(inv: &[f32; 6]) -> [f32; MAXP] {
-    let mut v = [0f32; MAXP];
-    v[..6].copy_from_slice(inv);
-    v
-}
