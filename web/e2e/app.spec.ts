@@ -23,10 +23,28 @@ test.describe("onboarding", () => {
     await page.goto("/");
     const dlg = page.getByTestId("onboarding");
     await expect(dlg).toBeVisible();
+    // on screen from the first paint; a modal dialog (with working buttons) once the app is running
+    await expect(dlg).toHaveAttribute("open", "");
     for (let i = 0; i < 2; i++) await dlg.getByRole("button", { name: "次へ" }).click();
     await expect(dlg.getByText("3 / 3")).toBeVisible();
     await dlg.getByRole("button", { name: "練習をはじめる" }).click();
     await expect(page).toHaveURL(/\/practice\//);
+    await page.goto("/");
+    await expect(page.getByTestId("onboarding")).toBeHidden();
+    await ctx.close();
+  });
+
+  test("the tour is on screen from the static HTML, before the app's scripts run", async ({ browser }) => {
+    const ctx = await browser.newContext();
+    const page = await ctx.newPage();
+    await page.route(/\/_next\/static\/chunks\/.*\.js$/, (r) => r.abort());
+    await page.goto("/");
+    await expect(page.getByTestId("onboarding")).toBeVisible();
+    await expect(page.getByTestId("onboarding")).toContainText("Tessera");
+    // only on the home screen, and only until the tour has been seen
+    await page.goto("/study/");
+    await expect(page.getByTestId("onboarding")).toBeHidden();
+    await page.evaluate((k) => localStorage.setItem(k, JSON.stringify({ _v: 3, onboarded: true })), SETTINGS_KEY);
     await page.goto("/");
     await expect(page.getByTestId("onboarding")).toBeHidden();
     await ctx.close();

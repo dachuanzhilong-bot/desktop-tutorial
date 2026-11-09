@@ -155,6 +155,18 @@ dialog::backdrop {
   background: rgb(4 10 8 / 0.6);
   backdrop-filter: blur(2px);
 }
+/* first launch: the init script marks <html> so the tour is on screen from the first paint (static HTML);
+   once the app is running it becomes the real modal dialog and the mark is removed */
+:root[data-tour] dialog.tour:not([open]) {
+  display: block;
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  max-width: calc(100% - 6px - 2em);
+  max-height: calc(100% - 6px - 2em);
+  overflow: auto;
+  box-shadow: 0 0 0 100vmax rgb(4 10 8 / 0.6);
+}
 
 .safe-b {
   padding-bottom: max(env(safe-area-inset-bottom), 0px);

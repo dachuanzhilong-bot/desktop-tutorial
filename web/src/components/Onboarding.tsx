@@ -59,8 +59,11 @@ export function Onboarding() {
   // screen (a shared Study position, a practice set) opens that screen instead; the tour waits for the home screen.
   const path = usePathname();
   useEffect(() => {
+    if (!ready) return;
     const d = ref.current;
-    if (ready && !settings.onboarded && path === "/" && d && !d.open) d.showModal();
+    if (!settings.onboarded && path === "/" && d && !d.open) d.showModal();
+    // the first paint showed the tour from the static HTML (see THEME_INIT_SCRIPT); from here it is the dialog
+    delete document.documentElement.dataset.tour;
   }, [ready, settings.onboarded, path]);
 
   useEffect(() => {
@@ -84,7 +87,7 @@ export function Onboarding() {
       closedby="any"
       onClose={() => !settings.onboarded && set({ onboarded: true })}
       data-testid="onboarding"
-      className="m-auto w-[min(92vw,26rem)] rounded-sheet border border-line bg-surface p-0 text-ink shadow-2xl"
+      className="tour m-auto w-[min(92vw,26rem)] rounded-sheet border border-line bg-surface p-0 text-ink shadow-2xl"
     >
       <div className="flex flex-col gap-4 p-6">
         <p className="text-xs font-semibold tracking-wide text-muted">{t("onb.step", { i: step + 1, n: STEPS.length })}</p>
