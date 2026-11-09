@@ -66,6 +66,28 @@ export default function StatsPage() {
     }
   };
 
+  // backup / restore does not depend on the records: part of the static HTML as well
+  const backup = (
+        <section className="rounded-card border border-line bg-surface p-4">
+          <h2 className="font-bold">{t("stats.sync")}</h2>
+          <p className="mb-3 mt-1 text-sm text-muted">{t("stats.syncDesc")}</p>
+          <div className="flex gap-2">
+            <button type="button" onClick={exportData} className="min-h-tap flex-1 rounded-control border border-line font-semibold">
+              {t("stats.export")}
+            </button>
+            <button type="button" onClick={() => fileRef.current?.click()} className="min-h-tap flex-1 rounded-control border border-line font-semibold">
+              {t("stats.import")}
+            </button>
+            <input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && importData(e.target.files[0])} />
+          </div>
+          {note && (
+            <p role="status" className="mt-2 text-sm text-accent-text">
+              {note}
+            </p>
+          )}
+        </section>
+  );
+
   // the title and tabs are static HTML; the records (IndexedDB) fill in below
   const frame = (
     <>
@@ -84,6 +106,7 @@ export default function StatsPage() {
           <Skeleton className="h-28 w-full" />
           <Skeleton className="h-40 w-full" />
         </div>
+        {backup}
       </div>
     );
 
@@ -215,24 +238,7 @@ export default function StatsPage() {
         </>
       )}
 
-      <section className="rounded-card border border-line bg-surface p-4">
-        <h2 className="font-bold">{t("stats.sync")}</h2>
-        <p className="mb-3 mt-1 text-sm text-muted">{t("stats.syncDesc")}</p>
-        <div className="flex gap-2">
-          <button type="button" onClick={exportData} className="min-h-tap flex-1 rounded-control border border-line font-semibold">
-            {t("stats.export")}
-          </button>
-          <button type="button" onClick={() => fileRef.current?.click()} className="min-h-tap flex-1 rounded-control border border-line font-semibold">
-            {t("stats.import")}
-          </button>
-          <input ref={fileRef} type="file" accept="application/json" hidden onChange={(e) => e.target.files?.[0] && importData(e.target.files[0])} />
-        </div>
-        {note && (
-          <p role="status" className="mt-2 text-sm text-accent-text">
-            {note}
-          </p>
-        )}
-      </section>
+      {backup}
     </div>
   );
 }
