@@ -1,7 +1,7 @@
 # HANDOFF
 
 ## 今の目的
-PR #3 の機能を検証しながら不足機能を優先順に実装する。P1同期、P2 `/odds/` クイズ、P3保存局面の検索/並べ替えは完了し、PRブランチへpush済み。P3のPR CI #119と同じコードを含む最新CI #120/#121は成功。重複したpush CI #118だけ実行中。PRはドラフトのままにし、マージ・公開・設定変更はしない。
+PR #3 の機能を検証しながら不足機能を優先順に実装する。P1同期、P2 `/odds/` クイズ、P3保存局面の検索/並べ替えは完了し、PRブランチへpush済み。P3コードpush CI #118、PR CI #119、HANDOFF更新CI #120–#123はすべてsuccess。PRはドラフトのままにし、マージ・公開・設定変更はしない。
 
 ## 完了したこと（コミットのハッシュ、検証結果つき）
 - `e42872a` 引き継ぎ記録、`dd716bd` 監査計画、`7c1df9e` E2E失敗の診断、`968e08a` 静的出力修正、`d5f46ba` 検証記録、`d59a960` P1同期設計をコミット済み。
@@ -18,7 +18,7 @@ PR #3 の機能を検証しながら不足機能を優先順に実装する。P1
 - 目視確認: 静的ビルドを390×844と1440×900で開き、設定と保存局面を各画面幅で撮影。画面エラーと横スクロールなし。確認画像は `work/visual-check/`。
 
 ## 作業中のこと（どのファイルを、どこまで、何が残っているか）
-- P3実装は `4412e01` としてコミット/push済み。コード作業の残りなし。PR CI #119と後続push/PR CI #120/#121はsuccess。重複push CI #118だけ実行中。対象ファイルは `web/src/app/study/saved/page.tsx`、`web/src/lib/study/savedPositions.ts`、その単体/E2E、日英i18n、`web/public/sw.js`、README/AUDIT/roadmap。
+- P3実装は `4412e01` としてコミット/push済み。コード作業の残りなし。#118–#123はすべてsuccess。対象ファイルは `web/src/app/study/saved/page.tsx`、`web/src/lib/study/savedPositions.ts`、その単体/E2E、日英i18n、`web/public/sw.js`、README/AUDIT/roadmap。
 - P1同期実装・テスト・文書は `8955c35` としてコミット/push済み。検証結果は `77d7c5e` に記録済み。Actionsはgreen。
 - `README.md`、`docs/02-data-model.md`、`docs/05-roadmap.md`、`docs/10-analyze-and-sync.md`、`docs/11-icm.md`、`docs/AUDIT.md` を更新済み。同期対象と対象外、墓標、2,000件のローカル上限、実環境未確認を明記。
 - ICMドリルの日本語/英語説明、設定画面の同期範囲、コードコメントを更新済み。古い「ICMは同期されない」表記は検索で解消を確認。
@@ -34,7 +34,7 @@ PR #3 の機能を検証しながら不足機能を優先順に実装する。P1
 - `4412e01` で `/study/saved/` にタイトル/メモ検索、保存日の新しい順/古い順、件数表示、該当なし表示を追加。NFKC正規化で全角/半角の検索差を吸収。保存形式・同期形式は変更せず、Service Workerをv8へ更新。README・AUDIT・roadmapを更新。
 - `4412e01` の検証: `npm run typecheck && npm run lint` exit 0（警告0）、`npm test` 32 files / 300 passed、`npm run validate:data` 90 passed、`npm run e2e` 245 passed / 1 skipped（246件中）、`npm run e2e:subpath` 2 passed。`npm run e2e -- --grep=saved` 12 passed（PC/モバイル、英日、axe）。全E2Eのビルド工程も成功。
 - `/study/saved/` を390×844と1440×900で目視確認。document幅は各viewportと一致し、ブラウザー例外0。画像は `work/work/visual-check/saved-search-390.png` と `saved-search-1440.png`。
-- GitHub Actions #116/#117（手前のHANDOFFコミット）はsuccess。`4412e01` のPR CI #119と後続HANDOFFコミット #120/#121はsuccess。重複push CI #118は確認時点でも実行中（失敗表示なし）。
+- GitHub Actions #116/#117（手前のHANDOFFコミット）はsuccess。`4412e01` の#118/#119と後続HANDOFFコミットの#120–#123はすべてsuccess。
 
 ## 失敗しているテストと、その原因の見立て
 - 現在の作業で未解決のローカルテスト失敗はない。最新P3の全体E2Eは245 passed / 1 skipped。
@@ -48,7 +48,7 @@ PR #3 の機能を検証しながら不足機能を優先順に実装する。P1
 - P3の英語E2E初回は閉じた`select`内の`option`を可視と誤判定してPC/モバイルで失敗。選択値と全optionの文言を検査する正しい期待値へ直し、保存画面対象12件と全体E2E 245件は成功。アプリ不具合ではない。
 
 ## 次にやること（優先順）
-1. 重複push CI #118の状態を再確認し、PR同期 #119・後続#120/#121の成功結果を保持する。#118が失敗へ変わった場合はログ/失敗テストを調べて直す。
+1. PR #3はドラフトのまま維持する。マージ・公開・設定変更は持ち主の判断待ち。
 2. 次機能候補はボードテクスチャ当てドリル。既存レポートのテクスチャ分類を再利用できるか確認し、正答の定義と初心者向け説明を決めて小さく実装する。
 3. HU/9人卓プリフロップ解・全フロップ計算、検索/共有リンクの拡張を見積もり、価値とデータ量で優先度を再評価する。
 4. 実Supabase適用、実機とVoiceOver/TalkBack、GGPoker実履歴は未確認のまま。利用可能な環境ができたら検証する。
@@ -66,7 +66,7 @@ PR #3 の機能を検証しながら不足機能を優先順に実装する。P1
 - pushは作業ブランチのみ。マージ、Pages公開、リポジトリ設定変更は行わない。
 
 ## 未確認のこと・注意
-- P1のコード/HANDOFF Actionsはすべてsuccess。P2機能 `f7b336f` のActions #106/#107、`8f561ee` の#112–#115、HANDOFF `b3362c3` の#116/#117、P3 PR CI #119、HANDOFF `174fac3` の#120/#121はsuccess。P3コードpush CI #118は確認時点で実行中（同一コードの後続CIはsuccess）。実Supabase適用は未確認。
+- P1のコード/HANDOFF Actionsはすべてsuccess。P2機能 `f7b336f` のActions #106/#107、`8f561ee` の#112–#115、HANDOFF `b3362c3` の#116/#117、P3コードpush CI #118、PR CI #119、HANDOFF `174fac3`/`ac3199d` の#120–#123はすべてsuccess。実Supabase適用は未確認。
 - `ba46eee` の#108だけweb E2E工程がfailure、同一HEADの#109と後続コミット#110/#111はsuccess。公開注釈は `npm run e2e` のexit code 1のみで、失敗テスト名/ログは出なかった。ActionsログAPIは管理者権限が必要で取得できず、GitHubの画面もサインイン限定。間欠E2EまたはCI環境の見立てだが、正確な原因は未確認。テストは弱めていない。
 - 実Supabase、スマホ実機、VoiceOver/TalkBack、GGPoker実履歴は未確認。
 - `npm ci` は成功したがnpm auditが10件（8 moderate、2 critical）とESLint非推奨を報告。依存更新は未実施。
