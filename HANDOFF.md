@@ -1,7 +1,7 @@
 # HANDOFF
 
 ## 今の目的
-Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してから不足機能を優先度順に実装する。P1同期とP2の `/odds/` ポットオッズ/アウツ反復クイズは実装・ローカル検証済みでpush済み。P2コードのActionsは成功。最新HANDOFFの重複CIは1件成功・1件E2E失敗で、失敗の詳細は未取得。PRはドラフトのままにし、マージ・公開・リポジトリ設定変更はしない。
+Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してから不足機能を優先度順に実装する。P1同期とP2の `/odds/` ポットオッズ/アウツ反復クイズは実装・ローカル検証済みでpush済み。最新HANDOFF `8900b5e` のCI #110/#111もsuccess。PRはドラフトのままにし、マージ・公開・リポジトリ設定変更はしない。
 
 ## 完了したこと（コミットのハッシュ、検証結果つき）
 - `e42872a` 引き継ぎ記録、`dd716bd` 監査計画、`7c1df9e` E2E失敗の診断、`968e08a` 静的出力修正、`d5f46ba` 検証記録、`d59a960` P1同期設計をコミット済み。
@@ -11,7 +11,7 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - P1 Actions: `8955c35` のrun `42749024772`/`42749029713`、検証HANDOFF `77d7c5e` のrun `42749172064`/`42749179175` はすべてsuccess。
 - `8955c35` でICM練習ログの追記同期とStudy保存局面の更新/削除同期を追加し、README・設計書・監査表を更新してPR #3へpush。
 - `f7b336f` でポットオッズ/アウツ4択クイズを `/odds/` に追加。既存の厳密式を使い、日本語/英語、正誤と計算説明、セッション内の正解数/連続正解を実装。PWA Service Workerをv7へ更新。PR #3へpush済み。
-- GitHub Actions: `f7b336f` のrun #106/#107 はsuccess。HANDOFF `ba46eee` のrun #109 はsuccess、同じHEADのrun #108 はweb E2E工程failure。
+- GitHub Actions: `f7b336f` のrun #106/#107 はsuccess。HANDOFF `ba46eee` のrun #109 はsuccess、同じHEADのrun #108 はweb E2E工程failure。その後のHANDOFF `8900b5e` のrun #110/#111はsuccess。
 - P1実装は `8955c35` に含む。ICMログの追記同期、保存局面のLWWと削除墓標、バックアップ統合、Supabaseテーブル/RLS、設定画面の送受信数、英日文言、Vitest/E2Eを追加。保存局面は件数が少ないため毎回全件取得し、遅れた端末時計のカーソル取りこぼしを避ける。
 - 直近検証: `npm run typecheck && npm run lint` 成功・警告0。対象Vitest（`sync.test.ts`, `bookmarks.test.ts`, `icmLog.test.ts`）23 passed。`npm run e2e -- --grep=login` はPC/モバイル2 passed。失敗していたPC側のICMアップロード確認はIndexedDBへの保存完了を待つようE2Eを修正して解消。
 - P1全体検証: `npm test` 30 files / 295 passed、`npm run validate:data` 90 passed、`npm run e2e` 233 passed / 1 skipped、`npm run e2e:subpath` 2 passed、`npm run build` 成功、`git diff --check` 問題なし。型チェックとlintも再実行してexit 0。
@@ -38,12 +38,12 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - 英語クイズのE2E追加後、Odds対象実行で英語表示テストがPC/モバイル各1件失敗。共通初期化がページ遷移時に設定全体を上書きしていた。fixtureを既存設定のマージに直し、再実行20件は成功（アプリ本体の言語切替不具合ではなかった）。
 
 ## 次にやること（優先順）
-1. このCI監査のHANDOFF更新をコミット/pushし、そのコミットのGitHub Actionsを確認する。
-2. E2Eが再失敗したら管理者にログ確認を依頼するか、ログを得られる状態で失敗テストを特定し、弱めずに修正する。
-3. PR #3はドラフトのまま維持。次の候補は保存局面の検索/並べ替え、HU/9人卓解、全フロップ計算、実履歴・実Supabase・実機確認。費用対効果で優先度を見直す。
+1. PR #3はドラフトのまま維持する。マージ・公開・リポジトリ設定変更は持ち主の判断待ち。
+2. 次の実装候補は保存局面の検索/並べ替え（P3）。`/study/saved/` の一覧でタイトル/メモを絞り込み、保存日時で並べ替える小さな機能から進める。
+3. その後HU/9人卓解、全フロップ計算、実履歴・実Supabase・実機確認を費用対効果で再評価する。CI再失敗時は詳細ログを確認し、テストを弱めず直す。
 
 ## 決めたことと、その理由（採用しなかった案も）
-- `claude/practical-volta-fv0rdo`（PR #3）を継続する。PR #3の既存4機能とStudy URL競合修正がある。P2コードActionsはgreen、HANDOFFの重複実行は1件失敗・1件成功。
+- `claude/practical-volta-fv0rdo`（PR #3）を継続する。PR #3の既存4機能とStudy URL競合修正がある。P2コードと最新HANDOFFのActionsはgreen。
 - P0のE2E検査を弱めず、ビルド後にRSC payload別名を作る修正を採用した。
 - ICMログは追記・重複排除、保存局面はIDごとの更新時刻で統合し削除墓標も送る。ICM記録や保存局面を端末限定にする案は、複数端末の学習データが揃わず復活/再同期の問題も残すため採用しない。
 - 保存局面は少量データなので毎回全件取得し、時刻カーソルによる取りこぼしを避ける。大量データのICMログは追記で時刻カーソルを使う。
@@ -53,8 +53,8 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - pushは作業ブランチのみ。マージ、Pages公開、リポジトリ設定変更は行わない。
 
 ## 未確認のこと・注意
-- P1のコード/HANDOFF Actionsはすべてsuccess。P2機能 `f7b336f` のActions #106/#107 とHANDOFF `ba46eee` の#109はsuccess。#108はweb E2E工程でfailure。実Supabase適用は未確認。
-- #108の公開注釈は `npm run e2e` のexit code 1のみで、失敗テスト名/ログは出なかった。ActionsログAPIは管理者権限が必要で取得できず、GitHubの画面もサインイン限定。同一HEADの#109とP2コードの#106/#107、およびローカル全E2Eは成功。CI固有または間欠E2Eの見立てだが、正確な原因は未確認。テストは弱めていない。
+- P1のコード/HANDOFF Actionsはすべてsuccess。P2機能 `f7b336f` のActions #106/#107、HANDOFF `8900b5e` の#110/#111はsuccess。実Supabase適用は未確認。
+- `ba46eee` の#108だけweb E2E工程がfailure、同一HEADの#109と後続コミット#110/#111はsuccess。公開注釈は `npm run e2e` のexit code 1のみで、失敗テスト名/ログは出なかった。ActionsログAPIは管理者権限が必要で取得できず、GitHubの画面もサインイン限定。間欠E2EまたはCI環境の見立てだが、正確な原因は未確認。テストは弱めていない。
 - 実Supabase、スマホ実機、VoiceOver/TalkBack、GGPoker実履歴は未確認。
 - `npm ci` は成功したがnpm auditが10件（8 moderate、2 critical）とESLint非推奨を報告。依存更新は未実施。
 - SQLはスキーマ追加案。既存/実際のSupabaseプロジェクトへ適用していない。
