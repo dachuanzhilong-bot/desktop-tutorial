@@ -76,6 +76,16 @@ for (const theme of ["dark", "light"] as const) {
       await page.getByRole("tab", { name: "EV" }).click();
       await audit(page, `${theme} study EV`);
     });
+    test("odds quiz question and answer feedback", async ({ page }) => {
+      await page.goto("/odds/");
+      const quiz = page.getByTestId("odds-quiz");
+      await quiz.getByTestId("odds-quiz-start").click();
+      await quiz.getByTestId("odds-quiz-question").waitFor();
+      await audit(page, `${theme} odds quiz question`);
+      await quiz.getByTestId("odds-quiz-choice").first().click();
+      await quiz.getByTestId("odds-quiz-result").waitFor();
+      await audit(page, `${theme} odds quiz answer`);
+    });
     test("postflop practice question and result", async ({ page }) => {
       await page.goto("/practice/");
       await page.getByTestId("mode-postSpot").click();

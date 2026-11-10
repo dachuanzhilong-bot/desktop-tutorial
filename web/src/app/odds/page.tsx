@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { SolveTabs } from "@/components/solve/SolveTabs";
+import { OddsQuiz } from "@/components/odds/OddsQuiz";
 import { betNumbers, callEv, DRAW_PRESETS, impliedNeeded, outsEquity, spr, sprBand } from "@/lib/poker/math";
 import type { Key } from "@/lib/i18n/ja";
 import { useSettings } from "@/lib/settings";
@@ -86,6 +87,7 @@ export default function OddsPage() {
         <p className="text-sm text-muted">{t("odds.subtitle")}</p>
       </header>
       <SolveTabs />
+      <OddsQuiz />
 
       <section className="space-y-3 rounded-card border border-line bg-surface p-3" aria-label={t("odds.bet.title")} data-testid="odds-bet-card">
         <h2 className="font-bold">{t("odds.bet.title")}</h2>
