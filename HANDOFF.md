@@ -1,7 +1,7 @@
 # HANDOFF
 
 ## 今の目的
-Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してから不足機能を優先度順に実装する。P1の同期はpush済み。現在はP2としてポットオッズ/アウツの反復クイズを `/odds/` に加える。PRはドラフトのままにし、マージ・公開・リポジトリ設定変更はしない。
+Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してから不足機能を優先度順に実装する。P1同期はpush済み。P2の `/odds/` ポットオッズ/アウツ反復クイズは実装・ローカル検証済みで、機能コミット/pushとCI確認が残る。PRはドラフトのままにし、マージ・公開・リポジトリ設定変更はしない。
 
 ## 完了したこと（コミットのハッシュ、検証結果つき）
 - `e42872a` 引き継ぎ記録、`dd716bd` 監査計画、`7c1df9e` E2E失敗の診断、`968e08a` 静的出力修正、`d5f46ba` 検証記録、`d59a960` P1同期設計をコミット済み。
@@ -21,10 +21,10 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - ICMドリルの日本語/英語説明、設定画面の同期範囲、コードコメントを更新済み。古い「ICMは同期されない」表記は検索で解消を確認。
 - 全テスト・データ検証・390×844と1440×900の確認が完了。
 - P2受け入れ基準: 厳密式からポットオッズ/アウツ4択を生成し、回答後に正誤・正解・式の説明を出す。回数/連続正解は当ページのセッション内で数える。日本語/英語、44px以上、既存 `/odds/` に統合し、単体/E2E/オフラインを検証する。永続化・クラウド同期はこの小機能には加えない。
-- P2実装中: `web/src/lib/poker/oddsQuiz.ts`、`web/src/components/odds/OddsQuiz.tsx`、`web/src/app/odds/page.tsx`、日英i18n、単体テスト、Odds E2E、axeの動的状態テスト、`public/sw.js` をv7に更新。README/roadmap/AUDITも更新中。
+- P2実装完了（未コミット）: `web/src/lib/poker/oddsQuiz.ts`、`web/src/components/odds/OddsQuiz.tsx`、`web/src/app/odds/page.tsx`、日英i18n、単体/英日E2E、axeの動的状態テスト、`public/sw.js` をv7に更新。README/roadmap/AUDITも実装済みへ更新。
 - P2対象検証: `npm run typecheck && npm run lint` 成功・警告0、対象Vitest 2 files / 11 passed、`npm run e2e -- --grep="pot odds and outs quiz"` PC/モバイル2 passed。`npm run e2e -- --grep=odds` はOddsの通常/クイズとaxe（ダーク/ライト、回答前後）を含む18 passed。
 - 英語文言確認: 問題文でポットがベット前の額と明示。設定fixtureをマージに変えた後の `npm run e2e -- --grep=odds` は英語クイズを含む20 passed（PC/モバイル、axeダーク/ライト含む）。
-- P2全体検証: `npm run typecheck && npm run lint` 成功・警告0、`npm test` 31 files / 298 passed、`npm run validate:data` 90 passed、`npm run e2e` 239 passed / 1 skipped（240件中）、`npm run e2e:subpath` 2 passed、`git diff --check` 成功。全E2Eでクイズaxe（ダーク/ライト）、オフライン起動、操作サイズ、横スクロールも成功。
+- P2全体検証: `npm run typecheck && npm run lint` 成功・警告0、`npm test` 31 files / 298 passed、`npm run validate:data` 90 passed、`npm run e2e` 241 passed / 1 skipped（242件中）、`npm run e2e:subpath` 2 passed、`npm run build` 成功、`git diff --check` 成功。全E2Eでクイズaxe（ダーク/ライト）、英語表示、オフライン起動、操作サイズ、横スクロールも成功。
 - 画面確認: 静的出力でクイズ回答済みの画面を390×844と1440×900で確認。document幅=viewport幅、ブラウザーエラー0。画像は `work/visual-check/odds-mobile.png` と `odds-desktop.png`。
 
 ## 失敗しているテストと、その原因の見立て
@@ -36,11 +36,9 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - 英語クイズのE2E追加後、Odds対象実行で英語表示テストがPC/モバイル各1件失敗。共通初期化がページ遷移時に設定全体を上書きしていた。fixtureを既存設定のマージに直し、再実行20件は成功（アプリ本体の言語切替不具合ではなかった）。
 
 ## 次にやること（優先順）
-1. 英語表示とベット前ポット文言を含めて全体`npm run e2e`と`npm run e2e:subpath`を実行する。
-2. 390×844/1440×900で最終画面を撮影・確認し、README/roadmap/AUDITを最終更新する。
-3. 最終の型/lint・単体/data・差分チェック後、P2をコミット/pushし、HANDOFFにコミットハッシュと検証を記録してpushする。
-4. P2コードとHANDOFFのGitHub Actionsを確認する。
-6. 続く候補はHU/9人卓解、全フロップ計算、実履歴・実Supabase・実機確認。費用対効果で順を見直す。
+1. P2コード・README・roadmap・AUDITを機能コミットして作業ブランチへpushする。
+2. コミットハッシュと最終検証結果をHANDOFFへ記録してpushし、P2最新コミットのGitHub Actionsを確認する。
+3. PR #3はドラフトのまま維持。次の候補はHU/9人卓解、全フロップ計算、実履歴・実Supabase・実機確認。費用対効果で優先度を見直す。
 
 ## 決めたことと、その理由（採用しなかった案も）
 - `claude/practical-volta-fv0rdo`（PR #3）を継続する。PR #3の4機能とStudy URL競合修正があり、既存CIもgreen。
@@ -53,7 +51,7 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - pushは作業ブランチのみ。マージ、Pages公開、リポジトリ設定変更は行わない。
 
 ## 未確認のこと・注意
-- P1のコード/HANDOFF Actionsはすべてsuccess。P2 HANDOFF `f37d0c0` と今回の全体検証記録コミットのActionsはpush後に確認する。実Supabase適用は未確認。
+- P1のコード/HANDOFF Actionsはすべてsuccess。P2 HANDOFF `3af725a` までのActionsと、これからpushするP2機能/HANDOFFのActionsを確認する。実Supabase適用は未確認。
 - 実Supabase、スマホ実機、VoiceOver/TalkBack、GGPoker実履歴は未確認。
 - `npm ci` は成功したがnpm auditが10件（8 moderate、2 critical）とESLint非推奨を報告。依存更新は未実施。
 - SQLはスキーマ追加案。既存/実際のSupabaseプロジェクトへ適用していない。
