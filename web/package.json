@@ -1,0 +1,45 @@
+{
+  "name": "tessera-web",
+  "version": "0.1.0",
+  "private": true,
+  "license": "MIT",
+  "description": "Tessera – poker GTO study app (Next.js, PWA, local-first)",
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint . --max-warnings 0",
+    "test": "vitest run",
+    "validate:data": "vitest run src/lib/__tests__/data.validate.test.ts",
+    "test:watch": "vitest",
+    "e2e": "node scripts/e2e.mjs",
+    "e2e:subpath": "node scripts/e2e-subpath.mjs",
+    "solutions:pack": "node scripts/pack-solutions.mjs",
+    "icons": "node scripts/make-icons.mjs",
+    "wasm": "bash scripts/build-wasm.sh",
+    "verify": "npm run typecheck && npm run lint && npm test && npm run e2e"
+  },
+  "dependencies": {
+    "framer-motion": "12.43.0",
+    "next": "16.4.5",
+    "react": "19.3.1",
+    "react-dom": "19.3.1"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.14.0",
+    "@playwright/test": "1.63.0",
+    "@tailwindcss/postcss": "4.3.5",
+    "@types/node": "^22.10.0",
+    "@types/react": "19.3.0",
+    "@types/react-dom": "^19.2.0",
+    "eslint": "9.39.5",
+    "eslint-config-next": "16.4.5",
+    "eslint-plugin-jsx-a11y": "6.10.2",
+    "postcss": "8.5.32",
+    "tailwindcss": "4.3.5",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.72.1",
+    "vitest": "3.2.7"
+  }
+}

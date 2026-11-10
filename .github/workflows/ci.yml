@@ -1,0 +1,33 @@
+name: CI
+on:
+  push:
+  pull_request:
+
+jobs:
+  solver:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: solver } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with: { targets: wasm32-unknown-unknown }
+      - run: cargo clippy --release --all-targets -- -D warnings
+      - run: cargo test --release
+      # the browser solver (Solve screen) must keep compiling to WebAssembly
+      - run: cargo build --release --lib --target wasm32-unknown-unknown
+
+  web:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: web } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: web/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm run lint
+      - run: npm test
+      - run: npx playwright install --with-deps chromium
+      - run: npm run e2e
+      # the export must also work under a sub-path (GitHub Pages project site)
+      - run: npm run e2e:subpath
