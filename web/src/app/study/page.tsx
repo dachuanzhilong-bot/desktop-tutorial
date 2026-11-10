@@ -30,9 +30,12 @@ function termKey(term: Terminal): Key {
   return term === Terminal.Fold ? "term.fold" : term === Terminal.Flop ? "term.flop" : term === Terminal.FlopMulti ? "term.flopMulti" : "term.allin";
 }
 
-function replaceHash(id: number, depth: number) {
+/** the deep link of a view: depth, node and, when one is picked, the hand class */
+const linkOf = (id: number, depth: number, hand: number | null) => `#d=${depth}&n=${id}${hand === null ? "" : `&h=${hand}`}`;
+
+function replaceHash(id: number, depth: number, hand: number | null) {
   try {
-    window.history.replaceState(null, "", `${location.pathname}#d=${depth}&n=${id}`);
+    window.history.replaceState(null, "", `${location.pathname}${linkOf(id, depth, hand)}`);
   } catch {
     /* ignore */
   }
@@ -54,17 +57,21 @@ function Study({ store }: { store: SolutionStore }) {
   // deep link: #d=40&n=123 (depth, node). Another depth starts at the node given, or at the root, once that solution has loaded.
   const { depth, setDepth } = useSolutionStore();
   const depthRef = useLatest(depth);
-  const wanted = useRef<{ d: number | null; n: number | null } | null>(null);
+  const wanted = useRef<{ d: number | null; n: number | null; h: number | null } | null>(null);
   const nodeCount = useLatest(m.nodes.length);
   useEffect(() => {
     const apply = () => {
       const d = /d=(\d+)/.exec(location.hash);
       const n = /n=(\d+)/.exec(location.hash);
-      const want = { d: d ? Number(d[1]) : null, n: n ? Number(n[1]) : null };
+      const h = /h=(\d+)/.exec(location.hash); // the hand class to open on the chart (0..168)
+      const want = { d: d ? Number(d[1]) : null, n: n ? Number(n[1]) : null, h: h && Number(h[1]) < 169 ? Number(h[1]) : null };
       if (want.d !== null && (DEPTHS as readonly number[]).includes(want.d) && want.d !== depthRef.current) {
         wanted.current = want; // applied when the other solution is here
         setDepth(want.d);
-      } else if (want.n !== null && want.n < nodeCount.current) setNodeId(want.n);
+      } else {
+        if (want.n !== null && want.n < nodeCount.current) setNodeId(want.n);
+        if (want.h !== null) setSelected(want.h);
+      }
     };
     apply();
     window.addEventListener("hashchange", apply);
@@ -79,7 +86,7 @@ function Study({ store }: { store: SolutionStore }) {
     if (w && (w.d === null || w.d === m.stack)) {
       wanted.current = null;
       setNodeId(w.n !== null && w.n < m.nodes.length ? w.n : 0);
-      setSelected(null);
+      setSelected(w.h);
     } else if (!first) {
       setNodeId(0);
       setSelected(null);
@@ -92,9 +99,9 @@ function Study({ store }: { store: SolutionStore }) {
   useEffect(() => {
     const first = firstView.current;
     firstView.current = false;
-    if (location.hash === `#d=${m.stack}&n=${nodeId}` || (first && !location.hash)) return;
-    replaceHash(nodeId, m.stack);
-  }, [nodeId, m.stack]);
+    if (location.hash === linkOf(nodeId, m.stack, selected) || (first && !location.hash)) return;
+    replaceHash(nodeId, m.stack, selected);
+  }, [nodeId, m.stack, selected]);
 
   const node = m.nodes[nodeId];
   const state = useMemo(() => stateAt(m, nodeId), [m, nodeId]);

@@ -845,6 +845,10 @@ export const ja = {
   "odds.spr.mid": "中くらい（3〜10）: 強い1ペア以上で進み、弱い手は慎重に。",
   "odds.spr.high": "高い（10超）: 1ペアでスタックを入れるのは危険。ナッツに近い手が欲しい。",
   "odds.spr.note": "目安です。ボードや相手によって変わります。",
+  "stats.notebook": "ミスノート",
+  "stats.notebookDesc": "最近の大きなミス（ミス・大ミス）です。タップすると、スタディでその局面を見られます。",
+  "stats.notebookNone": "大きなミスはまだありません。",
+  "stats.notebookRow": "{grade} · EV損失 {loss}",
 } as const;
 
 export type Key = keyof typeof ja;

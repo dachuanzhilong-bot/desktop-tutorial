@@ -847,4 +847,8 @@ export const en: Record<Key, string> = {
   "odds.spr.mid": "Medium (3 to 10): go on with a strong pair or better, be careful with weak hands.",
   "odds.spr.high": "High (over 10): putting the stack in with one pair is risky; you want a hand near the nuts.",
   "odds.spr.note": "A rule of thumb; it depends on the board and the opponent.",
+  "stats.notebook": "Mistake notebook",
+  "stats.notebookDesc": "Your latest big mistakes (mistakes and blunders). Tap one to see the position in Study.",
+  "stats.notebookNone": "No big mistakes yet.",
+  "stats.notebookRow": "{grade} · EV loss {loss}",
 };
