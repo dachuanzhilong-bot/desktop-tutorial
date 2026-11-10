@@ -57,9 +57,12 @@ function Study({ store }: { store: SolutionStore }) {
   const { depth, setDepth } = useSolutionStore();
   const depthRef = useLatest(depth);
   const wanted = useRef<{ d: number | null; n: number | null; h: number | null } | null>(null);
+  /** the address this view last applied or wrote: when the address is something else, a change from outside is on its way */
+  const known = useRef("");
   const nodeCount = useLatest(m.nodes.length);
   useEffect(() => {
     const apply = () => {
+      known.current = location.hash;
       const d = /d=(\d+)/.exec(location.hash);
       const n = /n=(\d+)/.exec(location.hash);
       const h = /h=(\d+)/.exec(location.hash); // the hand class to open on the chart (0..168)
@@ -100,8 +103,13 @@ function Study({ store }: { store: SolutionStore }) {
     firstView.current = false;
     // the first view never rewrites the address it was opened with: the link is applied by the effect above, and the
     // address follows once the view has moved
-    if (first || location.hash === preflopHash(m.stack, nodeId, selected)) return;
+    const want = preflopHash(m.stack, nodeId, selected);
+    if (first || location.hash === want) return;
+    // the address was changed from outside (a link, the back button) and its hashchange has not been handled yet:
+    // writing now would undo that change
+    if (location.hash !== known.current) return;
     replaceHash(nodeId, m.stack, selected);
+    known.current = want;
   }, [nodeId, m.stack, selected]);
 
   const node = m.nodes[nodeId];
