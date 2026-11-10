@@ -881,6 +881,12 @@ export const en: Record<Key, string> = {
   "saved.notePh": "What you noticed, what to remember",
   "saved.noteSaved": "Note saved",
   "saved.date": "Saved {d}",
-  "saved.count": "{n}",
+  "saved.count": "Showing {shown} of {total}",
+  "saved.search": "Search titles and notes",
+  "saved.searchPh": "For example: BTN, turn, a note",
+  "saved.sort": "Sort by saved date",
+  "saved.newest": "Newest first",
+  "saved.oldest": "Oldest first",
+  "saved.noMatches": "No saved positions match this search.",
   "saved.failed": "Could not save. Please try again.",
 };

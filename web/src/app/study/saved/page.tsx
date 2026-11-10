@@ -7,6 +7,8 @@ import { useSettings } from "@/lib/settings";
 import { NOTE_MAX } from "@/lib/storage/bookmarks";
 import type { Bookmark } from "@/lib/storage/bookmarks";
 import { useBookmarks } from "@/lib/storage/useBookmarks";
+import { selectSavedPositions } from "@/lib/study/savedPositions";
+import type { SavedPositionSort } from "@/lib/study/savedPositions";
 
 function Item({ b, onNote, onDelete }: { b: Bookmark; onNote: (b: Bookmark, note: string) => void; onDelete: (id: string) => void }) {
   const { t, settings } = useSettings();
@@ -74,6 +76,9 @@ function Item({ b, onNote, onDelete }: { b: Bookmark; onNote: (b: Bookmark, note
 export default function SavedPage() {
   const { t } = useSettings();
   const { list, failed, setNote, remove } = useBookmarks();
+  const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<SavedPositionSort>("newest");
+  const visible = list ? selectSavedPositions(list, query, sort) : [];
   return (
     <div className="space-y-4">
       <header>
@@ -101,13 +106,44 @@ export default function SavedPage() {
       ) : (
         <>
           <p className="text-sm font-semibold text-muted" data-testid="saved-count">
-            {t("saved.title")} · {t("saved.count", { n: list.length })}
+            {t("saved.title")} · {t("saved.count", { shown: visible.length, total: list.length })}
           </p>
-          <ul className="space-y-3">
-            {list.map((b) => (
-              <Item key={b.id} b={b} onNote={setNote} onDelete={remove} />
-            ))}
-          </ul>
+          <div className="grid gap-3 sm:grid-cols-[minmax(0,1fr)_minmax(11rem,auto)]">
+            <label className="block text-sm font-semibold">
+              {t("saved.search")}
+              <input
+                type="search"
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={t("saved.searchPh")}
+                data-testid="saved-search"
+                className="mt-1 block min-h-tap-lg w-full rounded-control border border-line bg-surface-2 px-3 py-2 text-base font-normal text-ink"
+              />
+            </label>
+            <label className="block text-sm font-semibold">
+              {t("saved.sort")}
+              <select
+                value={sort}
+                onChange={(event) => setSort(event.target.value as SavedPositionSort)}
+                data-testid="saved-sort"
+                className="mt-1 block min-h-tap-lg w-full rounded-control border border-line bg-surface-2 px-3 py-2 text-base font-normal text-ink"
+              >
+                <option value="newest">{t("saved.newest")}</option>
+                <option value="oldest">{t("saved.oldest")}</option>
+              </select>
+            </label>
+          </div>
+          {visible.length === 0 ? (
+            <p role="status" className="rounded-control border border-dashed border-line p-4 text-center text-sm text-muted" data-testid="saved-no-results">
+              {t("saved.noMatches")}
+            </p>
+          ) : (
+            <ul className="space-y-3">
+              {visible.map((b) => (
+                <Item key={b.id} b={b} onNote={setNote} onDelete={remove} />
+              ))}
+            </ul>
+          )}
         </>
       )}
     </div>

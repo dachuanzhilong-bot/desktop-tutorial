@@ -27,6 +27,7 @@
 現行PR #3（ドラフト）に追加済み:
 - ICM練習ログとStudy保存局面（メモ・削除を含む）の同期。ローカル全テストとActionsは成功。実Supabaseは未確認。
 - `/odds/` のポットオッズ/アウツ4択クイズ。正確な計算値で採点し、日英表示・式の説明・セッション内の正解数と連続正解を含める。永続化はしない。ローカル全テストは成功、Actionsはpush後に確認。
+- `/study/saved/` にタイトル/メモ検索と保存日の新しい順/古い順を追加。保存データや同期形式は変更しない。ローカル検証は typecheck/lint 成功、Vitest 300 passed、data validation 90 passed、全体E2E 245 passed / 1 skipped、サブパスE2E 2 passed。
 
 ## Phase 8 で「やったこと / やっていないこと」
 

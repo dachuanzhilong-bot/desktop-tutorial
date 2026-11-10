@@ -879,7 +879,13 @@ export const ja = {
   "saved.notePh": "気づいたこと・覚えたいこと",
   "saved.noteSaved": "メモを保存しました",
   "saved.date": "{d}に保存",
-  "saved.count": "{n}件",
+  "saved.count": "{total}件中{shown}件を表示",
+  "saved.search": "タイトル・メモを検索",
+  "saved.searchPh": "例：BTN、ターン、気づいたこと",
+  "saved.sort": "保存日の並べ替え",
+  "saved.newest": "新しい順",
+  "saved.oldest": "古い順",
+  "saved.noMatches": "検索条件に一致する局面はありません。",
   "saved.failed": "保存できませんでした。もう一度お試しください。",
 } as const;
 

@@ -7,7 +7,7 @@
  */
 // the app may live under a sub-path (GitHub Pages project site): the scope of this worker is that path
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, "");
-const VERSION = "v7";
+const VERSION = "v8";
 const CORE = `tessera-core-${VERSION}`;
 const DATA = `tessera-data-${VERSION}`;
 const PAGES = ["/", "/study/", "/study/postflop/", "/study/report/", "/study/saved/", "/solve/", "/builder/", "/icm/", "/equity/", "/odds/", "/practice/", "/stats/", "/analyze/", "/settings/", "/glossary/", "/roadmap/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"].map((u) => BASE + u);

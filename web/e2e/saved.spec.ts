@@ -1,10 +1,84 @@
 import { expect, test } from "@playwright/test";
 
 test.beforeEach(async ({ context }) => {
-  await context.addInitScript(() => localStorage.setItem("tessera.settings.v1", JSON.stringify({ onboarded: true })));
+  await context.addInitScript(() => {
+    const key = "tessera.settings.v1";
+    const current = JSON.parse(localStorage.getItem(key) ?? "{}");
+    localStorage.setItem(key, JSON.stringify({ ...current, onboarded: true }));
+  });
 });
 
 test.describe("saved positions", () => {
+  test("search controls have English accessible names", async ({ page }) => {
+    await page.goto("/study/");
+    await expect(page.locator(".cell")).toHaveCount(169);
+    await page.getByTestId("save-position").click();
+    await expect(page.getByTestId("save-position")).toHaveAttribute("aria-pressed", "true");
+    await page.goto("/study/saved/");
+    await expect(page.getByTestId("saved-item")).toBeVisible();
+    await page.evaluate(() => {
+      const key = "tessera.settings.v1";
+      const current = JSON.parse(localStorage.getItem(key) ?? "{}");
+      localStorage.setItem(key, JSON.stringify({ ...current, lang: "en" }));
+    });
+    await page.reload();
+
+    await expect(page.getByRole("searchbox", { name: "Search titles and notes" })).toBeVisible();
+    const sort = page.getByRole("combobox", { name: "Sort by saved date" });
+    await expect(sort).toHaveValue("newest");
+    await expect(sort.locator("option")).toHaveText(["Newest first", "Oldest first"]);
+  });
+
+  test("searches titles and notes, then sorts by the original saved date", async ({ page }) => {
+    await page.goto("/study/saved/");
+    await expect(page.getByTestId("saved-empty")).toBeVisible();
+    await page.evaluate(
+      (bookmarks) =>
+        new Promise<void>((resolve, reject) => {
+          const open = indexedDB.open("tessera");
+          open.onerror = () => reject(open.error);
+          open.onsuccess = () => {
+            const db = open.result;
+            const tx = db.transaction("meta", "readwrite");
+            tx.objectStore("meta").put(bookmarks, "study.bookmarks");
+            tx.oncomplete = () => {
+              db.close();
+              resolve();
+            };
+            tx.onerror = () => reject(tx.error);
+          };
+        }),
+      [
+        { id: "old", created: 100, ts: 100, title: "BTN 100bb", note: "Remember the turn bluff catch", href: "/study/#d=100&n=1" },
+        { id: "middle", created: 200, ts: 200, title: "CO 60bb", note: "Open tighter", href: "/study/#d=60&n=2" },
+        { id: "new", created: 300, ts: 300, title: "HJ open", note: "100bb review", href: "/study/#d=100&n=3" },
+      ],
+    );
+    await page.reload();
+
+    const items = page.getByTestId("saved-item");
+    await expect(items).toHaveCount(3);
+    await expect(items.nth(0).getByTestId("saved-title")).toHaveText("HJ open");
+    const search = page.getByTestId("saved-search");
+    await search.fill("btn");
+    await expect(items).toHaveCount(1);
+    await expect(items.first().getByTestId("saved-title")).toHaveText("BTN 100bb");
+    await search.fill("turn bluff");
+    await expect(items).toHaveCount(1);
+    await expect(items.first().getByTestId("saved-title")).toHaveText("BTN 100bb");
+    await search.fill("１００ｂｂ");
+    await expect(items).toHaveCount(2);
+
+    await page.getByTestId("saved-sort").selectOption("oldest");
+    await expect(items.nth(0).getByTestId("saved-title")).toHaveText("BTN 100bb");
+    await expect(items.nth(1).getByTestId("saved-title")).toHaveText("HJ open");
+    await expect(page.getByTestId("saved-count")).toContainText("2件");
+
+    await search.fill("nothing matches");
+    await expect(items).toHaveCount(0);
+    await expect(page.getByTestId("saved-no-results")).toBeVisible();
+  });
+
   test("save a position with a note, find it again, open it, and remove it", async ({ page }) => {
     await page.goto("/study/saved/");
     await expect(page.getByTestId("saved-empty")).toBeVisible();
