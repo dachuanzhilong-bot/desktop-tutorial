@@ -1,9 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { MemoryRepo } from "../storage/memory";
 import type { Attempt } from "../storage/types";
-import { syncOnce, SettingsIo } from "../sync/engine";
+import { readBookmarks, removeBookmark, upsertBookmark } from "../storage/bookmarks";
+import type { Bookmark } from "../storage/bookmarks";
+import { appendIcmLog, readIcmLog } from "../storage/icmLog";
+import type { IcmLogEntry } from "../storage/icmLog";
+import { loadState, syncOnce, SettingsIo } from "../sync/engine";
 import { AuthError, SupabaseAuth, SupabaseBackend } from "../sync/supabase";
-import type { AttemptRow, RangeRow, SettingsRow, SrsRow, SyncBackend } from "../sync/types";
+import type { AttemptRow, BookmarkRow, IcmLogRow, RangeRow, SettingsRow, SrsRow, SyncBackend } from "../sync/types";
 import { updateSrs } from "../practice/srs";
 
 const attempt = (ts: number, nodeId = 5, hand = 10, extra: Partial<Attempt> = {}): Attempt => ({
@@ -27,11 +31,16 @@ const attempt = (ts: number, nodeId = 5, hand = 10, extra: Partial<Attempt> = {}
   ...extra,
 });
 
+const bookmark = (o: Partial<Bookmark> = {}): Bookmark => ({ id: "bm1", created: 1_700_000_000_000, ts: 1_700_000_000_000, title: "BTN open", note: "", href: "/study/#d=100&n=3", ...o });
+const icmEntry = (o: Partial<IcmLogEntry> = {}): IcmLogEntry => ({ ts: 1_700_000_000_000, players: 3, pos: "BTN", stack: 8, facing: null, hand: 10, chosen: 1, grade: "best", evLoss: 0, score: 100, ...o });
+
 /** in-memory server with the same semantics the real tables have (unique keys, ignore/merge duplicates) */
 class FakeBackend implements SyncBackend {
   attempts: (AttemptRow & { user: string })[] = [];
   srs = new Map<string, SrsRow>();
   ranges = new Map<string, RangeRow>();
+  icm = new Map<string, IcmLogRow>();
+  bookmarks = new Map<string, BookmarkRow>();
   settings: SettingsRow | null = null;
   pushes = 0;
   async pushAttempts(rows: AttemptRow[]) {
@@ -55,6 +64,23 @@ class FakeBackend implements SyncBackend {
   async pullRanges(since: string) {
     return [...this.ranges.values()].filter((r) => r.ts >= since);
   }
+  async pushIcmLog(rows: IcmLogRow[]) {
+    this.pushes++;
+    for (const r of rows) this.icm.set(`${r.ts}:${r.hand}:${r.chosen}`, r);
+  }
+  async pullIcmLog(since: string) {
+    return [...this.icm.values()].filter((r) => r.ts >= since);
+  }
+  async pushBookmarks(rows: BookmarkRow[]) {
+    this.pushes++;
+    for (const r of rows) {
+      const have = this.bookmarks.get(r.id);
+      if (!have || Date.parse(r.ts) > Date.parse(have.ts) || (r.ts === have.ts && r.deleted && !have.deleted)) this.bookmarks.set(r.id, r);
+    }
+  }
+  async pullBookmarks(since: string) {
+    return [...this.bookmarks.values()].filter((r) => r.ts >= since);
+  }
   async pushSettings(row: SettingsRow) {
     this.pushes++;
     this.settings = row;
@@ -71,6 +97,12 @@ function device() {
 }
 
 describe("sync engine", () => {
+  it("adds the new cursors when it reads an older saved sync state", async () => {
+    const a = device();
+    await a.repo.setMeta("sync.state.u", { clientId: "old-client", pushedAttemptId: 4, pullAttemptTs: 9, pushedSrs: 8, pullSrs: 7, pushedRanges: 6, pullRanges: 5, lastSync: 4 });
+    expect(await loadState(a.repo, "u")).toMatchObject({ clientId: "old-client", pushedAttemptId: 4, pushedIcmKeys: [], pullIcmTs: 0, bookmarkTs: {}, pullBookmarkTs: 0 });
+  });
+
   it("two devices converge without echo or duplicates", async () => {
     const server = new FakeBackend();
     const a = device();
@@ -160,6 +192,74 @@ describe("sync engine", () => {
     expect((await syncOnce(c.repo, server, "u", c.io)).settings).toBe("pulled");
   });
 
+  it("syncs ICM answers and saved positions, with notes and deletions converging without echo", async () => {
+    const server = new FakeBackend();
+    const a = device();
+    const b = device();
+    const t0 = 1_700_000_000_000;
+    await appendIcmLog(a.repo, icmEntry({ ts: t0, hand: 22, grade: "mistake", evLoss: 1.4 }));
+    await upsertBookmark(a.repo, bookmark({ ts: t0, created: t0, note: "check the turn" }));
+
+    const first = await syncOnce(a.repo, server, "u", a.io);
+    expect(first).toMatchObject({ pushedIcmLog: 1, pushedBookmarks: 1 });
+    expect(server.icm.size).toBe(1);
+    expect(server.bookmarks.get("bm1")).toMatchObject({ deleted: false, note: "check the turn" });
+
+    const pulled = await syncOnce(b.repo, server, "u", b.io);
+    expect(pulled).toMatchObject({ pulledIcmLog: 1, pulledBookmarks: 1, pushedIcmLog: 0, pushedBookmarks: 0 });
+    expect(await readIcmLog(b.repo)).toMatchObject([{ hand: 22, grade: "mistake", evLoss: 1.4 }]);
+    expect(await readBookmarks(b.repo)).toMatchObject([{ id: "bm1", note: "check the turn" }]);
+    expect(await syncOnce(b.repo, server, "u", b.io)).toMatchObject({ pushedIcmLog: 0, pushedBookmarks: 0, pulledIcmLog: 0, pulledBookmarks: 0 });
+
+    await upsertBookmark(b.repo, bookmark({ ts: t0 + 2_000, created: t0, note: "newer note" }));
+    await syncOnce(b.repo, server, "u", b.io);
+    await syncOnce(a.repo, server, "u", a.io);
+    expect((await readBookmarks(a.repo))[0].note).toBe("newer note");
+
+    const backupBeforeDelete = await b.repo.exportAll();
+    await removeBookmark(b.repo, "bm1");
+    expect((await syncOnce(b.repo, server, "u", b.io)).pushedBookmarks).toBe(1);
+    await syncOnce(a.repo, server, "u", a.io);
+    expect(await readBookmarks(a.repo)).toEqual([]);
+    expect(server.bookmarks.get("bm1")).toMatchObject({ deleted: true, title: null, href: null });
+
+    // An old backup and an old device copy cannot undo the deletion.
+    await a.repo.importAll(backupBeforeDelete);
+    expect(await readBookmarks(a.repo)).toEqual([]);
+    expect((await syncOnce(a.repo, server, "u", a.io)).pushedBookmarks).toBe(0);
+    expect(server.bookmarks.get("bm1")?.deleted).toBe(true);
+  });
+
+  it("pulls a bookmark that arrives later with a timestamp behind the previous cursor", async () => {
+    const server = new FakeBackend();
+    const a = device();
+    const recent = bookmark({ id: "recent", ts: 1_700_000_100_000, created: 1_700_000_100_000 });
+    server.bookmarks.set(recent.id, {
+      id: recent.id,
+      created: new Date(recent.created).toISOString(),
+      ts: new Date(recent.ts).toISOString(),
+      deleted: false,
+      title: recent.title,
+      note: recent.note,
+      href: recent.href,
+    });
+    await syncOnce(a.repo, server, "u", a.io);
+
+    const late = bookmark({ id: "late", ts: 1_700_000_050_000, created: 1_700_000_050_000, title: "Late bookmark" });
+    server.bookmarks.set(late.id, {
+      id: late.id,
+      created: new Date(late.created).toISOString(),
+      ts: new Date(late.ts).toISOString(),
+      deleted: false,
+      title: late.title,
+      note: late.note,
+      href: late.href,
+    });
+    const result = await syncOnce(a.repo, server, "u", a.io);
+    expect(result.pulledBookmarks).toBe(1);
+    expect(await readBookmarks(a.repo)).toContainEqual(expect.objectContaining({ id: "late", title: "Late bookmark" }));
+  });
+
   it("a failing server leaves the cursors alone so the next round retries", async () => {
     const server = new FakeBackend();
     const a = device();
@@ -187,8 +287,8 @@ type Row = Record<string, unknown>;
 
 function fakeServer() {
   const reqs: Req[] = [];
-  const tables: Record<string, Row[]> = { attempts: [], srs_items: [], range_presets: [], user_settings: [] };
-  const uniq: Record<string, string[]> = { attempts: ["user_id", "client_id", "ts", "node_id", "hand"], srs_items: ["user_id", "key"], range_presets: ["user_id", "id"], user_settings: ["user_id"] };
+  const tables: Record<string, Row[]> = { attempts: [], srs_items: [], range_presets: [], icm_drill_log: [], study_bookmarks: [], user_settings: [] };
+  const uniq: Record<string, string[]> = { attempts: ["user_id", "client_id", "ts", "node_id", "hand"], srs_items: ["user_id", "key"], range_presets: ["user_id", "id"], icm_drill_log: ["user_id", "ts", "hand", "chosen"], study_bookmarks: ["user_id", "id"], user_settings: ["user_id"] };
   let auth: Row | null = null;
   const json = (status: number, body: unknown) => new Response(body === null ? "" : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   const fetchFn = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
@@ -283,19 +383,27 @@ describe("Supabase over fetch", () => {
     for (let i = 0; i < 1203; i++) await a.repo.addAttempt(attempt(1_700_000_000_000 + i * 1000, i % 50, i % 169));
     await a.repo.putSrs(updateSrs(undefined, 5, 10, "mistake", 1_700_000_000_000));
     await a.repo.putRange({ id: "r1", ts: 1_700_000_000_000, name: "x", text: "AA" });
+    await appendIcmLog(a.repo, icmEntry({ ts: 1_700_000_000_000, hand: 77 }));
+    await upsertBookmark(a.repo, bookmark({ id: "b1", ts: 1_700_000_000_000, created: 1_700_000_000_000 }));
     a.set({ theme: "light" }, 1_700_000_050_000);
     const r1 = await syncOnce(a.repo, backend, session.userId, a.io);
-    expect(r1).toMatchObject({ pushedAttempts: 1203, pushedSrs: 1, pushedRanges: 1, settings: "pushed" });
+    expect(r1).toMatchObject({ pushedAttempts: 1203, pushedSrs: 1, pushedRanges: 1, pushedIcmLog: 1, pushedBookmarks: 1, settings: "pushed" });
     expect(srv.tables.attempts).toHaveLength(1203);
     expect(srv.tables.attempts.every((r) => r.user_id === "user-1" && r.client_id)).toBe(true);
+    expect(srv.tables.icm_drill_log).toHaveLength(1);
+    expect(srv.tables.icm_drill_log[0]).toMatchObject({ user_id: "user-1", hand: 77 });
+    expect(srv.tables.study_bookmarks).toHaveLength(1);
+    expect(srv.tables.study_bookmarks[0]).toMatchObject({ user_id: "user-1", id: "b1", deleted: false });
     expect(srv.reqs.filter((r) => r.method === "POST" && r.url.startsWith("/rest/v1/attempts"))).toHaveLength(3); // 500 + 500 + 203
     expect(srv.reqs.find((r) => r.url.startsWith("/rest/v1/attempts") && r.method === "POST")!.headers.prefer).toContain("ignore-duplicates");
     expect(srv.reqs.find((r) => r.url.startsWith("/rest/v1/attempts") && r.method === "POST")!.headers.authorization).toBe("Bearer tok1");
+    expect(srv.reqs.find((r) => r.url.startsWith("/rest/v1/icm_drill_log") && r.method === "POST")!.headers.prefer).toContain("ignore-duplicates");
+    expect(srv.reqs.find((r) => r.url.startsWith("/rest/v1/study_bookmarks") && r.method === "POST")!.headers.prefer).toContain("merge-duplicates");
 
     // a second device pulls all 1,203 rows (two pages)
     const b = device();
     const r2 = await syncOnce(b.repo, backend, session.userId, b.io);
-    expect(r2.pulledAttempts).toBe(1203);
+    expect(r2).toMatchObject({ pulledAttempts: 1203, pulledIcmLog: 1, pulledBookmarks: 1 });
     expect(r2.pulledSrs).toBe(1);
     expect(r2.settings).toBe("pulled");
     expect(srv.reqs.filter((r) => r.method === "GET" && r.url.startsWith("/rest/v1/attempts")).length).toBeGreaterThanOrEqual(2);

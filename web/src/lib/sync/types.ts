@@ -1,6 +1,10 @@
 import type { Grade } from "../practice/grading";
 import type { SrsItem } from "../practice/srs";
 import type { Attempt, SavedRange } from "../storage/types";
+import { sanitizeBookmarks } from "../storage/bookmarks";
+import type { Bookmark, BookmarkDeletion } from "../storage/bookmarks";
+import { sanitizeIcmLog } from "../storage/icmLog";
+import type { IcmLogEntry } from "../storage/icmLog";
 
 /** rows exactly as in supabase/schema.sql (snake_case, timestamps as ISO strings) */
 export interface AttemptRow {
@@ -46,6 +50,30 @@ export interface SettingsRow {
   updated: string;
 }
 
+export interface IcmLogRow {
+  ts: string;
+  players: number;
+  pos: string;
+  stack: number;
+  facing: string | null;
+  hand: number;
+  chosen: 0 | 1;
+  grade: Grade;
+  ev_loss: number;
+  score: number;
+}
+
+/** A deleted bookmark is a tombstone with its id and version; the other fields are null. */
+export interface BookmarkRow {
+  id: string;
+  created: string | null;
+  ts: string;
+  deleted: boolean;
+  title: string | null;
+  note: string | null;
+  href: string | null;
+}
+
 /** What the sync engine needs from a server. `SupabaseBackend` implements it; tests use an in-memory fake. */
 export interface SyncBackend {
   pushAttempts(rows: AttemptRow[]): Promise<void>;
@@ -56,6 +84,12 @@ export interface SyncBackend {
   pullSrs(sinceIso: string): Promise<SrsRow[]>;
   pushRanges(rows: RangeRow[]): Promise<void>;
   pullRanges(sinceIso: string): Promise<RangeRow[]>;
+  pushIcmLog(rows: IcmLogRow[]): Promise<void>;
+  /** rows with ts >= sinceIso, oldest first */
+  pullIcmLog(sinceIso: string): Promise<IcmLogRow[]>;
+  pushBookmarks(rows: BookmarkRow[]): Promise<void>;
+  /** rows with ts >= sinceIso, oldest first */
+  pullBookmarks(sinceIso: string): Promise<BookmarkRow[]>;
   pushSettings(row: SettingsRow): Promise<void>;
   pullSettings(): Promise<SettingsRow | null>;
 }
@@ -69,10 +103,16 @@ export interface SyncState {
   pullSrs: number;
   pushedRanges: number;
   pullRanges: number;
+  /** keys of local ICM answers already present on the server (local log is capped at 2,000) */
+  pushedIcmKeys: string[];
+  pullIcmTs: number;
+  /** highest server version seen for each saved-position id */
+  bookmarkTs: Record<string, number>;
+  pullBookmarkTs: number;
   lastSync: number;
 }
 
-export const emptyState = (clientId: string): SyncState => ({ clientId, pushedAttemptId: 0, pullAttemptTs: 0, pushedSrs: 0, pullSrs: 0, pushedRanges: 0, pullRanges: 0, lastSync: 0 });
+export const emptyState = (clientId: string): SyncState => ({ clientId, pushedAttemptId: 0, pullAttemptTs: 0, pushedSrs: 0, pullSrs: 0, pushedRanges: 0, pullRanges: 0, pushedIcmKeys: [], pullIcmTs: 0, bookmarkTs: {}, pullBookmarkTs: 0, lastSync: 0 });
 
 // ---------------------------------------------------------------- mapping
 
@@ -129,3 +169,20 @@ export const rowToSrs = (r: SrsRow): SrsItem => ({ key: r.key, nodeId: r.node_id
 
 export const rangeToRow = (r: SavedRange): RangeRow => ({ id: r.id, name: r.name, range_text: r.text, ts: iso(r.ts) });
 export const rowToRange = (r: RangeRow): SavedRange => ({ id: r.id, name: r.name, text: r.range_text, ts: Date.parse(r.ts) });
+
+export const icmLogKey = (e: Pick<IcmLogEntry, "ts" | "hand" | "chosen">) => `${e.ts}:${e.hand}:${e.chosen}`;
+export const icmLogToRow = (e: IcmLogEntry): IcmLogRow => ({ ts: iso(e.ts), players: e.players, pos: e.pos, stack: e.stack, facing: e.facing, hand: e.hand, chosen: e.chosen, grade: e.grade, ev_loss: e.evLoss, score: e.score });
+export function rowToIcmLog(r: IcmLogRow): IcmLogEntry | null {
+  return sanitizeIcmLog([{ ts: Date.parse(r.ts), players: r.players, pos: r.pos, stack: r.stack, facing: r.facing, hand: r.hand, chosen: r.chosen, grade: r.grade, evLoss: r.ev_loss, score: r.score }])[0] ?? null;
+}
+
+export const bookmarkToRow = (b: Bookmark): BookmarkRow => ({ id: b.id, created: iso(b.created), ts: iso(b.ts), deleted: false, title: b.title, note: b.note, href: b.href });
+export const bookmarkDeletionToRow = (d: BookmarkDeletion): BookmarkRow => ({ id: d.id, created: null, ts: iso(d.ts), deleted: true, title: null, note: null, href: null });
+export function rowToBookmark(r: BookmarkRow): Bookmark | null {
+  if (r.deleted || !r.created || r.title === null || r.note === null || r.href === null) return null;
+  return sanitizeBookmarks([{ id: r.id, created: Date.parse(r.created), ts: Date.parse(r.ts), title: r.title, note: r.note, href: r.href }])[0] ?? null;
+}
+export function rowToBookmarkDeletion(r: BookmarkRow): BookmarkDeletion | null {
+  const ts = Date.parse(r.ts);
+  return r.deleted && typeof r.id === "string" && !!r.id && Number.isFinite(ts) ? { id: r.id, ts } : null;
+}

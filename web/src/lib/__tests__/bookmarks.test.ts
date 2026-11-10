@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { BOOKMARKS_KEY, BOOKMARKS_MAX, mergeBookmarks, NOTE_MAX, readBookmarks, removeBookmark, sanitizeBookmarks, TITLE_MAX, upsertBookmark } from "../storage/bookmarks";
+import { BOOKMARKS_KEY, BOOKMARK_DELETIONS_KEY, BOOKMARKS_MAX, mergeBookmarks, mergeSyncedBookmarks, NOTE_MAX, readBookmarkDeletions, readBookmarks, removeBookmark, sanitizeBookmarks, TITLE_MAX, upsertBookmark } from "../storage/bookmarks";
 import type { Bookmark } from "../storage/bookmarks";
 import { MemoryRepo } from "../storage/memory";
 import { postflopLink, preflopHash, preflopLink } from "../study/links";
@@ -62,8 +62,27 @@ describe("saved positions", () => {
     expect(after[2]).toMatchObject({ note: "limp is a mistake here", ts: 50 });
     await removeBookmark(repo, "b3");
     expect((await readBookmarks(repo)).map((b) => b.id)).toEqual(["b4", "b2", "b1"]);
+    expect(await readBookmarkDeletions(repo)).toEqual([{ id: "b3", ts: expect.any(Number) }]);
     await expect(upsertBookmark(repo, bm({ id: "bad", href: "javascript:alert(1)" }))).rejects.toThrow();
     expect(await readBookmarks(repo)).toHaveLength(3);
+  });
+
+  it("keeps a synced deletion over an older copy and accepts a later re-save", async () => {
+    const repo = new MemoryRepo();
+    await upsertBookmark(repo, bm({ id: "x", ts: 10 }));
+    await removeBookmark(repo, "x");
+    const deletedAt = (await readBookmarkDeletions(repo))[0].ts;
+
+    await mergeSyncedBookmarks(repo, [bm({ id: "x", ts: 10, note: "stale copy" })], []);
+    expect(await readBookmarks(repo)).toEqual([]);
+    expect((await readBookmarkDeletions(repo))[0].ts).toBe(deletedAt);
+
+    await mergeSyncedBookmarks(repo, [bm({ id: "x", ts: deletedAt, note: "same-time copy" })], []);
+    expect(await readBookmarks(repo)).toEqual([]);
+
+    await mergeSyncedBookmarks(repo, [bm({ id: "x", ts: deletedAt + 1, note: "saved again" })], []);
+    expect(await readBookmarks(repo)).toMatchObject([{ id: "x", note: "saved again" }]);
+    expect(await readBookmarkDeletions(repo)).toEqual([]);
   });
 
   it("travels in the backup file and is merged, not replaced, on import", async () => {
@@ -76,5 +95,11 @@ describe("saved positions", () => {
     await b.importAll(blob);
     await b.importAll(blob);
     expect((await readBookmarks(b)).map((x) => x.id)).toEqual(["y", "x"]);
+
+    await removeBookmark(b, "x");
+    const afterDelete = await b.exportAll();
+    expect(afterDelete.meta[BOOKMARK_DELETIONS_KEY]).toHaveLength(1);
+    await b.importAll(blob);
+    expect((await readBookmarks(b)).map((x) => x.id)).toEqual(["y"]);
   });
 });
