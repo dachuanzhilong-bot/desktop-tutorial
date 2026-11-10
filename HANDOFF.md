@@ -13,8 +13,8 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 
 ## 作業中のこと（どのファイルを、どこまで、何が残っているか）
 - P1同期コードは実装済みだが未コミット。変更ファイル: `supabase/schema.sql`、`web/e2e/sync.spec.ts`、`web/src/components/sync/SyncPanel.tsx`、`web/src/lib/__tests__/bookmarks.test.ts`、`web/src/lib/__tests__/sync.test.ts`、`web/src/lib/i18n/{ja,en}.ts`、`web/src/lib/storage/{bookmarks,icmLog,metaMerge}.ts`、`web/src/lib/sync/{engine,supabase,types}.ts`。
-- `README.md`、`docs/10-analyze-and-sync.md`、`docs/AUDIT.md`、`docs/05-roadmap.md` に新しい同期範囲と制限を反映する。
-- コメントと同期UIの説明に残る古い「ICM/ブックマークは端末のみ」「削除は同期されない」を更新する。
+- `README.md`、`docs/02-data-model.md`、`docs/05-roadmap.md`、`docs/10-analyze-and-sync.md`、`docs/11-icm.md`、`docs/AUDIT.md` を更新済み。同期対象と対象外、墓標、2,000件のローカル上限、実環境未確認を明記。
+- ICMドリルの日本語/英語説明、設定画面の同期範囲、コードコメントを更新済み。古い「ICMは同期されない」表記は検索で解消を確認。
 - 全テスト・データ検証・390×844と1440×900の画面確認はP1コードに対して未実施。
 
 ## 失敗しているテストと、その原因の見立て
@@ -23,12 +23,11 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - P1のログインE2E初回はPC側でICM記録が同期前に存在しないことがあった。ICMのIndexedDB保存が非同期であることを確認し、E2Eで保存完了を待つようにして直近のPC/モバイル両方が成功。全体E2Eで再確認する。
 
 ## 次にやること（優先順）
-1. README・`docs/10`・`docs/AUDIT`・`docs/05-roadmap` をP1の同期仕様と未確認事項に合わせて更新する。
-2. `npm run typecheck && npm run lint`、`npm test`、`npm run validate:data`、`npm run e2e`、`npm run e2e:subpath` を実行する。e2eはpush前に全件成功させる。
-3. 390×844と1440×900で画面を撮影して確認し、送受信数・保存局面・ICM同期表示に問題があれば直す。
-4. P1を小さくコミットし、HANDOFFに結果とコミットハッシュを記録してpushする。
-5. pushしたheadのGitHub Actions完了を確認する。PR #3はドラフトのまま、マージ/公開は行わない。
-6. 次順位は練習モード拡張、HU/9人卓解、全フロップ計算、実履歴・実Supabase・実機確認。費用対効果から次の実装対象を再評価する。
+1. `npm run typecheck && npm run lint`、`npm test`、`npm run validate:data`、`npm run e2e`、`npm run e2e:subpath` を実行する。e2eはpush前に全件成功させる。
+2. 390×844と1440×900で画面を撮影して確認し、送受信数・保存局面・ICM同期表示に問題があれば直す。
+3. P1を小さくコミットし、HANDOFFに結果とコミットハッシュを記録してpushする。
+4. pushしたheadのGitHub Actions完了を確認する。PR #3はドラフトのまま、マージ/公開は行わない。
+5. 次順位は練習モード拡張、HU/9人卓解、全フロップ計算、実履歴・実Supabase・実機確認。費用対効果から次の実装対象を再評価する。
 
 ## 決めたことと、その理由（採用しなかった案も）
 - `claude/practical-volta-fv0rdo`（PR #3）を継続する。PR #3の4機能とStudy URL競合修正があり、既存CIもgreen。
@@ -40,7 +39,7 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - pushは作業ブランチのみ。マージ、Pages公開、リポジトリ設定変更は行わない。
 
 ## 未確認のこと・注意
-- P1変更後の全E2E、`validate:data`、画面の目視確認、GitHub Actions結果。
+- P1変更後の全Vitest/E2E、`validate:data`、画面の目視確認、GitHub Actions結果。
 - 実Supabase、スマホ実機、VoiceOver/TalkBack、GGPoker実履歴は未確認。
 - `npm ci` は成功したがnpm auditが10件（8 moderate、2 critical）とESLint非推奨を報告。依存更新は未実施。
 - SQLはスキーマ追加案。既存/実際のSupabaseプロジェクトへ適用していない。
