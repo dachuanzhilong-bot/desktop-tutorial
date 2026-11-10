@@ -23,6 +23,7 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - P2受け入れ基準: 厳密式からポットオッズ/アウツ4択を生成し、回答後に正誤・正解・式の説明を出す。回数/連続正解は当ページのセッション内で数える。日本語/英語、44px以上、既存 `/odds/` に統合し、単体/E2E/オフラインを検証する。永続化・クラウド同期はこの小機能には加えない。
 - P2実装中: `web/src/lib/poker/oddsQuiz.ts`、`web/src/components/odds/OddsQuiz.tsx`、`web/src/app/odds/page.tsx`、日英i18n、単体テスト、Odds E2E、axeの動的状態テスト、`public/sw.js` をv7に更新。README/roadmap/AUDITも更新中。
 - P2対象検証: `npm run typecheck && npm run lint` 成功・警告0、対象Vitest 2 files / 11 passed、`npm run e2e -- --grep="pot odds and outs quiz"` PC/モバイル2 passed。`npm run e2e -- --grep=odds` はOddsの通常/クイズとaxe（ダーク/ライト、回答前後）を含む18 passed。
+- P2全体検証: `npm run typecheck && npm run lint` 成功・警告0、`npm test` 31 files / 298 passed、`npm run validate:data` 90 passed、`npm run e2e` 239 passed / 1 skipped（240件中）、`npm run e2e:subpath` 2 passed、`git diff --check` 成功。全E2Eでクイズaxe（ダーク/ライト）、オフライン起動、操作サイズ、横スクロールも成功。
 
 ## 失敗しているテストと、その原因の見立て
 - 現在失敗中のテストはない。
@@ -30,12 +31,12 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - P1のログインE2E初回はPC側でICM記録が同期前に存在しないことがあった。ICMのIndexedDB保存が非同期であることを確認し、E2Eで保存完了を待つようにして修正。修正後は単独のPC/モバイル2件と全体E2E（233 passed / 1 skipped）が成功。
 - P2の初回ターゲットE2EはPC/モバイルで失敗したが、原因はテストが結果欄ではなく親クイズ欄内に同じtest IDを重ねて探していたこと。結果欄を直接確認するよう直し、PC/モバイル2件が成功。現在失敗中のテストはない。
 - `npm run e2e -- --grep="odds quiz question and answer feedback"` はPowerShell経由の引数分割で対象0件となった（テスト失敗ではない）。`--grep=odds` に変えて再実行し、該当する18件が成功。
+- 全体`npm test`初回はi18nテスト1件が失敗。新しい日本語の式説明に半角括弧が含まれていたため全角括弧に直し、再実行は31 files / 298 passed。現在失敗中のテストはない。
 
 ## 次にやること（優先順）
-1. `git diff --check` と `npm test`、`npm run validate:data`、全`npm run e2e`、`npm run e2e:subpath`を実行する。Service Worker v7の更新/オフライン動作も確認する。
-3. 390×844と1440×900でクイズ画面を撮影して確認し、README/roadmap/AUDITを最終更新する。
-4. P2をコミット/pushし、HANDOFFにコミットハッシュとローカル検証を記録してpushする。
-5. P2コードとHANDOFFのGitHub Actionsを確認する。
+1. 390×844と1440×900でクイズ画面を撮影して確認し、README/roadmap/AUDITを最終更新する。
+2. 最終の型/lintと差分チェック後、P2をコミット/pushし、HANDOFFにコミットハッシュと検証を記録してpushする。
+3. P2コードとHANDOFFのGitHub Actionsを確認する。
 6. 続く候補はHU/9人卓解、全フロップ計算、実履歴・実Supabase・実機確認。費用対効果で順を見直す。
 
 ## 決めたことと、その理由（採用しなかった案も）
@@ -49,7 +50,7 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - pushは作業ブランチのみ。マージ、Pages公開、リポジトリ設定変更は行わない。
 
 ## 未確認のこと・注意
-- P1のコード/HANDOFF Actionsはすべてsuccess。P2 HANDOFF `87969a8` はrun #90/#91 in progress。`3bf3c14` のCIもpush後確認する。実Supabase適用は未確認。
+- P1のコード/HANDOFF Actionsはすべてsuccess。P2 HANDOFF `f37d0c0` と今回の全体検証記録コミットのActionsはpush後に確認する。実Supabase適用は未確認。
 - 実Supabase、スマホ実機、VoiceOver/TalkBack、GGPoker実履歴は未確認。
 - `npm ci` は成功したがnpm auditが10件（8 moderate、2 critical）とESLint非推奨を報告。依存更新は未実施。
 - SQLはスキーマ追加案。既存/実際のSupabaseプロジェクトへ適用していない。
