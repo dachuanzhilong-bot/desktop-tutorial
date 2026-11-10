@@ -1,43 +1,42 @@
 # HANDOFF
 
 ## 今の目的
-Claude Code セッション `session_019wsd5hJFvXwVL3RsR8cCxN` から Tessera を引き継ぎ、PR #3 の変更を検証して不足機能を優先順に実装する。マージ・公開・リポジトリ設定変更はしない。
+Claude Code セッション `session_019wsd5hJFvXwVL3RsR8cCxN` から Tessera の開発を引き継ぐ。PR #3 の現状を検証し、監査順位に沿って不足機能を実装する。マージ・公開・リポジトリ設定変更はしない。
 
 ## 完了したこと（コミットのハッシュ、検証結果つき）
-- 作業ブランチ `claude/practical-volta-fv0rdo` は PR #3。`e42872a` で開始記録、`dd716bd` で監査順位を追加して push 済み。
-- 監査: `docs/00-product.md`、`docs/05-roadmap.md`、`docs/AUDIT.md`、`docs/13-hosting.md`、`docs/10-analyze-and-sync.md`、README を照合。優先順位は P0: PR #3 の検証、P1: 保存局面とICMログのクラウド同期、P2: 新しい練習種目、P3: HU/9-max、P4: 全フロップ、P5: 実環境での手動確認。
-- PR #3 の GitHub Actions run `42741582421`（`cd6543e`）は solver/web とも success。後続 run `42742404780` と `42742409212`（`dd716bd`）も両ジョブ success。
-- `web`: `npm ci` 成功（Node v26.12.1 / npm 11.20.0）。`npm run typecheck`、`npm run lint` 成功。`npm test`: 29 files / 289 tests passed。
-- `npm run e2e`: 234件中231 passed、2 failed、1 skipped。失敗2件は `resilience.spec.ts` の同一ケース（mobile/desktop）。画面/横幅/a11y/PR #3 機能/既存同期の他テストは成功。
-- 失敗原因をブラウザの404 URLで診断: Next のRSCプリフェッチが `/practice/__next.practice.__PAGE__.txt` のような平坦なURLを要求する一方、Next 16.4.5のWindows静的書き出しは `out/practice/__next.practice/__PAGE__.txt` に入れ、このURLで404になる。`page.goto()` のたびにナビリンクのプリフェッチが同種404を記録する。テストのエラー抑制はしていない。
-- `npm ci` は依存脆弱性10件（8 moderate、2 critical）とESLint非推奨警告を報告。依存更新は未実施。
+- 作業ブランチ `claude/practical-volta-fv0rdo` は PR #3。引き継ぎ/監査計画のコミットは `e42872a`、`dd716bd`、E2E失敗の記録は `7c1df9e`。いずれも作業ブランチに push 済み。
+- PR head `cd6543e` の GitHub Actions run `42741582421` は solver/web とも success。監査記録を含む `dd716bd` の run `42742404780` と `42742409212` も両ジョブ success。
+- 静的書き出し修正を実装中。`web/scripts/prepare-static-export.mjs` が Next の nested route payload から静的ホスト向け dotted `.txt` 別名を生成し、`npm run build` 後に呼び出す。ユニットテスト2件を追加。`docs/13-hosting.md` に説明を追加。
+- 修正後の検証結果（Windows / Node v26.12.1 / npm 11.20.0）: `npm run typecheck` 成功、`npm run lint` 警告0、`npm test` 30 files / 291 tests passed、`npm run e2e` 233 passed・1 skipped、`npm run e2e:subpath` 2 passed。コンソール検査の再実行もmobile/desktop各1件成功。
+- 初回 E2E は 231 passed・2 failed・1 skipped。Next のRSCプリフェッチが `/practice/__next.practice.__PAGE__.txt` 等を要求する一方、Next export は `out/practice/__next.practice/__PAGE__.txt` を生成して404になっていた。テストは変更せず、build成果物に要求URLのpayloadを複製して解決した。
+- `npm ci` 成功。npm監査は10件（8 moderate、2 critical）とESLint非推奨を報告。依存更新は未実施。
 
 ## 作業中のこと（どのファイルを、どこまで、何が残っているか）
-- アプリコード変更はまだない。
-- P0として、静的書き出しにRSCプリフェッチ用の平坦な`.txt`別名を生成し、実際の静的配信とローカルE2Eの両方で正しい応答になるよう修正する方針。`web/scripts/prepare-static-export.mjs`（仮）を build 後に実行し、ユニットテストを追加する。
-- その後、`npm run e2e` と `npm run e2e:subpath` を全件再実行してから P1の同期機能に進む。
+- 以下を P0静的書き出し修正としてまとめてコミットする直前: `web/package.json`、`web/scripts/prepare-static-export.mjs`、`web/scripts/prepare-static-export.d.mts`、`web/src/lib/__tests__/staticExport.test.ts`、`docs/13-hosting.md`、この `HANDOFF.md`。
+- まだ P0修正コミットを作成/pushしていない。作成後にGitHub Actionsを確認する。
+- 次の機能候補は P1: 保存局面とICM練習記録のクラウド同期。優先順位: P0検証→P1同期→P2新しい練習種目→P3 HU/9-max→P4全フロップ→P5実環境手動確認。
 
 ## 失敗しているテストと、その原因の見立て
-- `npm run e2e`: `[mobile]` と `[desktop]` の `every screen renders without console errors` が失敗。静的 export に Next のプリフェッチ URLと同じ相対位置の`.txt` payloadがなくHTTP 404になる。ブラウザ診断で要求パスと出力ファイルの不一致を確認した。
-- ほかに失敗した Vitest/typecheck/lint はない。GitHub Actions run は成功だが、Windows/Node26環境のE2E差を放置せず修正して検証する。
+- 現在失敗しているローカルテストはない。最初のE2E失敗は上記の静的route payload 404で、修正後に全件成功。
+- 新しいP0修正をまだGitHub CI上では実行していない。push後に確認する。
+- GitHub ActionsのNode 22/LinuxとローカルのNode 26/Windowsには差がある。両環境の結果を分けて記録する。
 
 ## 次にやること（優先順）
-1. Next静的出力のRSC `.txt` payload別名を生成するスクリプトを作り、buildへ組み込む。元payloadから同じ内容をコピーし、既存出力やベースパス配下でも壊れないようにする。
-2. 変換スクリプトの小さなテストを追加し、既存ファイルを上書きしないことも確認する。
-3. `npm run typecheck && npm run lint`、`npm test`、`npm run e2e`、`npm run e2e:subpath` を実行。E2Eの全件成功を確認してから機能実装をpushする。
-4. テストが通ったら HANDOFF を更新・コミット・pushし、P1の保存局面/ICMログ同期を実装する。
-5. Supabase schema/RLS、同期型/エンジン/設定表示、英日文言、偽サーバーの統合テストと docs/README/AUDIT を更新する。
-6. 390×844 とPC幅のスクリーンショットを確認し、最終結果と次の一手を記録する。
+1. `git diff --check` を確認し、P0修正とこのHANDOFFをコミットして作業ブランチへpushする。
+2. 最新コミットのGitHub Actionsでsolver/webが成功することを確認する。
+3. HANDOFFを更新/コミットしてから P1同期の設計・実装を始める。IndexedDB `meta` を使い、DB版は上げない。
+4. Supabaseテーブル/RLS、同期型/エンジン、英日文言、偽サーバーの単体/E2Eを追加する。既存同期の削除非同期の制約を明記する。
+5. README・docs/AUDIT・同期設計書を更新し、390×844とPC幅の画面を確認する。
+6. 区切りごとにHANDOFFを更新して小さくコミット/pushする。PR #3 はドラフトのままにする。
 
 ## 決めたことと、その理由（採用しなかった案も）
-- PR #3 の既存ブランチを続けて使う。4つの追加機能と Study URL競合修正があり、CIはgreen。
-- pushは作業ブランチのみ。PRをマージせずPages公開・設定変更もしない。
-- E2E検査を弱める・console 404を無視する案は採用しない。静的exportの成果物に要求されるpayload別名を含めて、ユーザーの静的ホスティングでも利用できるようにする。
-- 次の製品機能は保存局面/ICM練習記録の同期を選ぶ。既存のlocal-first同期とmeta保存を再利用できる。巨大な解生成より変更範囲を絞り検証できる。
+- `claude/practical-volta-fv0rdo` を継続する。PR #3の4機能とURL競合修正、CI成功が揃っている。
+- P0はテストを無効化せず、ビルド成果物に静的配信可能なroute payload別名を足す。GitHub Pages等のrewrite非対応ホストでも画面遷移の404を防ぐ。
+- P1は保存局面/ICM練習ログの同期を選ぶ。既存のlocal-first同期・`meta`保存・バックアップを再利用できる。実Supabaseのアカウントが無いため、偽サーバーでプロトコルを検証し実環境未確認と記載する。
+- pushは作業ブランチのみ。PRのマージ・Pages公開・設定変更は行わない。
 
 ## 未確認のこと・注意
-- CIはNode 22/Linux、ローカルはNode 26/Windows。今回の404はローカルで確認し、CIはdd716bdまでgreen。
-- `npm run e2e:subpath` は未実行。Playwright Chromiumはインストール済み。
+- P0コミットのGitHub Actions結果は未確認（push前）。
 - 実Supabase、スマホ実機、VoiceOver/TalkBack、GGPoker実履歴は未確認。
-- npm監査の詳細と依存脆弱性への対応は今回の範囲外。
-- PR #3 のマージ・公開はしない。
+- npm監査の脆弱性詳細と依存更新は今回の作業範囲外。
+- PR #3をマージ/公開しない。
