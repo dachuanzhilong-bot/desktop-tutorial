@@ -24,6 +24,7 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - P2実装中: `web/src/lib/poker/oddsQuiz.ts`、`web/src/components/odds/OddsQuiz.tsx`、`web/src/app/odds/page.tsx`、日英i18n、単体テスト、Odds E2E、axeの動的状態テスト、`public/sw.js` をv7に更新。README/roadmap/AUDITも更新中。
 - P2対象検証: `npm run typecheck && npm run lint` 成功・警告0、対象Vitest 2 files / 11 passed、`npm run e2e -- --grep="pot odds and outs quiz"` PC/モバイル2 passed。`npm run e2e -- --grep=odds` はOddsの通常/クイズとaxe（ダーク/ライト、回答前後）を含む18 passed。
 - P2全体検証: `npm run typecheck && npm run lint` 成功・警告0、`npm test` 31 files / 298 passed、`npm run validate:data` 90 passed、`npm run e2e` 239 passed / 1 skipped（240件中）、`npm run e2e:subpath` 2 passed、`git diff --check` 成功。全E2Eでクイズaxe（ダーク/ライト）、オフライン起動、操作サイズ、横スクロールも成功。
+- 画面確認: 静的出力でクイズ回答済みの画面を390×844と1440×900で確認。document幅=viewport幅、ブラウザーエラー0。画像は `work/visual-check/odds-mobile.png` と `odds-desktop.png`。
 
 ## 失敗しているテストと、その原因の見立て
 - 現在失敗中のテストはない。
@@ -34,9 +35,10 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - 全体`npm test`初回はi18nテスト1件が失敗。新しい日本語の式説明に半角括弧が含まれていたため全角括弧に直し、再実行は31 files / 298 passed。現在失敗中のテストはない。
 
 ## 次にやること（優先順）
-1. 390×844と1440×900でクイズ画面を撮影して確認し、README/roadmap/AUDITを最終更新する。
-2. 最終の型/lintと差分チェック後、P2をコミット/pushし、HANDOFFにコミットハッシュと検証を記録してpushする。
-3. P2コードとHANDOFFのGitHub Actionsを確認する。
+1. 問題文でベット前ポットを明確にし、英語クイズのE2E表示確認を加える。
+2. 変更後に全体検証・サブパス検証・390×844/1440×900撮影を再実行し、README/roadmap/AUDITを完了状態へ更新する。
+3. 最終の型/lintと差分チェック後、P2をコミット/pushし、HANDOFFにコミットハッシュと検証を記録してpushする。
+4. P2コードとHANDOFFのGitHub Actionsを確認する。
 6. 続く候補はHU/9人卓解、全フロップ計算、実履歴・実Supabase・実機確認。費用対効果で順を見直す。
 
 ## 決めたことと、その理由（採用しなかった案も）
