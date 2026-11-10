@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { Ring } from "@/components/Charts";
 import { CrashProbe } from "@/components/CrashProbe";
 import { IconFlame, IconBolt, IconGrid, IconTarget } from "@/components/icons";
+import { InstallCard } from "@/components/InstallCard";
 import { useSettings } from "@/lib/settings";
 import { useNow } from "@/lib/util/hooks";
 import { SEATS } from "@/lib/solution/tree";
@@ -88,6 +89,8 @@ export default function Home() {
           </ul>
         </section>
       )}
+
+      <InstallCard />
 
       <p className="text-center text-xs text-muted">
         {t("home.dataNote")} · {t("home.offline")}

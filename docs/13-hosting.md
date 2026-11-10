@@ -7,6 +7,7 @@
 - ルート直下（`https://example.com/`）とサブパス（`https://<owner>.github.io/<repo>/`）の両方で、同じ書き出しが動く。
   - サブパスのビルドは `NEXT_PUBLIC_BASE_PATH=/<repo>` を付けるだけ（`next.config.ts`）。手書きのURL（`fetch`・Worker・manifest・Service Worker）は `lib/util/base.ts` の `withBase()` を通す。Service Worker と Solve の Worker は、自分が配信されている場所からパスを決めるので、ビルド時の設定は要らない。
   - `npm run e2e:subpath`: サブパスでビルド → そのパス配下だけで配信（外は404）→ ブラウザで、初回の説明・各種データ・ポストフロップの Worker・WebAssembly の Worker・Service Worker の範囲・オフライン動作を通しで確認（CIでも実行）。`lib/__tests__/basepath.test.ts` は、手書きの「/」始まりのURLが入り込んだらテストで落とす。
+- 「ホーム画面に追加」カード（`components/InstallCard.tsx`、`lib/util/install.ts`）: Android / Chrome は端末が出す `beforeinstallprompt` を保持してボタン1回でインストール画面を開く。iPhone の Safari には手順を表示（iOS に API は無い）。インストール済み・iOS 以外のブラウザ・「あとで」の後は出さない。判定は単体テスト、表示と1タップの流れ（Chrome のイベントは模擬）は Playwright、スマホ幅の見た目は画像で確認。**実機で、実際にインストールできることは未確認**。
 - 確認していないこと: 実際のホスティングサービス上での動作（このセッションからは公開できないため）、実機のブラウザ。
 
 ## 公開先の選び方
@@ -23,7 +24,7 @@
 2. **Add new site → Import an existing project → GitHub** を選び、`dachuanzhilong-bot/desktop-tutorial` を選ぶ（非公開リポジトリは、Netlify の GitHub 連携でこのリポジトリへのアクセスを許可する）。
 3. ブランチは、公開したいもの（PR #2 のマージ前なら `claude/practical-volta-fv0rdo`、マージ後は `main`）。Build 設定は `netlify.toml` から自動で入るので、そのまま **Deploy** を押す。
 4. 数分で `https://<ランダムな名前>.netlify.app` が発行される。Site configuration → Change site name で好きな名前に変えられる。以後は push のたびに自動で更新される。
-5. スマホでそのURLを開き、共有メニューの「ホーム画面に追加」でアプリとして使える（HTTPSなのでオフラインも動く）。
+5. スマホでそのURLを開く。ホーム画面の下に **「ホーム画面に追加」カード** が出る（Android / Chrome はボタンを1回押すだけでインストール。iPhone の Safari は共有ボタン → 「ホーム画面に追加」の手順を表示）。追加後はアイコンをタップするだけで、アドレスバーの無いアプリとして開き、オフラインでも動く（HTTPS が必要）。カードの「あとで」で2週間隠せる。
 
 `netlify.toml`・`_headers` の書式は Netlify の仕様どおりに書いたが、実際の Netlify では動かしていない（このセッションから Netlify に接続できないため）。ビルドが失敗したら、ログの内容を教えてください。
 

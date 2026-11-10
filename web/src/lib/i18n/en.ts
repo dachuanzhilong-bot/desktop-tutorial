@@ -320,7 +320,10 @@ export const en: Record<Key, string> = {
   "gl.cfr.d": "An iterative algorithm that reduces regret to approach equilibrium. It powers this app's solver.",
 
   "install.title": "Add to home screen",
-  "install.desc": "Practise offline too.",
+  "install.desc": "Open it with one tap from the icon, and practise offline too.",
+  "install.ios": "Tap the share button (the square with an arrow) at the bottom of the screen, then \"Add to Home Screen\": the icon opens the app with one tap.",
+  "install.go": "Add to home screen",
+  "install.later": "Later",
   "home.hello": "One hand at a time.",
   "home.continue": "Start practising",
   "home.study": "Browse solutions",
