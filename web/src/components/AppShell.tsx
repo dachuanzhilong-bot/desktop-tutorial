@@ -15,7 +15,7 @@ const NAV = [
   { href: "/", key: "nav.home", Icon: IconHome },
   { href: "/study/", key: "nav.study", Icon: IconGrid },
   { href: "/practice/", key: "nav.practice", Icon: IconTarget },
-  { href: "/solve/", key: "nav.solve", Icon: IconBolt, also: ["/builder", "/icm"] },
+  { href: "/solve/", key: "nav.solve", Icon: IconBolt, also: ["/builder", "/icm", "/equity"] },
   { href: "/stats/", key: "nav.stats", Icon: IconChart, also: ["/analyze"] },
   { href: "/settings/", key: "nav.settings", Icon: IconGear },
 ] as readonly { href: string; key: Key; Icon: typeof IconHome; also?: string[] }[];

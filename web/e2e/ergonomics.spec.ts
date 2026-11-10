@@ -8,7 +8,7 @@ test.beforeEach(async ({ context }) => {
   });
 });
 
-const ROUTES = ["/", "/practice/", "/study/", "/study/postflop/", "/study/report/", "/analyze/", "/solve/", "/icm/", "/builder/", "/stats/", "/settings/", "/glossary/", "/roadmap/"];
+const ROUTES = ["/", "/practice/", "/study/", "/study/postflop/", "/study/report/", "/analyze/", "/solve/", "/icm/", "/equity/", "/builder/", "/stats/", "/settings/", "/glossary/", "/roadmap/"];
 
 /**
  * Every control is at least 44 x 44 CSS px, except (WCAG 2.5.8 allows these, all >= 24px):

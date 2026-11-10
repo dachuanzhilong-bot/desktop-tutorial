@@ -7,6 +7,7 @@ const TABS = [
   { href: "/solve/", key: "solve.tab.solve" },
   { href: "/builder/", key: "solve.tab.builder" },
   { href: "/icm/", key: "solve.tab.icm" },
+  { href: "/equity/", key: "solve.tab.equity" },
 ] as const;
 
 /** Solve / Range builder switcher */
@@ -15,7 +16,7 @@ export function SolveTabs() {
   const { t } = useSettings();
   const norm = (p: string) => (p.endsWith("/") ? p : p + "/");
   return (
-    <nav aria-label="Solve" className="mb-3 grid grid-cols-3 gap-1 rounded-card bg-surface p-1">
+    <nav aria-label="Solve" className="mb-3 grid grid-cols-4 gap-1 rounded-card bg-surface p-1">
       {TABS.map((tab) => {
         const active = norm(path) === tab.href;
         return (

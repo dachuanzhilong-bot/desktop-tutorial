@@ -1,13 +1,9 @@
 "use client";
+import { CardGrid } from "@/components/CardGrid";
 import { PlayingCard, cardLabel } from "@/components/PlayingCard";
 import { cardOf } from "@/lib/postflop/combos";
 import { useSettings } from "@/lib/settings";
 import { haptic } from "@/lib/util/haptics";
-
-const GLYPH = ["♣", "♦", "♥", "♠"];
-const SUIT_VAR = ["--suit-c", "--suit-d", "--suit-h", "--suit-s"];
-const RANKS = "AKQJT98765432";
-const SUIT_ORDER = [3, 2, 1, 0]; // s h d c (card = rank*4 + suit with suit 0..3 = c d h s)
 
 export function randomFlop(): number[] {
   const out: number[] = [];
@@ -20,7 +16,7 @@ export function randomFlop(): number[] {
 
 /** pick 3 to 5 board cards from a 52-card chart; tap a selected card to take it off */
 export function BoardPicker({ board, onChange }: { board: number[]; onChange: (b: number[]) => void }) {
-  const { t, settings } = useSettings();
+  const { t } = useSettings();
   const toggle = (c: number) => {
     haptic.tap();
     if (board.includes(c)) onChange(board.filter((x) => x !== c));
@@ -52,35 +48,7 @@ export function BoardPicker({ board, onChange }: { board: number[]; onChange: (b
           {t("solve.clear")}
         </button>
       </div>
-      {/* 52 cards have to fit a phone width: about 27 x 40 px each (WCAG 2.5.8 minimum is 24) */}
-      <div className="space-y-[3px]" role="group" aria-label={t("solve.board")} data-card-picker>
-        {SUIT_ORDER.map((s) => (
-          <div key={s} className="grid grid-cols-13 gap-[2px]" style={{ gridTemplateColumns: "repeat(13, minmax(0, 1fr))" }}>
-            {RANKS.split("").map((r, i) => {
-              const code = (12 - i) * 4 + s;
-              const on = board.includes(code);
-              const disabled = !on && full;
-              const four = settings.deck4;
-              const colour = four ? `var(${SUIT_VAR[s]})` : s >= 2 ? "var(--suit-h)" : "var(--suit-s)";
-              return (
-                <button
-                  key={code}
-                  type="button"
-                  data-testid={`pick-${r}${"cdhs"[s]}`}
-                  aria-pressed={on}
-                  disabled={disabled}
-                  onClick={() => toggle(code)}
-                  style={{ color: colour }}
-                  className={`flex h-10 min-w-0 flex-col items-center justify-center rounded-md border-2 bg-white text-[0.72rem] font-extrabold leading-none disabled:opacity-35 ${on ? "border-accent ring-2 ring-accent" : "border-black/15"}`}
-                >
-                  <span>{r === "T" ? "10" : r}</span>
-                  <span className="text-[0.8rem]">{GLYPH[s]}</span>
-                </button>
-              );
-            })}
-          </div>
-        ))}
-      </div>
+      <CardGrid label={t("solve.board")} on={(c) => board.includes(c)} off={(c) => full && !board.includes(c)} onPick={toggle} />
     </section>
   );
 }
