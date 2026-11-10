@@ -8,6 +8,7 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - `968e08a` でNextのnested route payloadを静的ホスト向けdotted `.txt` URLにも複製し、Windows/Node 26でのプリフェッチ404を修正。
 - P0修正後のローカル結果: `npm run typecheck` 成功、`npm run lint` 警告0、`npm test` 30 files / 291 tests passed、`npm run e2e` 233 passed・1 skipped、`npm run e2e:subpath` 2 passed。
 - P0コミット `968e08a`、`d5f46ba`、`d59a960` のGitHub Actionsは全ジョブsuccess（`d59a960`: run `42745297588` / `42745291399`）。
+- P1 Actions: `8955c35` のrun `42749024772`/`42749029713`、検証HANDOFF `77d7c5e` のrun `42749172064`/`42749179175` はすべてsuccess。
 - `8955c35` でICM練習ログの追記同期とStudy保存局面の更新/削除同期を追加し、README・設計書・監査表を更新してPR #3へpush。
 - P1実装は `8955c35` に含む。ICMログの追記同期、保存局面のLWWと削除墓標、バックアップ統合、Supabaseテーブル/RLS、設定画面の送受信数、英日文言、Vitest/E2Eを追加。保存局面は件数が少ないため毎回全件取得し、遅れた端末時計のカーソル取りこぼしを避ける。
 - 直近検証: `npm run typecheck && npm run lint` 成功・警告0。対象Vitest（`sync.test.ts`, `bookmarks.test.ts`, `icmLog.test.ts`）23 passed。`npm run e2e -- --grep=login` はPC/モバイル2 passed。失敗していたPC側のICMアップロード確認はIndexedDBへの保存完了を待つようE2Eを修正して解消。
@@ -15,23 +16,26 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - 目視確認: 静的ビルドを390×844と1440×900で開き、設定と保存局面を各画面幅で撮影。画面エラーと横スクロールなし。確認画像は `work/visual-check/`。
 
 ## 作業中のこと（どのファイルを、どこまで、何が残っているか）
-- P1同期実装・テスト・文書は `8955c35` としてコミット/push済み。検証結果は `77d7c5e` に記録済み。
+- P1同期実装・テスト・文書は `8955c35` としてコミット/push済み。検証結果は `77d7c5e` に記録済み。Actionsはgreen。
 - `README.md`、`docs/02-data-model.md`、`docs/05-roadmap.md`、`docs/10-analyze-and-sync.md`、`docs/11-icm.md`、`docs/AUDIT.md` を更新済み。同期対象と対象外、墓標、2,000件のローカル上限、実環境未確認を明記。
 - ICMドリルの日本語/英語説明、設定画面の同期範囲、コードコメントを更新済み。古い「ICMは同期されない」表記は検索で解消を確認。
 - 全テスト・データ検証・390×844と1440×900の確認が完了。
-- P2開始条件と受け入れ基準: 厳密式からポットオッズ/アウツ4択を生成し、回答後に正誤・正解・式の説明を出す。回数/連続正解は当ページのセッション内で数える。日本語/英語、44px以上、既存 `/odds/` に統合し、単体/E2E/オフラインを検証する。永続化・クラウド同期はこの小機能には加えない。
+- P2受け入れ基準: 厳密式からポットオッズ/アウツ4択を生成し、回答後に正誤・正解・式の説明を出す。回数/連続正解は当ページのセッション内で数える。日本語/英語、44px以上、既存 `/odds/` に統合し、単体/E2E/オフラインを検証する。永続化・クラウド同期はこの小機能には加えない。
+- P2実装中: `web/src/lib/poker/oddsQuiz.ts`、`web/src/components/odds/OddsQuiz.tsx`、`web/src/app/odds/page.tsx`、日英i18n、単体テスト、Odds E2E、axeの動的状態テスト、`public/sw.js` をv7に更新。README/roadmap/AUDITも更新中。
+- P2対象検証: `npm run typecheck && npm run lint` 成功・警告0、対象Vitest 2 files / 11 passed、`npm run e2e -- --grep="pot odds and outs quiz"` PC/モバイル2 passed。
 
 ## 失敗しているテストと、その原因の見立て
 - 現在失敗中のテストはない。
 - P0の初回E2Eは静的出力のRSC `.txt` 404だったが `968e08a` で修正し、その後の全E2Eは通過。
 - P1のログインE2E初回はPC側でICM記録が同期前に存在しないことがあった。ICMのIndexedDB保存が非同期であることを確認し、E2Eで保存完了を待つようにして修正。修正後は単独のPC/モバイル2件と全体E2E（233 passed / 1 skipped）が成功。
+- P2の初回ターゲットE2EはPC/モバイルで失敗したが、原因はテストが結果欄ではなく親クイズ欄内に同じtest IDを重ねて探していたこと。結果欄を直接確認するよう直し、PC/モバイル2件が成功。現在失敗中のテストはない。
 
 ## 次にやること（優先順）
-1. P2の純関数問題生成/採点と境界値テストを実装する。
-2. `/odds/` に日英対応の4択クイズ、即時フィードバック、セッション内の正解数/連続正解を追加する。
-3. Odds E2Eに回答・次問・PC/スマホ横スクロールの検査を加え、必要なら既存画面キャッシュのService Worker版を上げる。
-4. README、`docs/05-roadmap.md`、`docs/AUDIT.md` のP2状況を更新し、390×844と1440×900でスクリーンショット確認する。
-5. 全ローカル検証を再実行してコミット/pushし、P1/P2両方のGitHub Actionsを確認する。
+1. axeのクイズ回答状態テストを実行し、違反があれば直す。
+2. `npm test`、`npm run validate:data`、全`npm run e2e`、`npm run e2e:subpath`を実行する。Service Worker v7の更新/オフライン動作も確認する。
+3. 390×844と1440×900でクイズ画面を撮影して確認し、README/roadmap/AUDITを最終更新する。
+4. P2をコミット/pushし、HANDOFFにコミットハッシュとローカル検証を記録してpushする。
+5. P2コードとHANDOFFのGitHub Actionsを確認する。
 6. 続く候補はHU/9人卓解、全フロップ計算、実履歴・実Supabase・実機確認。費用対効果で順を見直す。
 
 ## 決めたことと、その理由（採用しなかった案も）
@@ -45,7 +49,7 @@ Claude Code から Tessera を引き継ぎ、PR #3 の機能を検証してか�
 - pushは作業ブランチのみ。マージ、Pages公開、リポジトリ設定変更は行わない。
 
 ## 未確認のこと・注意
-- P1の`8955c35` Actionsはrun #86/#87、HANDOFF`77d7c5e`はrun #88/#89が実行中。各Web jobがin progress、solver jobはsuccess。実Supabase適用は未確認。
+- P1のコード/HANDOFF Actionsはすべてsuccess。P2 HANDOFF `87969a8` はrun #90/#91 in progress。実Supabase適用は未確認。
 - 実Supabase、スマホ実機、VoiceOver/TalkBack、GGPoker実履歴は未確認。
 - `npm ci` は成功したがnpm auditが10件（8 moderate、2 critical）とESLint非推奨を報告。依存更新は未実施。
 - SQLはスキーマ追加案。既存/実際のSupabaseプロジェクトへ適用していない。
