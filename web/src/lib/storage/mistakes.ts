@@ -1,4 +1,5 @@
 import { classInfo } from "../poker/hands";
+import { postflopLink, preflopLink } from "../study/links";
 import { cardText, COMBOS } from "../postflop/combos";
 import type { Attempt } from "./types";
 
@@ -20,10 +21,10 @@ export function recentMistakes(list: Attempt[], limit = 8): Attempt[] {
 /** where the Study screen shows the position of an attempt (the node, and for pre-flop the hand too); null when it cannot be told */
 export function studyHref(a: Attempt): string | null {
   const post = /^post:([\w-]+)\/(\d+)$/.exec(a.solution);
-  if (post) return `/study/postflop/#s=${post[1]}&f=${post[2]}&n=${a.nodeId}`;
+  if (post) return postflopLink(post[1], Number(post[2]), a.nodeId);
   const depth = /^cash6max-(\d+)bb$/.exec(a.solution);
   if (!depth) return null;
-  return `/study/#d=${depth[1]}&n=${a.nodeId}&h=${a.hand}`;
+  return preflopLink(Number(depth[1]), a.nodeId, a.hand);
 }
 
 /** "AKs" for a pre-flop hand class, "AhKh" for a post-flop combo */

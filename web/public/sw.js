@@ -10,7 +10,7 @@ const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, "");
 const VERSION = "v6";
 const CORE = `tessera-core-${VERSION}`;
 const DATA = `tessera-data-${VERSION}`;
-const PAGES = ["/", "/study/", "/study/postflop/", "/study/report/", "/solve/", "/builder/", "/icm/", "/equity/", "/odds/", "/practice/", "/stats/", "/analyze/", "/settings/", "/glossary/", "/roadmap/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"].map((u) => BASE + u);
+const PAGES = ["/", "/study/", "/study/postflop/", "/study/report/", "/study/saved/", "/solve/", "/builder/", "/icm/", "/equity/", "/odds/", "/practice/", "/stats/", "/analyze/", "/settings/", "/glossary/", "/roadmap/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"].map((u) => BASE + u);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

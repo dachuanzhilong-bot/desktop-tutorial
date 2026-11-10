@@ -1,4 +1,4 @@
-import { ICM_LOG_KEY, mergeIcmLog } from "./icmLog";
+import { mergeMeta } from "./metaMerge";
 import type { SrsItem } from "../practice/srs";
 import { MemoryRepo } from "./memory";
 import type { Attempt, ExportBlob, Repo, SavedRange, SavedSolve, StoredHand } from "./types";
@@ -76,8 +76,8 @@ export class IdbRepo implements Repo {
     for (const a of b.attempts) if (!have.has(`${a.ts}:${a.nodeId}:${a.hand}`)) await this.addAttempt(a);
     const cur = new Map((await this.allSrs()).map((x) => [x.key, x]));
     for (const s of b.srs) if (!cur.has(s.key) || cur.get(s.key)!.updated < s.updated) await this.putSrs(s);
-    // the ICM drill log is merged with this device's answers, not replaced
-    for (const [k, v] of Object.entries(b.meta)) await this.setMeta(k, k === ICM_LOG_KEY ? mergeIcmLog(await this.getMeta(k), v) : v);
+    // lists that grow on every device (the ICM drill log, saved positions) are merged, the rest is replaced
+    for (const [k, v] of Object.entries(b.meta)) await this.setMeta(k, mergeMeta(k, await this.getMeta(k), v));
     for (const r of b.ranges ?? []) await this.putRange(r);
     await this.putHands(b.hands ?? []);
   }

@@ -9,7 +9,7 @@ import { SolutionGate } from "@/components/SolutionGate";
 import { GridSkeleton } from "@/components/Skeleton";
 import { Histogram } from "@/components/Charts";
 import { Term } from "@/components/Term";
-import { ALL_CLASSES, HAND_FILTERS, HandFilterId, holdsRank, matchesFilter, RANK_CHARS } from "@/lib/poker/hands";
+import { ALL_CLASSES, classInfo, HAND_FILTERS, HandFilterId, holdsRank, matchesFilter, RANK_CHARS } from "@/lib/poker/hands";
 import { useSettings } from "@/lib/settings";
 import { useLatest } from "@/lib/util/hooks";
 import { preload } from "react-dom";
@@ -17,11 +17,13 @@ import { ApproxNote } from "@/components/ApproxNote";
 import type { SolutionStore } from "@/lib/solution/loader";
 import { useNodeSolution, useSolutionStore } from "@/lib/solution/context";
 import { DEPTHS } from "@/lib/solution/loader";
-import { actionLabel, fmtBB, history, spotType, stateAt } from "@/lib/solution/tree";
+import { actionLabel, fmtBB, history, lineText, spotType, stateAt } from "@/lib/solution/tree";
 import { ActionKind, Terminal } from "@/lib/solution/types";
 import type { Key } from "@/lib/i18n/ja";
 import { actionCombos, actionMix, actionRange, equityBins, rangeCombosOf, rangeWidth } from "@/lib/study/summary";
 import { haptic } from "@/lib/util/haptics";
+import { preflopHash, preflopLink } from "@/lib/study/links";
+import { SaveButton } from "@/components/SaveButton";
 import { withBase } from "@/lib/util/base";
 
 const MODES: GridMode[] = ["strategy", "ev", "equity", "weight"];
@@ -30,12 +32,9 @@ function termKey(term: Terminal): Key {
   return term === Terminal.Fold ? "term.fold" : term === Terminal.Flop ? "term.flop" : term === Terminal.FlopMulti ? "term.flopMulti" : "term.allin";
 }
 
-/** the deep link of a view: depth, node and, when one is picked, the hand class */
-const linkOf = (id: number, depth: number, hand: number | null) => `#d=${depth}&n=${id}${hand === null ? "" : `&h=${hand}`}`;
-
 function replaceHash(id: number, depth: number, hand: number | null) {
   try {
-    window.history.replaceState(null, "", `${location.pathname}${linkOf(id, depth, hand)}`);
+    window.history.replaceState(null, "", `${location.pathname}${preflopHash(depth, id, hand)}`);
   } catch {
     /* ignore */
   }
@@ -99,7 +98,9 @@ function Study({ store }: { store: SolutionStore }) {
   useEffect(() => {
     const first = firstView.current;
     firstView.current = false;
-    if (location.hash === linkOf(nodeId, m.stack, selected) || (first && !location.hash)) return;
+    // the first view never rewrites the address it was opened with: the link is applied by the effect above, and the
+    // address follows once the view has moved
+    if (first || location.hash === preflopHash(m.stack, nodeId, selected)) return;
     replaceHash(nodeId, m.stack, selected);
   }, [nodeId, m.stack, selected]);
 
@@ -148,9 +149,15 @@ function Study({ store }: { store: SolutionStore }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted" data-testid="study-sub">
-        {t("format.cash6")} · {t("format.stack", { n: m.stack })} · {t(`spot.${spot}` as Key)}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted" data-testid="study-sub">
+          {t("format.cash6")} · {t("format.stack", { n: m.stack })} · {t(`spot.${spot}` as Key)}
+        </p>
+        <SaveButton
+          href={preflopLink(m.stack, nodeId, selected)}
+          title={`${m.stack}bb · ${m.players[node.actor]}${steps.length ? ` · ${lineText(m, nodeId, t)}` : ""}${selected === null ? "" : ` · ${classInfo(selected).name}`}`}
+        />
+      </div>
 
       <LineBar steps={steps} players={m.players} currentLabel={`${m.players[node.actor]} ?`} onJump={go} />
 
