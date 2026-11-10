@@ -21,7 +21,7 @@ for (const theme of ["dark", "light"] as const) {
     test.beforeEach(async ({ context }) => {
       await context.addInitScript((th) => localStorage.setItem("tessera.settings.v1", JSON.stringify({ onboarded: true, theme: th })), theme);
     });
-    for (const path of ["/", "/study/", "/study/postflop/", "/study/report/", "/practice/", "/solve/", "/builder/", "/icm/", "/equity/", "/analyze/", "/stats/", "/settings/", "/glossary/", "/roadmap/"]) {
+    for (const path of ["/", "/study/", "/study/postflop/", "/study/report/", "/practice/", "/solve/", "/builder/", "/icm/", "/equity/", "/odds/", "/analyze/", "/stats/", "/settings/", "/glossary/", "/roadmap/"]) {
       test(`${path}`, async ({ page }) => {
         await page.goto(path);
         if (path === "/study/" || path === "/study/postflop/") await page.waitForSelector(".cell");
