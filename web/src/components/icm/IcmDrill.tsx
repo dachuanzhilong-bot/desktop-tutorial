@@ -22,7 +22,7 @@ interface Props {
   hero: number;
 }
 
-/** random spots from a solved ICM table, graded by EV loss in % of the prize pool; answers are kept on this device */
+/** random spots from a solved ICM table, graded by EV loss in % of the prize pool */
 export function IcmDrill({ sol, stacks, positions, hero }: Props) {
   const { t } = useSettings();
   const [active, setActive] = useState(false);

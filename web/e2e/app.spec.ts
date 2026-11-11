@@ -14,6 +14,9 @@ async function startPractice(page: Page, opts: { rng?: boolean; hand?: boolean }
   if (opts.rng) await page.getByTestId("toggle-rng").click();
   await page.getByTestId("start-practice").click();
   await expect(page.locator('[data-testid^="action-"]').first()).toBeVisible({ timeout: 20_000 });
+  // the buttons can already be on screen while the cards are still being dealt; keys are answered only once the
+  // question is asked (phase "asking"), so wait for that before a test presses one
+  await expect(page.getByTestId("session")).toHaveAttribute("data-phase", "asking", { timeout: 20_000 });
 }
 
 test.describe("onboarding", () => {
@@ -120,7 +123,14 @@ test.describe("practice", () => {
   test("keyboard shortcuts answer and advance (desktop)", async ({ page, isMobile }) => {
     test.skip(!!isMobile, "keyboard only");
     await startPractice(page);
-    await page.keyboard.press("f");
+    // the letter of an action that is on offer: a spot where the hero can only check (the big blind with the option)
+    // has no fold, and F then answers nothing
+    for (const [id, key] of [["action-0", "f"], ["action-1", "c"], ["action-2", "r"], ["action-3", "a"]] as const) {
+      if (await page.getByTestId(id).count()) {
+        await page.keyboard.press(key);
+        break;
+      }
+    }
     await expect(page.getByTestId("result")).toBeVisible();
     await page.keyboard.press("Enter");
     await expect(page.locator('[data-testid^="action-"]').first()).toBeVisible({ timeout: 20_000 });

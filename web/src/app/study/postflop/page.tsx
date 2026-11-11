@@ -2,11 +2,13 @@
 import Link from "next/link";
 import { startTransition, useEffect, useRef, useState } from "react";
 import { GridSkeleton, Skeleton } from "@/components/Skeleton";
+import { SaveButton } from "@/components/SaveButton";
 import { StudyTabs } from "@/components/StudyTabs";
 import { PostflopViewer } from "@/components/postflop/PostflopViewer";
 import { decodeFlop, PfFlop } from "@/lib/postflop/decode";
 import { loadFlop, PF_INDEX } from "@/lib/postflop/loader";
 import { fmtBB } from "@/lib/solution/tree";
+import { postflopLink } from "@/lib/study/links";
 import { useSettings } from "@/lib/settings";
 import { getRepo } from "@/lib/storage/idb";
 import type { SavedSolve } from "@/lib/storage/types";
@@ -217,6 +219,7 @@ function PostflopStudy() {
           <Link href={`/practice/#mode=postSpot&scenario=${scenario}&flop=${flopIdx}`} data-testid="practice-this-flop" className="inline-flex min-h-tap items-center rounded-full border border-accent px-4 text-sm font-bold text-accent-text">
             {t("pf.practice")}
           </Link>
+          <SaveButton href={postflopLink(scenario, flopIdx, nodeId)} title={`${sc.title} · ${index.flops[flopIdx]}`} />
           <span>
           {sc.oop} {t("pf.oop")} {sc.oopPct.toFixed(0)}% · {sc.ip} {t("pf.ip")} {sc.ipPct.toFixed(0)}% · {t("pf.pot", { pot: fmtBB(sc.pot), stack: fmtBB(sc.stack) })}
           </span>

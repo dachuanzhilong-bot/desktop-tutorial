@@ -3,7 +3,7 @@
  * No SDK: the app stays dependency-light and the whole thing is testable with a fake `fetch`.
  * Only the public anon key is used; row-level security restricts every row to its owner.
  */
-import type { AttemptRow, RangeRow, SettingsRow, SrsRow, SyncBackend } from "./types";
+import type { AttemptRow, BookmarkRow, IcmLogRow, RangeRow, SettingsRow, SrsRow, SyncBackend } from "./types";
 
 export interface SupabaseConfig {
   url: string;
@@ -183,6 +183,18 @@ export class SupabaseBackend implements SyncBackend {
   }
   pullRanges(sinceIso: string) {
     return this.pull<RangeRow>("range_presets", "ts", sinceIso, "ts.asc,id.asc");
+  }
+  pushIcmLog(rows: IcmLogRow[]) {
+    return this.pushBatches("icm_drill_log?on_conflict=user_id,ts,hand,chosen", rows, "resolution=ignore-duplicates,return=minimal");
+  }
+  pullIcmLog(sinceIso: string) {
+    return this.pull<IcmLogRow>("icm_drill_log", "ts", sinceIso, "ts.asc,hand.asc,chosen.asc");
+  }
+  pushBookmarks(rows: BookmarkRow[]) {
+    return this.pushBatches("study_bookmarks?on_conflict=user_id,id", rows, "resolution=merge-duplicates,return=minimal");
+  }
+  pullBookmarks(sinceIso: string) {
+    return this.pull<BookmarkRow>("study_bookmarks", "ts", sinceIso, "ts.asc,id.asc");
   }
   async pushSettings(row: SettingsRow) {
     await this.rest("user_settings?on_conflict=user_id", { method: "POST", body: JSON.stringify([{ ...row, user_id: this.session.userId }]), prefer: "resolution=merge-duplicates,return=minimal" });

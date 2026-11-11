@@ -1,15 +1,15 @@
 # 02. データモデル
 
 方針: **端末内(IndexedDB)が正**。クラウド(Supabase)は「複数端末で同じ記録を使う」ための複製。
-同期は追記型（イベントログ）なので競合がほぼ起きない。
+練習/ICMのログは追記型。間隔反復・レンジ・保存局面・設定は更新時刻で競合を解決する（[同期仕様](10-analyze-and-sync.md)）。
 
-## 1. 端末内 (IndexedDB `tessera` v1) — 実装済み
+## 1. 端末内 (IndexedDB `tessera` v3) — 実装済み
 
 | ストア | キー | 内容 |
 |--------|------|------|
 | `attempts` | `id` (auto) / index `ts` | 1回の判断の記録 |
 | `srs` | `key = "<nodeId>:<handClass>"` | 間隔反復の状態（Leitnerボックス） |
-| `meta` | 任意キー | 設定の同期用スナップショットなど |
+| `meta` | 任意キー | 設定同期状態、ICM回答ログ、Study保存局面と削除墓標など |
 
 `Attempt`（`web/src/lib/storage/types.ts`）
 
@@ -31,6 +31,7 @@
 - 設定（言語・テーマ等）は `localStorage["tessera.settings.v1"]`。起動前スクリプトでちらつきを防ぐ。
 - IndexedDBが使えない環境（プライベートモード等）は `MemoryRepo` にフォールバック。
 - 書き出し/読み込み: JSON（`ExportBlob`）。読み込みは `ts:nodeId:hand` で重複排除、SRSは新しい方を採用。
+- `meta` の `icm.log` は新しい2,000件、`study.bookmarks` は保存局面、`study.bookmarkDeletions` は同期/バックアップ用の削除墓標を保持する。DB版は上げず、バックアップ取り込みでは端末データと統合する。
 
 ## 2. Supabase (Postgres) — Phase 5 で実装
 
@@ -93,8 +94,8 @@ create policy "own rows" on public.attempts for all using (user_id = auth.uid())
 -- (他のテーブルも同じ形のポリシー)
 ```
 
-### 同期アルゴリズム（Phase 5, 実装済み）
-実装済みの仕様は [10-analyze-and-sync.md](10-analyze-and-sync.md)、テーブル定義は `supabase/schema.sql`（このページのSQLから、`attempts.mode` に `post`/`postSpot` を追加、`srs_items` に `node_id`/`hand` を追加、`range_presets` を `(user_id, id text)` キーに変更している）。
+### 同期アルゴリズム（Phase 5、拡張中）
+実装仕様は [10-analyze-and-sync.md](10-analyze-and-sync.md)。現行PR #3で ICM練習ログとStudy保存局面/削除墓標を追加している。`supabase/schema.sql` がテーブル定義の正本（このページの古い概念SQLから `attempts.mode` に `post`/`postSpot`、`srs_items` に `node_id`/`hand` を追加し、`range_presets` を `(user_id, id text)` キーに変更済み）。現行PRのSQLは実Supabaseにはまだ適用していない。
 
 > 秘密鍵はクライアントに置かない。使うのは `anon` キー＋RLSのみ。`service_role` キーは使わない。
 

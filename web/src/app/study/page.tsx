@@ -9,7 +9,7 @@ import { SolutionGate } from "@/components/SolutionGate";
 import { GridSkeleton } from "@/components/Skeleton";
 import { Histogram } from "@/components/Charts";
 import { Term } from "@/components/Term";
-import { ALL_CLASSES, HAND_FILTERS, HandFilterId, holdsRank, matchesFilter, RANK_CHARS } from "@/lib/poker/hands";
+import { ALL_CLASSES, classInfo, HAND_FILTERS, HandFilterId, holdsRank, matchesFilter, RANK_CHARS } from "@/lib/poker/hands";
 import { useSettings } from "@/lib/settings";
 import { useLatest } from "@/lib/util/hooks";
 import { preload } from "react-dom";
@@ -17,11 +17,13 @@ import { ApproxNote } from "@/components/ApproxNote";
 import type { SolutionStore } from "@/lib/solution/loader";
 import { useNodeSolution, useSolutionStore } from "@/lib/solution/context";
 import { DEPTHS } from "@/lib/solution/loader";
-import { actionLabel, fmtBB, history, spotType, stateAt } from "@/lib/solution/tree";
+import { actionLabel, fmtBB, history, lineText, spotType, stateAt } from "@/lib/solution/tree";
 import { ActionKind, Terminal } from "@/lib/solution/types";
 import type { Key } from "@/lib/i18n/ja";
 import { actionCombos, actionMix, actionRange, equityBins, rangeCombosOf, rangeWidth } from "@/lib/study/summary";
 import { haptic } from "@/lib/util/haptics";
+import { preflopHash, preflopLink } from "@/lib/study/links";
+import { SaveButton } from "@/components/SaveButton";
 import { withBase } from "@/lib/util/base";
 
 const MODES: GridMode[] = ["strategy", "ev", "equity", "weight"];
@@ -30,9 +32,9 @@ function termKey(term: Terminal): Key {
   return term === Terminal.Fold ? "term.fold" : term === Terminal.Flop ? "term.flop" : term === Terminal.FlopMulti ? "term.flopMulti" : "term.allin";
 }
 
-function replaceHash(id: number, depth: number) {
+function replaceHash(id: number, depth: number, hand: number | null) {
   try {
-    window.history.replaceState(null, "", `${location.pathname}#d=${depth}&n=${id}`);
+    window.history.replaceState(null, "", `${location.pathname}${preflopHash(depth, id, hand)}`);
   } catch {
     /* ignore */
   }
@@ -54,17 +56,24 @@ function Study({ store }: { store: SolutionStore }) {
   // deep link: #d=40&n=123 (depth, node). Another depth starts at the node given, or at the root, once that solution has loaded.
   const { depth, setDepth } = useSolutionStore();
   const depthRef = useLatest(depth);
-  const wanted = useRef<{ d: number | null; n: number | null } | null>(null);
+  const wanted = useRef<{ d: number | null; n: number | null; h: number | null } | null>(null);
+  /** the address this view last applied or wrote: when the address is something else, a change from outside is on its way */
+  const known = useRef("");
   const nodeCount = useLatest(m.nodes.length);
   useEffect(() => {
     const apply = () => {
+      known.current = location.hash;
       const d = /d=(\d+)/.exec(location.hash);
       const n = /n=(\d+)/.exec(location.hash);
-      const want = { d: d ? Number(d[1]) : null, n: n ? Number(n[1]) : null };
+      const h = /h=(\d+)/.exec(location.hash); // the hand class to open on the chart (0..168)
+      const want = { d: d ? Number(d[1]) : null, n: n ? Number(n[1]) : null, h: h && Number(h[1]) < 169 ? Number(h[1]) : null };
       if (want.d !== null && (DEPTHS as readonly number[]).includes(want.d) && want.d !== depthRef.current) {
         wanted.current = want; // applied when the other solution is here
         setDepth(want.d);
-      } else if (want.n !== null && want.n < nodeCount.current) setNodeId(want.n);
+      } else {
+        if (want.n !== null && want.n < nodeCount.current) setNodeId(want.n);
+        if (want.h !== null) setSelected(want.h);
+      }
     };
     apply();
     window.addEventListener("hashchange", apply);
@@ -79,7 +88,7 @@ function Study({ store }: { store: SolutionStore }) {
     if (w && (w.d === null || w.d === m.stack)) {
       wanted.current = null;
       setNodeId(w.n !== null && w.n < m.nodes.length ? w.n : 0);
-      setSelected(null);
+      setSelected(w.h);
     } else if (!first) {
       setNodeId(0);
       setSelected(null);
@@ -92,9 +101,16 @@ function Study({ store }: { store: SolutionStore }) {
   useEffect(() => {
     const first = firstView.current;
     firstView.current = false;
-    if (location.hash === `#d=${m.stack}&n=${nodeId}` || (first && !location.hash)) return;
-    replaceHash(nodeId, m.stack);
-  }, [nodeId, m.stack]);
+    // the first view never rewrites the address it was opened with: the link is applied by the effect above, and the
+    // address follows once the view has moved
+    const want = preflopHash(m.stack, nodeId, selected);
+    if (first || location.hash === want) return;
+    // the address was changed from outside (a link, the back button) and its hashchange has not been handled yet:
+    // writing now would undo that change
+    if (location.hash !== known.current) return;
+    replaceHash(nodeId, m.stack, selected);
+    known.current = want;
+  }, [nodeId, m.stack, selected]);
 
   const node = m.nodes[nodeId];
   const state = useMemo(() => stateAt(m, nodeId), [m, nodeId]);
@@ -141,9 +157,15 @@ function Study({ store }: { store: SolutionStore }) {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-muted" data-testid="study-sub">
-        {t("format.cash6")} · {t("format.stack", { n: m.stack })} · {t(`spot.${spot}` as Key)}
-      </p>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="text-sm text-muted" data-testid="study-sub">
+          {t("format.cash6")} · {t("format.stack", { n: m.stack })} · {t(`spot.${spot}` as Key)}
+        </p>
+        <SaveButton
+          href={preflopLink(m.stack, nodeId, selected)}
+          title={`${m.stack}bb · ${m.players[node.actor]}${steps.length ? ` · ${lineText(m, nodeId, t)}` : ""}${selected === null ? "" : ` · ${classInfo(selected).name}`}`}
+        />
+      </div>
 
       <LineBar steps={steps} players={m.players} currentLabel={`${m.players[node.actor]} ?`} onJump={go} />
 

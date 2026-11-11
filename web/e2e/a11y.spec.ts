@@ -21,7 +21,7 @@ for (const theme of ["dark", "light"] as const) {
     test.beforeEach(async ({ context }) => {
       await context.addInitScript((th) => localStorage.setItem("tessera.settings.v1", JSON.stringify({ onboarded: true, theme: th })), theme);
     });
-    for (const path of ["/", "/study/", "/study/postflop/", "/study/report/", "/practice/", "/solve/", "/builder/", "/icm/", "/analyze/", "/stats/", "/settings/", "/glossary/", "/roadmap/"]) {
+    for (const path of ["/", "/study/", "/study/postflop/", "/study/report/", "/study/saved/", "/practice/", "/solve/", "/builder/", "/icm/", "/equity/", "/odds/", "/analyze/", "/stats/", "/settings/", "/glossary/", "/roadmap/"]) {
       test(`${path}`, async ({ page }) => {
         await page.goto(path);
         if (path === "/study/" || path === "/study/postflop/") await page.waitForSelector(".cell");
@@ -75,6 +75,16 @@ for (const theme of ["dark", "light"] as const) {
       await page.locator('[data-cls="14"]').click();
       await page.getByRole("tab", { name: "EV" }).click();
       await audit(page, `${theme} study EV`);
+    });
+    test("odds quiz question and answer feedback", async ({ page }) => {
+      await page.goto("/odds/");
+      const quiz = page.getByTestId("odds-quiz");
+      await quiz.getByTestId("odds-quiz-start").click();
+      await quiz.getByTestId("odds-quiz-question").waitFor();
+      await audit(page, `${theme} odds quiz question`);
+      await quiz.getByTestId("odds-quiz-choice").first().click();
+      await quiz.getByTestId("odds-quiz-result").waitFor();
+      await audit(page, `${theme} odds quiz answer`);
     });
     test("postflop practice question and result", async ({ page }) => {
       await page.goto("/practice/");

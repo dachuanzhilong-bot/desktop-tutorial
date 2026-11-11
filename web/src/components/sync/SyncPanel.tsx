@@ -40,7 +40,7 @@ export function SyncPanel() {
           </p>
           <p className="text-sm text-muted" role="status">
             {sync.status === "syncing" ? t("sync.syncing") : sync.lastSync ? t("sync.last", { time: new Date(sync.lastSync).toLocaleString() }) : t("sync.never")}
-            {sync.report && sync.status === "idle" ? ` · ${t("sync.result", { up: sync.report.pushedAttempts + sync.report.pushedSrs + sync.report.pushedRanges, down: sync.report.pulledAttempts + sync.report.pulledSrs + sync.report.pulledRanges })}` : ""}
+            {sync.report && sync.status === "idle" ? ` · ${t("sync.result", { up: sync.report.pushedAttempts + sync.report.pushedSrs + sync.report.pushedRanges + sync.report.pushedIcmLog + sync.report.pushedBookmarks, down: sync.report.pulledAttempts + sync.report.pulledSrs + sync.report.pulledRanges + sync.report.pulledIcmLog + sync.report.pulledBookmarks })}` : ""}
             {sync.report?.settings === "pulled" ? ` · ${t("sync.settingsPulled")}` : ""}
           </p>
           {sync.error && (

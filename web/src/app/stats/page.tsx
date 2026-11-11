@@ -11,6 +11,7 @@ import { SEATS } from "@/lib/solution/tree";
 import { ALL_SPOT_COLUMNS } from "@/lib/solution/types";
 import { getRepo } from "@/lib/storage/idb";
 import { readIcmLog, summarizeIcm } from "@/lib/storage/icmLog";
+import { handLabel, recentMistakes, studyHref } from "@/lib/storage/mistakes";
 import type { IcmLogEntry } from "@/lib/storage/icmLog";
 import { dailySeries, heatmap, studyStreak, summarize, todayCount, weakSpots } from "@/lib/storage/stats";
 import type { Attempt } from "@/lib/storage/types";
@@ -50,6 +51,7 @@ export default function StatsPage() {
   const weak = useMemo(() => weakSpots(list ?? [], 3, 5), [list]);
   const streak = studyStreak(list ?? [], now);
   const today = todayCount(list ?? [], now);
+  const notebook = useMemo(() => recentMistakes(list ?? []), [list]);
   const icm = useMemo(() => (icmLog.length ? summarizeIcm(icmLog) : null), [icmLog]);
   const byGrade = useMemo(() => {
     const c: Record<string, number> = { best: 0, correct: 0, inaccurate: 0, mistake: 0, blunder: 0 };
@@ -241,6 +243,46 @@ export default function StatsPage() {
                     </Link>
                   </li>
                 ))}
+              </ul>
+            )}
+          </section>
+
+          <section className="rounded-card border border-line bg-surface p-4" aria-label={t("stats.notebook")} data-testid="notebook">
+            <h2 className="font-bold">{t("stats.notebook")}</h2>
+            <p className="mb-2 text-xs text-muted">{t("stats.notebookDesc")}</p>
+            {notebook.length === 0 ? (
+              <p className="text-sm text-muted">{t("stats.notebookNone")}</p>
+            ) : (
+              <ul className="space-y-2">
+                {notebook.map((a) => {
+                  const href = studyHref(a);
+                  const body = (
+                    <>
+                      <span>
+                        <b>{SEATS[a.seat] ?? ""}</b> · {t(`spot.${a.spot}` as Key)} · <b>{handLabel(a)}</b>
+                        <span className="block text-xs text-muted">
+                          {t("stats.notebookRow", { grade: `${GRADE_GLYPH[a.grade]} ${t(`grade.${a.grade}` as Key)}`, loss: `${a.evLoss.toFixed(2)}bb` })}
+                        </span>
+                      </span>
+                      {href && (
+                        <span aria-hidden className="text-lg text-muted">
+                          ›
+                        </span>
+                      )}
+                    </>
+                  );
+                  return (
+                    <li key={`${a.solution}:${a.nodeId}:${a.hand}`}>
+                      {href ? (
+                        <Link href={href} className="flex min-h-tap-lg items-center justify-between gap-2 rounded-control bg-surface-2 px-3 py-2">
+                          {body}
+                        </Link>
+                      ) : (
+                        <div className="flex min-h-tap-lg items-center justify-between gap-2 rounded-control bg-surface-2 px-3 py-2">{body}</div>
+                      )}
+                    </li>
+                  );
+                })}
               </ul>
             )}
           </section>

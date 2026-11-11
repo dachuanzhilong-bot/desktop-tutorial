@@ -75,14 +75,24 @@ export async function readIcmLog(repo: Repo): Promise<IcmLogEntry[]> {
   return sanitizeIcmLog(await repo.getMeta(ICM_LOG_KEY));
 }
 
-// answers come one after another (keyboard), so appends are queued: read-modify-write never interleaves
+// answers and sync merges are queued: read-modify-write never interleaves
 let queue: Promise<unknown> = Promise.resolve();
-export function appendIcmLog(repo: Repo, e: IcmLogEntry): Promise<void> {
-  const run = queue.then(async () => {
-    await repo.setMeta(ICM_LOG_KEY, mergeIcmLog(await readIcmLog(repo), [e]));
-  });
+function enqueue<T>(work: () => Promise<T>): Promise<T> {
+  const run = queue.then(work);
   queue = run.catch(() => undefined);
   return run;
+}
+
+export function mergeIcmLogIntoRepo(repo: Repo, incoming: unknown): Promise<IcmLogEntry[]> {
+  return enqueue(async () => {
+    const next = mergeIcmLog(await readIcmLog(repo), incoming);
+    await repo.setMeta(ICM_LOG_KEY, next);
+    return next;
+  });
+}
+
+export async function appendIcmLog(repo: Repo, e: IcmLogEntry): Promise<void> {
+  await mergeIcmLogIntoRepo(repo, [e]);
 }
 
 export interface IcmSummaryRow {
