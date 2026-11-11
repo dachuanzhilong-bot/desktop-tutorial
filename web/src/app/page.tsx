@@ -5,6 +5,8 @@ import { Ring } from "@/components/Charts";
 import { CrashProbe } from "@/components/CrashProbe";
 import { IconFlame, IconBolt, IconGrid, IconTarget } from "@/components/icons";
 import { InstallCard } from "@/components/InstallCard";
+import { NextLesson } from "@/components/learn/NextLesson";
+import { ReviewCard } from "@/components/practice/ReviewCard";
 import { useSettings } from "@/lib/settings";
 import { useNow } from "@/lib/util/hooks";
 import { SEATS } from "@/lib/solution/tree";
@@ -71,6 +73,10 @@ export default function Home() {
         <IconBolt width={22} height={22} />
         {t("home.solve")}
       </Link>
+
+      <ReviewCard />
+
+      <NextLesson />
 
       {weak.length > 0 && (
         <section className="rounded-card border border-line bg-surface p-4">

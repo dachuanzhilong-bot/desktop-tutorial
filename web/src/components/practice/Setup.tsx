@@ -4,7 +4,7 @@ import { DepthPicker } from "@/components/DepthPicker";
 import { IconDice, IconTimer } from "@/components/icons";
 import { DEFAULT_FILTER, PracticeFilter } from "@/lib/practice/sampler";
 import { HAND_FILTERS, HandFilterId } from "@/lib/poker/hands";
-import { getRepo } from "@/lib/storage/idb";
+import { ReviewCard } from "@/components/practice/ReviewCard";
 import { useSettings } from "@/lib/settings";
 import { ApproxNote } from "@/components/ApproxNote";
 import { useSolutionStore } from "@/lib/solution/context";
@@ -12,7 +12,7 @@ import { SPOT_TYPES, SpotType } from "@/lib/solution/types";
 import type { Key } from "@/lib/i18n/ja";
 import type { PfScenario } from "@/lib/postflop/loader";
 import { loadIndex } from "@/lib/postflop/loader";
-import type { StartConfig } from "./types";
+import type { PracticeSet, StartConfig } from "./types";
 
 const SEATS = ["UTG", "HJ", "CO", "BTN", "SB", "BB"];
 const TIMERS = [0, 5, 10, 20];
@@ -55,12 +55,15 @@ function Toggle({ label, desc, on, onChange, icon, testid }: { label: string; de
 
 export function Setup({
   onStart,
+  onReview,
   initial,
   initialMode,
   initialScenario,
   initialFlop,
 }: {
   onStart: (c: StartConfig) => void;
+  /** starts a prepared question list (a round of reviews) */
+  onReview: (s: PracticeSet) => void;
   initial?: Partial<PracticeFilter>;
   initialMode?: "spot" | "hand" | "postSpot" | "post";
   initialScenario?: string;
@@ -79,7 +82,6 @@ export function Setup({
   const [filter, setFilter] = useState<PracticeFilter>({ ...DEFAULT_FILTER, ...initial });
   const [rng, setRng] = useState(false);
   const [timer, setTimer] = useState(0);
-  const [due, setDue] = useState(0);
 
   useEffect(() => {
     loadIndex()
@@ -88,10 +90,6 @@ export function Setup({
         setFlopNames(ix.flops);
         setScenario(initialScenario && ix.scenarios.some((x) => x.id === initialScenario) ? initialScenario : ix.scenarios[0]?.id ?? "");
       })
-      .catch(() => {});
-    getRepo()
-      .allSrs()
-      .then((all) => setDue(all.filter((s) => s.due <= Date.now()).length))
       .catch(() => {});
   }, [initialScenario]);
 
@@ -104,6 +102,8 @@ export function Setup({
         <h1 className="text-2xl font-extrabold">{t("practice.title")}</h1>
         <p className="text-sm text-muted">{t("practice.subtitle")}</p>
       </header>
+
+      <ReviewCard onStartSet={onReview} />
 
       <section aria-label={t("practice.mode")} className="grid grid-cols-2 gap-2.5">
         {/* all four are always laid out (no jump when the postflop index arrives); postflop modes wait for their data */}
@@ -237,7 +237,6 @@ export function Setup({
         </div>
       </section>
 
-      {due > 0 && <p className="text-sm text-accent-text">{t("practice.due", { n: due })}</p>}
       <ApproxNote>{isPost ? t("pf.approx") : t("approx.grading", { depth })}</ApproxNote>
 
       {/* always on screen above the tab bar: practice starts in two taps from anywhere (tab + this button) */}

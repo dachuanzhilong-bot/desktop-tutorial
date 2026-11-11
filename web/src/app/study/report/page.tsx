@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { PlayingCard } from "@/components/PlayingCard";
 import { Skeleton } from "@/components/Skeleton";
 import { StudyTabs } from "@/components/StudyTabs";
+import { TextureQuiz } from "@/components/report/TextureQuiz";
 import type { Key } from "@/lib/i18n/ja";
 import { cardOf, parseBoard } from "@/lib/postflop/combos";
 import { loadIndex, PfIndex } from "@/lib/postflop/loader";
@@ -43,6 +44,7 @@ function Report({ index }: { index: PfIndex }) {
         <p className="text-sm text-muted">{t("rep.subtitle")}</p>
       </header>
       <StudyTabs />
+      <TextureQuiz />
 
       <div className="no-scrollbar -mx-4 flex gap-1.5 overflow-x-auto px-4">
         {index.scenarios.map((s) => (

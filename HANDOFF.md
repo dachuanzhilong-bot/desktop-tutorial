@@ -1,6 +1,15 @@
 # HANDOFF
 
-## Claude による引き継ぎ（2026-11-11）
+## 現在の状態（Claude、PR #3 マージ後・最新）
+- PR #3 はマージ済み（持ち主の了承あり）。`main` は GitHub Pages に自動公開される（`.github/workflows/pages.yml`、公開前に `npm run e2e:subpath`）。公開URL: https://dachuanzhilong-bot.github.io/desktop-tutorial/ 。持ち主が開いて使えることを確認済み。リポジトリは公開。
+- 以後の作業は `claude/practical-volta-fv0rdo`（マージ済み `main` から作り直し、同名）で行う。**次のPRのマージ・公開・設定変更は、持ち主の明示的な許可を待つ**（PR #3 への許可は以後に及ばない）。
+- マージ後に追加した機能（この枝、未マージ）: ① 復習キュー（`lib/practice/review.ts`、`components/practice/ReviewCard.tsx`）、② 学習の道すじ `/learn/`（`lib/learn/lessons.ts`、`lib/storage/lessons.ts`、`app/learn/page.tsx`、ホームの「次のレッスン」）、③ フロップの読み方ドリル（`lib/postflop/textureQuiz.ts`、`components/report/TextureQuiz.tsx`、`/study/report/` 上部）、④ 更新のお知らせ（`lib/pwa/updateWatch.ts`、`components/UpdateBanner.tsx`、`scripts/stamp-sw.mjs` がビルドごとに `sw.js` へ指紋を書く）。各機能に単体テスト・E2E・axe（該当画面）あり。Service Worker は `VERSION = "v9"`、シェルのキャッシュ名はビルド指紋つき。
+- 学んだこと: Next の同一ページへのハッシュだけの `router.push` はページの effect も `hashchange` も再実行しない（練習セットの開始は `onStartSet` で直接開始）。表示テキストと違う `aria-label` は axe の `label-content-name-mismatch` になる（一覧ボタンは表示テキストをそのまま名前にする）。Playwright の `context.route` は Service Worker のスクリプト更新取得を横取りできない（更新通知は `controllerchange` を直接送って確認）。
+- 検証できていないこと: 公開サイトの実機表示（この環境から github.io に接続できない）、実Supabase（`supabase/schema.sql` は未適用）、スマホ実機、スクリーンリーダー。
+- 次の候補: HU/9人卓のプリフロップ解、全フロップ計算、Lighthouse の再計測（ホームにカードが増えた）、復習キューのポストフロップ対応。
+
+## 以前の記録（ChatGPT 作業時点を含む。古い記述は最新の状態と食い違うことがある）
+### Claude による引き継ぎ（2026-11-11）
 - ChatGPT の共有会話（アシスタント発言80件、最後の引き継ぎブロックまで）を全文取り込み、この `HANDOFF.md` とコミット履歴と照合した。食い違いなし。会話にだけあった情報: 作業は Windows（PowerShell、Node 26）で行われ、目視確認の画像は ChatGPT 側の手元（`work/visual-check/`）にありリポジトリには無い。
 - 引き継ぎ時点: ブランチ先端 `8fbe29d`、CI（solver / web、push と PR の4実行）はすべて success、手元の型チェック・lint・Vitest 300件OK。PR #3 はドラフトのまま、マージ・公開は持ち主の判断待ち。
 - `ba46eee` の #108 の web E2E 失敗は原因判明済み: 練習の「F」キーのテストが、フォールドの無い出題（BB のチェック/レイズだけ）で押しても答えられないことがあった（`8f561ee` で修正、負荷をかけた120回で全成功）。
@@ -54,9 +63,9 @@ PR #3 の機能を検証しながら不足機能を優先順に実装する。P1
 - P3の英語E2E初回は閉じた`select`内の`option`を可視と誤判定してPC/モバイルで失敗。選択値と全optionの文言を検査する正しい期待値へ直し、保存画面対象12件と全体E2E 245件は成功。アプリ不具合ではない。
 
 ## 次にやること（優先順）
-1. PR #3はドラフトのまま維持する。マージ・公開・設定変更は持ち主の判断待ち。
-2. 次機能候補はボードテクスチャ当てドリル。既存レポートのテクスチャ分類を再利用できるか確認し、正答の定義と初心者向け説明を決めて小さく実装する。
-3. HU/9人卓プリフロップ解・全フロップ計算、検索/共有リンクの拡張を見積もり、価値とデータ量で優先度を再評価する。
+1. この枝（`claude/practical-volta-fv0rdo`）のドラフトPRのCIを緑にして、持ち主に「マージしてよいか」を確認する（許可なくマージしない）。
+2. マージ後に公開版（GitHub Pages）の実表示を持ち主に確認してもらう。この環境からは github.io に接続できない。
+3. HU/9人卓プリフロップ解・全フロップ計算、復習キューのポストフロップ対応、Lighthouse の再計測（ホームにカードが増えた）を、価値とデータ量で優先度を再評価する。
 4. 実Supabase適用、実機とVoiceOver/TalkBack、GGPoker実履歴は未確認のまま。利用可能な環境ができたら検証する。
 
 ## 決めたことと、その理由（採用しなかった案も）
