@@ -164,3 +164,10 @@
 - `/odds/` に厳密計算値を使うポットオッズ/アウツ4択クイズを追加。日英対応、説明、セッション中の正解数・連続正解を表示。スコアは保存しない。
 - ローカル検証: Vitest 298 passed、`validate:data` 90 passed、E2E 241 passed / 1 skipped、サブパスE2E 2 passed。axeはクイズ回答状態をダーク/ライトで確認。
 - 390×844と1440×900でクイズ回答状態を確認し、横スクロールとブラウザーエラーなし。実Supabase・実機・スクリーンリーダーは未確認。最新コミットのActionsはpush後に確認。
+
+### 2026-11 PR #3 マージ後の追加（PR #4、ドラフト）
+
+- 復習キュー、学習の道すじ（`/learn/`）、フロップの読み方ドリル、更新のお知らせを追加（上の表の該当行）。
+- ローカル検証: 型チェック・lint 警告0、Vitest 37 files / 321 passed、E2E 281 passed / 1 skipped（282件中）。初回の全体実行で `/learn/` のaxe（`label-content-name-mismatch`: 一覧ボタンの `aria-label` が表示テキストと違った）が4件失敗し、`aria-label` を外して表示テキストをそのまま名前にしたうえで再実行して通過を確認。
+- ドリルと更新のお知らせはaxe（ダーク/ライト、回答前後）と44px確認つき。更新のお知らせは `controllerchange` を直接送って確認しており、本物のService Worker入れ替えはPlaywrightの `route` がSWの更新取得を横取りできないため自動化していない。
+- 未確認: 公開サイト（GitHub Pages）での実機表示、実Supabase、スマホ実機、スクリーンリーダー。
