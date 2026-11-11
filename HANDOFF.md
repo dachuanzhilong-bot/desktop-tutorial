@@ -1,5 +1,11 @@
 # HANDOFF
 
+## Claude による引き継ぎ（2026-11-11）
+- ChatGPT の共有会話（アシスタント発言80件、最後の引き継ぎブロックまで）を全文取り込み、この `HANDOFF.md` とコミット履歴と照合した。食い違いなし。会話にだけあった情報: 作業は Windows（PowerShell、Node 26）で行われ、目視確認の画像は ChatGPT 側の手元（`work/visual-check/`）にありリポジトリには無い。
+- 引き継ぎ時点: ブランチ先端 `8fbe29d`、CI（solver / web、push と PR の4実行）はすべて success、手元の型チェック・lint・Vitest 300件OK。PR #3 はドラフトのまま、マージ・公開は持ち主の判断待ち。
+- `ba46eee` の #108 の web E2E 失敗は原因判明済み: 練習の「F」キーのテストが、フォールドの無い出題（BB のチェック/レイズだけ）で押しても答えられないことがあった（`8f561ee` で修正、負荷をかけた120回で全成功）。
+- 以後は Claude が `claude/practical-volta-fv0rdo` を更新する。ChatGPT が再開する場合は、先に `git pull` してから始めること。
+
 ## 今の目的
 PR #3 の機能を検証しながら不足機能を優先順に実装する。P1同期、P2 `/odds/` クイズ、P3保存局面の検索/並べ替えは完了し、PRブランチへpush済み。P3コードpush CI #118、PR CI #119、HANDOFF更新CI #120–#123はすべてsuccess。PRはドラフトのままにし、マージ・公開・設定変更はしない。
 
