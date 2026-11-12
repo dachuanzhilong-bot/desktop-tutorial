@@ -8,6 +8,7 @@ const TABS = [
   { href: "/study/postflop/", key: "pf.tab.post" },
   { href: "/study/report/", key: "pf.tab.report" },
   { href: "/study/saved/", key: "pf.tab.saved" },
+  { href: "/learn/", key: "pf.tab.learn" },
 ] as const;
 
 /** Preflop / Postflop / Report / Saved switcher shown at the top of every Study page */

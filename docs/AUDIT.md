@@ -37,6 +37,10 @@
 | Practice | 強制される手（オールイン＋コール後のフォールド）を出題しない | ❌（不具合） | ✅ | `sampler.ts`、`logic.test.ts` |
 | Practice | 用語のタップ解説（EV・エクイティ・3ベット等） | 🟡 | ✅ | 解説欄に「用語（タップで説明）」 |
 | Practice | ポットオッズ/アウツを使った反復クイズ | ❌ | ✅（PR #3） | 既存の厳密式を使う4択ドリル。日英、セッション内スコア、式の説明。Vitest/E2E/axe成功 |
+| Practice / Home | 復習キュー（期限切れのプリフロップ局面を件数表示、1タップで練習） | ❌ | ✅ | `lib/practice/review.ts`、`review.test.ts`、`e2e/review.spec.ts`（ホームと練習設定の両経路） |
+| Learn | 9レッスン＋進捗（できた印、次のレッスン） | ❌ | ✅ | `lib/learn/lessons.ts`、`lessons.test.ts`、`e2e/learn.spec.ts`。完了状態はバックアップ統合（先の時刻）に対応 |
+| Study | フロップの読み方ドリル（スート・つながり・ペア・最高位） | ❌ | ✅ | `lib/postflop/textureQuiz.ts`。正解は集計レポートと同じ分類、全21フロップ・全パターンの出題をテスト。axe（ダーク/ライト・回答前後） |
+| PWA | 更新のお知らせ、デプロイごとのService Worker更新 | 🟡（sw.jsが同じだと更新が検知されない） | ✅ | `scripts/stamp-sw.mjs`、`stampSw.test.ts`、`updateWatch.test.ts`、`e2e/update.spec.ts`。本物のSW入れ替えはPlaywrightのroute制約で自動化できず、`controllerchange` を直接送って確認 |
 | Analyze | PokerStars 取り込み・EV損失・弱点・練習セット | ✅ | ✅ | `lib/analyze/*` |
 | Analyze | GGPoker | 🧪 | 🧪 | 書式の知識から作った合成サンプルのみ（GGの差分: 全員分の Dealt to、Cash Drop、SHOWDOWN も追加） |
 | Analyze | 壊れた/未知の形式で落ちない・理由を表示 | 🟡 | ✅ | ファズ1,500件で例外0、理由は日本語（`analyze.robust.test.ts`, `lib/analyze/reasons.ts`）。ハンドの無いファイルは名前を表示 |
@@ -160,3 +164,10 @@
 - `/odds/` に厳密計算値を使うポットオッズ/アウツ4択クイズを追加。日英対応、説明、セッション中の正解数・連続正解を表示。スコアは保存しない。
 - ローカル検証: Vitest 298 passed、`validate:data` 90 passed、E2E 241 passed / 1 skipped、サブパスE2E 2 passed。axeはクイズ回答状態をダーク/ライトで確認。
 - 390×844と1440×900でクイズ回答状態を確認し、横スクロールとブラウザーエラーなし。実Supabase・実機・スクリーンリーダーは未確認。最新コミットのActionsはpush後に確認。
+
+### 2026-11 PR #3 マージ後の追加（PR #4、ドラフト）
+
+- 復習キュー、学習の道すじ（`/learn/`）、フロップの読み方ドリル、更新のお知らせを追加（上の表の該当行）。
+- ローカル検証: 型チェック・lint 警告0、Vitest 37 files / 321 passed、E2E 281 passed / 1 skipped（282件中）。初回の全体実行で `/learn/` のaxe（`label-content-name-mismatch`: 一覧ボタンの `aria-label` が表示テキストと違った）が4件失敗し、`aria-label` を外して表示テキストをそのまま名前にしたうえで再実行して通過を確認。
+- ドリルと更新のお知らせはaxe（ダーク/ライト、回答前後）と44px確認つき。更新のお知らせは `controllerchange` を直接送って確認しており、本物のService Worker入れ替えはPlaywrightの `route` がSWの更新取得を横取りできないため自動化していない。
+- 未確認: 公開サイト（GitHub Pages）での実機表示、実Supabase、スマホ実機、スクリーンリーダー。

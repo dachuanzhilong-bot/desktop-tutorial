@@ -5,7 +5,7 @@ import { useImmersive } from "@/components/ShellContext";
 import { SolutionGate } from "@/components/SolutionGate";
 import { Session } from "@/components/practice/Session";
 import { Setup } from "@/components/practice/Setup";
-import type { StartConfig } from "@/components/practice/types";
+import type { PracticeSet, StartConfig } from "@/components/practice/types";
 import { PostSession } from "@/components/postflop/PostSession";
 import { DEFAULT_FILTER } from "@/lib/practice/sampler";
 import type { PracticeFilter } from "@/lib/practice/sampler";
@@ -46,15 +46,8 @@ function parseHash(): Preset {
   };
 }
 
-interface PendingSet {
-  title: string;
-  /** solution id the node ids belong to (absent in sets made before stack depths existed: 100bb) */
-  solution?: string;
-  items: { nodeId: number; hand: number }[];
-}
-
 /** waits until the solution of the question list is loaded (switching the stack depth if needed), then starts it */
-function SetStarter({ store, pending, onStart }: { store: SolutionStore; pending: PendingSet; onStart: () => void }) {
+function SetStarter({ store, pending, onStart }: { store: SolutionStore; pending: PracticeSet; onStart: () => void }) {
   useEffect(() => {
     if (store.manifest.id === (pending.solution ?? "cash6max-100bb")) onStart();
   }, [store, pending, onStart]);
@@ -65,7 +58,7 @@ export default function PracticePage() {
   const [config, setConfig] = useState<StartConfig | null>(null);
   const [run, setRun] = useState(0);
   const [initial, setInitial] = useState<Preset | null>(null);
-  const [pending, setPending] = useState<PendingSet | null>(null);
+  const [pending, setPending] = useState<PracticeSet | null>(null);
   const { setDepth } = useSolutionStore();
   useImmersive(config !== null);
   useEffect(() => {
@@ -75,7 +68,7 @@ export default function PracticePage() {
     if (!preset.set) return setInitial(preset);
     // a question list from Analyze: start right away
     getRepo()
-      .getMeta<PendingSet>(`practiceSet:${preset.set}`)
+      .getMeta<PracticeSet>(`practiceSet:${preset.set}`)
       .then((s) => {
         if (s?.items.length) {
           setDepth(depthOf(s.solution));
@@ -89,7 +82,7 @@ export default function PracticePage() {
   // A preset from the URL (read after hydration) remounts it with those values.
   const shown = initial ?? NO_PRESET;
   if (!config && !pending && !shown.set)
-    return <Setup key={presetKey(shown)} initial={shown.filter} initialMode={shown.mode} initialScenario={shown.scenario} initialFlop={shown.flop} onStart={(c) => setConfig(c)} />;
+    return <Setup key={presetKey(shown)} initial={shown.filter} initialMode={shown.mode} initialScenario={shown.scenario} initialFlop={shown.flop} onStart={(c) => setConfig(c)} onReview={(s) => { setDepth(depthOf(s.solution)); setPending(s); }} />;
 
   return (
     // every practice animation follows the OS "reduce motion" setting

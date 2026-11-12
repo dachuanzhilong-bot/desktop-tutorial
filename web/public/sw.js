@@ -3,20 +3,23 @@
  *  - precache: pages + solution files listed in /solutions/index.json (written by scripts/pack-solutions.mjs)
  *  - /_next/static, /icons: cache-first; /solutions, /postflop, /wasm, /solver-worker.js: stale-while-revalidate
  *  - navigations: network-first with a short timeout, falling back to the cache, then to the home page
- *  Bump VERSION to drop old caches.
+ *  Bump VERSION to drop old caches (the solution data); BUILD is stamped by the build and renews the app shell cache.
  */
 // the app may live under a sub-path (GitHub Pages project site): the scope of this worker is that path
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, "");
-const VERSION = "v8";
-const CORE = `tessera-core-${VERSION}`;
+const VERSION = "v9";
+// written into the built copy of this file by scripts/stamp-sw.mjs: every build gets its own worker, so a new deploy is noticed
+const BUILD = "dev";
+const CORE = `tessera-core-${VERSION}-${BUILD}`;
 const DATA = `tessera-data-${VERSION}`;
-const PAGES = ["/", "/study/", "/study/postflop/", "/study/report/", "/study/saved/", "/solve/", "/builder/", "/icm/", "/equity/", "/odds/", "/practice/", "/stats/", "/analyze/", "/settings/", "/glossary/", "/roadmap/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"].map((u) => BASE + u);
+const PAGES = ["/", "/study/", "/study/postflop/", "/study/report/", "/study/saved/", "/learn/", "/solve/", "/builder/", "/icm/", "/equity/", "/odds/", "/practice/", "/stats/", "/analyze/", "/settings/", "/glossary/", "/roadmap/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"].map((u) => BASE + u);
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
     (async () => {
       const core = await caches.open(CORE);
-      await Promise.all(PAGES.map((u) => core.add(u).catch(() => {})));
+      // 'reload': a new version must come from the server, not from the browser's own copy of the old pages
+      await Promise.all(PAGES.map((u) => core.add(new Request(u, { cache: "reload" })).catch(() => {})));
       // every page's JS/CSS must be available offline, not only those of the pages visited so far:
       // discover the hashed /_next/static assets referenced by the cached HTML and cache them too
       const assets = new Set();
@@ -31,12 +34,16 @@ self.addEventListener("install", (event) => {
         const res = await fetch(BASE + "/solutions/index.json", { cache: "no-store" });
         const idx = await res.json();
         const data = await caches.open(DATA);
-        await Promise.all(idx.solutions.flatMap((s) => s.files).map((u) => data.add(BASE + u).catch(() => {})));
+        // files already in the cache are not fetched again: the data only changes with VERSION, and is refreshed on use
+        const addNew = async (u) => {
+          if (!(await data.match(BASE + u))) await data.add(BASE + u).catch(() => {});
+        };
+        await Promise.all(idx.solutions.flatMap((s) => s.files).map(addNew));
         await data.put(BASE + "/solutions/index.json", new Response(JSON.stringify(idx), { headers: { "content-type": "application/json" } }));
         // postflop flops are large: only the index is precached, each flop is cached the first time it is opened
-        await data.add(BASE + "/postflop/index.json").catch(() => {});
+        await data.add(BASE + "/postflop/index.json").catch(() => {});  // small; fetched again so the list of flops is current
         // the Solve screen runs the WebAssembly solver in a worker: keep both offline
-        await Promise.all(["/wasm/tessera_solver.wasm", "/solver-worker.js", "/data/equity169.bin"].map((u) => data.add(BASE + u).catch(() => {})));
+        await Promise.all(["/wasm/tessera_solver.wasm", "/solver-worker.js", "/data/equity169.bin"].map(addNew));
       } catch (_) {
         /* offline install: data will be cached on first use */
       }

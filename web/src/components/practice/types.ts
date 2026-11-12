@@ -12,6 +12,14 @@ export interface PracticeConfig {
   title?: string;
 }
 
+/** a prepared question list: the mistakes Analyze found, or a round of spaced-repetition reviews */
+export interface PracticeSet {
+  title: string;
+  /** solution id the node ids belong to (absent in sets made before stack depths existed: 100bb) */
+  solution?: string;
+  items: { nodeId: number; hand: number }[];
+}
+
 import type { PostConfig } from "@/components/postflop/PostSession";
 
 /** what the setup screen hands over to the practice page */

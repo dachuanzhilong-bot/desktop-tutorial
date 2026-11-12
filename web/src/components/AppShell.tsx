@@ -9,6 +9,7 @@ import { IconBolt, IconChart, IconGear, IconGrid, IconHome, IconTarget } from ".
 import { CrashProbe } from "./CrashProbe";
 import { OfflineBanner } from "./OfflineBanner";
 import { Onboarding } from "./Onboarding";
+import { UpdateBanner } from "./UpdateBanner";
 import { useShell } from "./ShellContext";
 
 const NAV = [
@@ -45,6 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         {/* readable width on large screens; the Study chart uses the full width for its two columns */}
         <div className={path === "/study/" ? "" : "mx-auto w-full max-w-3xl"}>
           <OfflineBanner />
+          <UpdateBanner />
           {children}
         </div>
       </main>
