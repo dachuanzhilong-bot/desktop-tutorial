@@ -93,7 +93,7 @@ describe("practice engine", () => {
     expect(counts.size).toBeGreaterThan(2);
     const node = nodes[0];
     const sol = loadNode(m, node);
-    const h = pickHand(sol, node, { ...DEFAULT_FILTER, hands: "pairs" }, rnd, new Map(), Date.now());
+    const h = pickHand(sol, { ...DEFAULT_FILTER, hands: "pairs" }, rnd, () => undefined, Date.now());
     expect(classByName("AA") <= h || true).toBe(true);
     expect(Math.floor(h / 13)).toBe(h % 13); // pairs only
   });

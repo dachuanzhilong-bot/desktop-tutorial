@@ -1,3 +1,4 @@
+import type { ReviewItem } from "@/lib/practice/review";
 import type { PracticeFilter } from "@/lib/practice/sampler";
 
 export interface PracticeConfig {
@@ -15,10 +16,10 @@ export interface PracticeConfig {
 /** a prepared question list: the mistakes Analyze found, or a round of spaced-repetition reviews */
 export interface PracticeSet {
   title: string;
-  /** solution id the questions belong to (absent in sets made before stack depths existed: 100bb) */
-  solution?: string;
-  /** with `pos` (a position key) the node id is looked up again when the set starts (lib/practice/review.ts: resolveItems) */
-  items: { nodeId: number; hand: number; pos?: string }[];
+  /** solution id the questions belong to */
+  solution: string;
+  /** each question names its decision by a position key; the node is looked up when the set starts (lib/practice/review.ts: resolveItems) */
+  items: ReviewItem[];
 }
 
 import type { PostConfig } from "@/components/postflop/PostSession";

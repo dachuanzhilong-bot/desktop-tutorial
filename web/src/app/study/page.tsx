@@ -22,7 +22,9 @@ import { ActionKind, Terminal } from "@/lib/solution/types";
 import type { Key } from "@/lib/i18n/ja";
 import { actionCombos, actionMix, actionRange, equityBins, rangeCombosOf, rangeWidth } from "@/lib/study/summary";
 import { haptic } from "@/lib/util/haptics";
-import { preflopHash, preflopLink } from "@/lib/study/links";
+import { parsePreflopHash, preflopHash, preflopLink, preflopTarget } from "@/lib/study/links";
+import type { PreflopTarget } from "@/lib/study/links";
+import { preflopKey, ROOT_KEY } from "@/lib/solution/positionKey";
 import { SaveButton } from "@/components/SaveButton";
 import { withBase } from "@/lib/util/base";
 
@@ -32,9 +34,9 @@ function termKey(term: Terminal): Key {
   return term === Terminal.Fold ? "term.fold" : term === Terminal.Flop ? "term.flop" : term === Terminal.FlopMulti ? "term.flopMulti" : "term.allin";
 }
 
-function replaceHash(id: number, depth: number, hand: number | null) {
+function replaceHash(hash: string) {
   try {
-    window.history.replaceState(null, "", `${location.pathname}${preflopHash(depth, id, hand)}`);
+    window.history.replaceState(null, "", `${location.pathname}${hash}`);
   } catch {
     /* ignore */
   }
@@ -53,26 +55,25 @@ function Study({ store }: { store: SolutionStore }) {
   const [peek, setPeek] = useState<number | null>(null);
   const [tab, setTab] = useState<"range" | "compare">("range");
 
-  // deep link: #d=40&n=123 (depth, node). Another depth starts at the node given, or at the root, once that solution has loaded.
+  // deep link: #d=40&p=F-F-R2.5 (depth, position key; lib/study/links.ts). The key is looked up in the loaded solution —
+  // a position it does not have opens the root. Another depth starts at that position once its solution has loaded.
   const { depth, setDepth } = useSolutionStore();
   const depthRef = useLatest(depth);
-  const wanted = useRef<{ d: number | null; n: number | null; h: number | null } | null>(null);
+  const wanted = useRef<PreflopTarget | null>(null);
   /** the address this view last applied or wrote: when the address is something else, a change from outside is on its way */
   const known = useRef("");
-  const nodeCount = useLatest(m.nodes.length);
+  const manifest = useLatest(m);
   useEffect(() => {
     const apply = () => {
       known.current = location.hash;
-      const d = /d=(\d+)/.exec(location.hash);
-      const n = /n=(\d+)/.exec(location.hash);
-      const h = /h=(\d+)/.exec(location.hash); // the hand class to open on the chart (0..168)
-      const want = { d: d ? Number(d[1]) : null, n: n ? Number(n[1]) : null, h: h && Number(h[1]) < 169 ? Number(h[1]) : null };
-      if (want.d !== null && (DEPTHS as readonly number[]).includes(want.d) && want.d !== depthRef.current) {
+      const want = parsePreflopHash(location.hash);
+      if (want.depth !== null && (DEPTHS as readonly number[]).includes(want.depth) && want.depth !== depthRef.current) {
         wanted.current = want; // applied when the other solution is here
-        setDepth(want.d);
+        setDepth(want.depth);
       } else {
-        if (want.n !== null && want.n < nodeCount.current) setNodeId(want.n);
-        if (want.h !== null) setSelected(want.h);
+        const node = preflopTarget(manifest.current, want);
+        if (node !== null) setNodeId(node);
+        if (want.hand !== null) setSelected(want.hand);
       }
     };
     apply();
@@ -80,21 +81,23 @@ function Study({ store }: { store: SolutionStore }) {
     return () => window.removeEventListener("hashchange", apply);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+  // the position being shown, as its key: what the address bar and a saved position hold (never the node number)
+  const pos = useMemo(() => (m.nodes[nodeId] ? preflopKey(m, nodeId) : ROOT_KEY), [m, nodeId]);
   const shownId = useRef<string | null>(null);
   useEffect(() => {
     const first = shownId.current === null;
     shownId.current = m.id;
     const w = wanted.current;
-    if (w && (w.d === null || w.d === m.stack)) {
+    if (w && (w.depth === null || w.depth === m.stack)) {
       wanted.current = null;
-      setNodeId(w.n !== null && w.n < m.nodes.length ? w.n : 0);
-      setSelected(w.h);
+      setNodeId(preflopTarget(manifest.current, w) ?? 0);
+      setSelected(w.hand);
     } else if (!first) {
       setNodeId(0);
       setSelected(null);
       setBlocker(null);
     }
-  }, [m.id, m.stack, m.nodes.length]);
+  }, [m.id, m.stack, m.nodes.length, manifest]);
   // keep the deep link in the URL once the user moves (Next mirrors history.replaceState into its router state, so a
   // write right after load could cancel a navigation the user has already started: the default view writes nothing)
   const firstView = useRef(true);
@@ -103,14 +106,14 @@ function Study({ store }: { store: SolutionStore }) {
     firstView.current = false;
     // the first view never rewrites the address it was opened with: the link is applied by the effect above, and the
     // address follows once the view has moved
-    const want = preflopHash(m.stack, nodeId, selected);
+    const want = preflopHash(m.stack, pos, selected);
     if (first || location.hash === want) return;
     // the address was changed from outside (a link, the back button) and its hashchange has not been handled yet:
     // writing now would undo that change
     if (location.hash !== known.current) return;
-    replaceHash(nodeId, m.stack, selected);
+    replaceHash(want);
     known.current = want;
-  }, [nodeId, m.stack, selected]);
+  }, [pos, m.stack, selected]);
 
   const node = m.nodes[nodeId];
   const state = useMemo(() => stateAt(m, nodeId), [m, nodeId]);
@@ -162,7 +165,7 @@ function Study({ store }: { store: SolutionStore }) {
           {t("format.cash6")} · {t("format.stack", { n: m.stack })} · {t(`spot.${spot}` as Key)}
         </p>
         <SaveButton
-          href={preflopLink(m.stack, nodeId, selected)}
+          href={preflopLink(m.stack, pos, selected)}
           title={`${m.stack}bb · ${m.players[node.actor]}${steps.length ? ` · ${lineText(m, nodeId, t)}` : ""}${selected === null ? "" : ` · ${classInfo(selected).name}`}`}
         />
       </div>

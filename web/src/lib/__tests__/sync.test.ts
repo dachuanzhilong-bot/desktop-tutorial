@@ -12,12 +12,17 @@ import type { AttemptRow, BookmarkRow, IcmLogRow, RangeRow, SettingsRow, SrsRow,
 import { updateSrs } from "../practice/srs";
 import { migrationChecks, readSchema, rejectBatch, schemaChecks, violations } from "./fixtures/schemaChecks";
 
+/** the position of the spaced-repetition items of these tests */
+const AT = { solution: "cash6max-100bb", pos: "F-F-R2.5" };
+
+/** a practice record; each node id of these tests stands for its own position (a made-up key: sync does not read keys) */
 const attempt = (ts: number, nodeId = 5, hand = 10, extra: Partial<Attempt> = {}): Attempt => ({
   ts,
   sessionId: "s1",
   mode: "spot",
   solution: "cash6max-100bb",
   nodeId,
+  pos: `F-R${nodeId}`,
   hand,
   seat: 3,
   spot: "rfi",
@@ -33,7 +38,7 @@ const attempt = (ts: number, nodeId = 5, hand = 10, extra: Partial<Attempt> = {}
   ...extra,
 });
 
-const bookmark = (o: Partial<Bookmark> = {}): Bookmark => ({ id: "bm1", created: 1_700_000_000_000, ts: 1_700_000_000_000, title: "BTN open", note: "", href: "/study/#d=100&n=3", ...o });
+const bookmark = (o: Partial<Bookmark> = {}): Bookmark => ({ id: "bm1", created: 1_700_000_000_000, ts: 1_700_000_000_000, title: "BTN open", note: "", href: "/study/#d=100&p=F-F-R2.5", ...o });
 const icmEntry = (o: Partial<IcmLogEntry> = {}): IcmLogEntry => ({ ts: 1_700_000_000_000, players: 3, pos: "BTN", stack: 8, facing: null, hand: 10, chosen: 1, grade: "best", evLoss: 0, score: 100, ...o });
 
 /** the `check` constraints of supabase/schema.sql, read from the file (see fixtures/schemaChecks.ts) */
@@ -126,7 +131,7 @@ describe("sync engine", () => {
     expect(r2.pulledAttempts).toBe(2);
     await syncOnce(a.repo, server, "u", a.io);
 
-    const keys = async (d: ReturnType<typeof device>) => (await d.repo.allAttempts()).map((x) => `${x.ts}:${x.nodeId}:${x.hand}`).sort();
+    const keys = async (d: ReturnType<typeof device>) => (await d.repo.allAttempts()).map((x) => `${x.ts}:${x.pos}:${x.hand}`).sort();
     expect(await keys(a)).toEqual(await keys(b));
     expect(await keys(a)).toHaveLength(3);
     expect(server.attempts).toHaveLength(3);
@@ -156,14 +161,14 @@ describe("sync engine", () => {
     const a = device();
     const b = device();
     const t0 = 1_700_000_000_000;
-    await a.repo.putSrs(updateSrs(undefined, 5, 10, "best", t0));
+    await a.repo.putSrs(updateSrs(undefined, AT, 5, 10, "best", t0));
     await syncOnce(a.repo, server, "u", a.io);
     await syncOnce(b.repo, server, "u", b.io);
     expect((await b.repo.allSrs())[0].seen).toBe(1);
 
     // both practise the same item; B later than A
-    await a.repo.putSrs(updateSrs((await a.repo.allSrs())[0], 5, 10, "mistake", t0 + 1000));
-    await b.repo.putSrs(updateSrs((await b.repo.allSrs())[0], 5, 10, "best", t0 + 5000));
+    await a.repo.putSrs(updateSrs((await a.repo.allSrs())[0], AT, 5, 10, "mistake", t0 + 1000));
+    await b.repo.putSrs(updateSrs((await b.repo.allSrs())[0], AT, 5, 10, "best", t0 + 5000));
     await syncOnce(a.repo, server, "u", a.io);
     await syncOnce(b.repo, server, "u", b.io);
     await syncOnce(a.repo, server, "u", a.io);
@@ -289,56 +294,81 @@ describe("sync engine", () => {
     expect(got).toContainEqual(expect.objectContaining({ mode: "post", hand: 169, spot: "postTurn", grade: "mistake", evLoss: 1.2 }));
   });
 
-  it("the position key and the build ID travel: pushed by one device, pulled by another, next to records without them", async () => {
+  it("the position key and the build ID travel: pushed by one device, pulled by another", async () => {
     const server = new FakeBackend();
     const a = device();
     const b = device();
     const t0 = 1_700_000_000_000;
     await a.repo.addAttempt(attempt(t0, 12, 34, { pos: "F-F-R2.5-F-F", build: "17035ecae421" }));
     await a.repo.addAttempt(attempt(t0 + 1000, 40, 1325, { mode: "postSpot", solution: "post:srp-btn-bb", seat: 5, spot: "postTurn", pos: "9s6d3c@X-B1.75-C/Td", build: "fd91cfc9e86b" }));
-    await a.repo.addAttempt(attempt(t0 + 2000, 5, 10)); // made before position keys
-    const preItem = updateSrs(undefined, 12, 34, "mistake", t0, undefined, { solution: "cash6max-100bb", pos: "F-F-R2.5-F-F", build: "17035ecae421" });
-    const postItem = updateSrs(undefined, 40, 1325, "best", t0 + 1000, undefined, { solution: "post:srp-btn-bb", pos: "9s6d3c@X-B1.75-C/Td", build: "fd91cfc9e86b" });
-    const oldItem = updateSrs(undefined, 5, 10, "best", t0 + 2000);
-    for (const it of [preItem, postItem, oldItem]) await a.repo.putSrs(it);
+    await a.repo.addAttempt(attempt(t0 + 2000, 5, 10, { pos: "root" })); // no build ID (a solution that is not in the index)
+    const preItem = updateSrs(undefined, { solution: "cash6max-100bb", pos: "F-F-R2.5-F-F", build: "17035ecae421" }, 12, 34, "mistake", t0);
+    const postItem = updateSrs(undefined, { solution: "post:srp-btn-bb", pos: "9s6d3c@X-B1.75-C/Td", build: "fd91cfc9e86b" }, 40, 1325, "best", t0 + 1000);
+    const plainItem = updateSrs(undefined, { solution: "cash6max-100bb", pos: "root" }, 5, 10, "best", t0 + 2000);
+    for (const it of [preItem, postItem, plainItem]) await a.repo.putSrs(it);
     expect(preItem.key).toBe("k:cash6max-100bb:F-F-R2.5-F-F:34");
 
     expect(await syncOnce(a.repo, server, "u", a.io)).toMatchObject({ pushedAttempts: 3, pushedSrs: 3 });
-    // every row of an upload has the same columns: null where a record has no position
-    expect(server.attempts.map((r) => [r.pos, r.build])).toEqual([["F-F-R2.5-F-F", "17035ecae421"], ["9s6d3c@X-B1.75-C/Td", "fd91cfc9e86b"], [null, null]]);
+    // every row of an upload has the same columns: null where a record has no build ID
+    expect(server.attempts.map((r) => [r.pos, r.build])).toEqual([["F-F-R2.5-F-F", "17035ecae421"], ["9s6d3c@X-B1.75-C/Td", "fd91cfc9e86b"], ["root", null]]);
     expect(server.srs.get(preItem.key)).toMatchObject({ solution: "cash6max-100bb", pos: "F-F-R2.5-F-F", build: "17035ecae421" });
-    expect(server.srs.get(oldItem.key)).toMatchObject({ solution: null, pos: null, build: null });
+    expect(server.srs.get(plainItem.key)).toMatchObject({ solution: "cash6max-100bb", pos: "root", build: null });
 
     expect(await syncOnce(b.repo, server, "u", b.io)).toMatchObject({ pulledAttempts: 3, pulledSrs: 3 });
     const got = await b.repo.allAttempts();
     expect(got).toContainEqual(expect.objectContaining({ ts: t0, nodeId: 12, hand: 34, pos: "F-F-R2.5-F-F", build: "17035ecae421", remote: true }));
     expect(got).toContainEqual(expect.objectContaining({ ts: t0 + 1000, solution: "post:srp-btn-bb", pos: "9s6d3c@X-B1.75-C/Td", build: "fd91cfc9e86b" }));
-    const old = got.find((x) => x.ts === t0 + 2000)!;
-    expect("pos" in old).toBe(false);
-    expect("build" in old).toBe(false);
-    // spaced repetition: exactly the items of the first device (an old one has no position fields at all)
+    const plain = got.find((x) => x.ts === t0 + 2000)!;
+    expect(plain.pos).toBe("root");
+    expect("build" in plain).toBe(false);
+    // spaced repetition: exactly the items of the first device
     const srs = await b.repo.allSrs();
     expect(srs).toHaveLength(3);
     expect(srs).toContainEqual(preItem);
     expect(srs).toContainEqual(postItem);
-    expect(srs).toContainEqual(oldItem);
+    expect(srs).toContainEqual(plainItem);
     // nothing echoes back
     expect(await syncOnce(a.repo, server, "u", a.io)).toMatchObject({ pushedAttempts: 0, pulledAttempts: 0 });
     expect(await a.repo.allAttempts()).toHaveLength(3);
   });
 
-  it("rows of a server that does not have the new columns yet are read as records without a position", () => {
+  it("rows made before position keys (no pos: null, or a server without the columns) are not read", () => {
     const row = attemptToRow(attempt(1_700_000_000_000, 5, 10, { pos: "root", build: "abc" }), "c1");
+    expect(rowToAttempt(row)).toMatchObject({ nodeId: 5, hand: 10, pos: "root", build: "abc", remote: true });
     const { pos: _pos, build: _build, ...oldRow } = row;
-    const back = rowToAttempt(oldRow);
-    expect(back).toMatchObject({ nodeId: 5, hand: 10, remote: true });
-    expect("pos" in back).toBe(false);
-    expect(rowToAttempt(row)).toMatchObject({ pos: "root", build: "abc" });
-    const item = updateSrs(undefined, 5, 10, "best", 1_700_000_000_000, undefined, { solution: "cash6max-100bb", pos: "root", build: "abc" });
-    const { solution: _s, pos: _p, build: _b, ...oldSrsRow } = srsToRow(item);
-    const { solution: _s2, pos: _p2, build: _b2, ...plain } = item;
-    expect(rowToSrs(oldSrsRow)).toEqual(plain);
+    expect(rowToAttempt(oldRow)).toBeNull();
+    expect(rowToAttempt({ ...row, pos: null })).toBeNull();
+    expect(rowToAttempt({ ...row, pos: "" })).toBeNull();
+    expect(rowToAttempt({ ...row, build: null })).toMatchObject({ pos: "root" });
+
+    const item = updateSrs(undefined, { solution: "cash6max-100bb", pos: "root", build: "abc" }, 5, 10, "best", 1_700_000_000_000);
     expect(rowToSrs(srsToRow(item))).toEqual(item);
+    const { solution: _s, pos: _p, build: _b, ...oldSrsRow } = srsToRow(item);
+    expect(rowToSrs(oldSrsRow)).toBeNull();
+    expect(rowToSrs({ ...srsToRow(item), pos: null })).toBeNull();
+    expect(rowToSrs({ ...srsToRow(item), solution: null })).toBeNull();
+  });
+
+  it("old rows another device left on the server are not pulled; the rows with a position next to them are", async () => {
+    const server = new FakeBackend();
+    const t0 = 1_700_000_000_000;
+    // what a device that has not been updated yet uploaded: rows without `pos` / `solution`
+    const { pos: _p1, build: _b1, ...oldAttempt } = attemptToRow(attempt(t0, 3, 5), "old-device");
+    const oldSrs = { ...srsToRow(updateSrs(undefined, AT, 3, 5, "mistake", t0)), key: "3:5", solution: null, pos: null, build: null };
+    const oldPostSrs = { ...oldSrs, key: "p:srp-btn-bb/3:40:1325", node_id: 40, hand: 1325 };
+    await server.pushAttempts([{ ...oldAttempt, pos: null, build: null }, attemptToRow(attempt(t0 + 1000, 12, 34, { pos: "F-F-R2.5-F-F", build: "17035ecae421" }), "new-device")]);
+    const item = updateSrs(undefined, AT, 7, 9, "best", t0 + 1000);
+    await server.pushSrs([oldSrs, oldPostSrs, srsToRow(item)]);
+
+    const b = device();
+    expect(await syncOnce(b.repo, server, "u", b.io)).toMatchObject({ pulledAttempts: 1, pulledSrs: 1 });
+    expect(await b.repo.allAttempts()).toEqual([expect.objectContaining({ ts: t0 + 1000, pos: "F-F-R2.5-F-F", remote: true })]);
+    expect(await b.repo.allSrs()).toEqual([item]);
+    // the old rows stay on the server (nothing is deleted there), and a second round does not take them either
+    expect(server.attempts).toHaveLength(2);
+    expect(await syncOnce(b.repo, server, "u", b.io)).toMatchObject({ pulledAttempts: 0, pulledSrs: 0, pushedAttempts: 0 });
+    expect(await b.repo.allAttempts()).toHaveLength(1);
+    expect(await b.repo.allSrs()).toHaveLength(1);
   });
 
   it("the fake server refuses what the schema refuses: a row outside a constraint fails the whole batch", async () => {
@@ -485,7 +515,7 @@ describe("Supabase over fetch", () => {
 
     const a = device();
     for (let i = 0; i < 1203; i++) await a.repo.addAttempt(attempt(1_700_000_000_000 + i * 1000, i % 50, i % 169));
-    await a.repo.putSrs(updateSrs(undefined, 5, 10, "mistake", 1_700_000_000_000));
+    await a.repo.putSrs(updateSrs(undefined, AT, 5, 10, "mistake", 1_700_000_000_000));
     await a.repo.putRange({ id: "r1", ts: 1_700_000_000_000, name: "x", text: "AA" });
     await appendIcmLog(a.repo, icmEntry({ ts: 1_700_000_000_000, hand: 77 }));
     await upsertBookmark(a.repo, bookmark({ id: "b1", ts: 1_700_000_000_000, created: 1_700_000_000_000 }));
@@ -549,13 +579,13 @@ describe("Supabase over fetch", () => {
     const t0 = 1_700_000_000_000;
     const a = device();
     await a.repo.addAttempt(attempt(t0, 12, 34, { pos: "F-F-R2.5-F-F", build: "17035ecae421" }));
-    await a.repo.addAttempt(attempt(t0 + 1000, 5, 10)); // made before position keys
-    const item = updateSrs(undefined, 40, 1325, "mistake", t0, undefined, { solution: "post:srp-btn-bb", pos: "9s6d3c@X-B1.75-C/Td", build: "fd91cfc9e86b" });
+    await a.repo.addAttempt(attempt(t0 + 1000, 5, 10, { pos: "root" })); // no build ID
+    const item = updateSrs(undefined, { solution: "post:srp-btn-bb", pos: "9s6d3c@X-B1.75-C/Td", build: "fd91cfc9e86b" }, 40, 1325, "mistake", t0);
     await a.repo.putSrs(item);
     await syncOnce(a.repo, backend, session.userId, a.io);
     expect(srv.tables.attempts).toHaveLength(2);
     expect(srv.tables.attempts[0]).toMatchObject({ node_id: 12, pos: "F-F-R2.5-F-F", build: "17035ecae421" });
-    expect(srv.tables.attempts[1]).toMatchObject({ node_id: 5, pos: null, build: null });
+    expect(srv.tables.attempts[1]).toMatchObject({ node_id: 5, pos: "root", build: null });
     // one upload, one set of columns (PostgREST takes the columns of a bulk insert from its first row)
     expect(Object.keys(srv.tables.attempts[1]).sort()).toEqual(Object.keys(srv.tables.attempts[0]).sort());
     expect(srv.tables.srs_items[0]).toMatchObject({ key: item.key, solution: "post:srp-btn-bb", pos: "9s6d3c@X-B1.75-C/Td", build: "fd91cfc9e86b" });

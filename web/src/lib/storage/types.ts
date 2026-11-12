@@ -3,22 +3,20 @@ import type { SrsItem } from "../practice/srs";
 import type { SpotType } from "../solution/types";
 import type { HandAnalysis } from "../analyze/match";
 import type { NormHand } from "../analyze/normalize";
+import type { ImportReport } from "./obsolete";
 
 export interface Attempt {
   id?: number;
   ts: number;
   sessionId: string;
   mode: "spot" | "hand" | "post" | "postSpot";
-  /**
-   * `cash6max-<depth>bb`; post-flop `post:<scenario>` — records made before position keys (no `pos`) have
-   * `post:<scenario>/<flop index>` instead (lib/practice/position.ts: parsePostSolution)
-   */
+  /** `cash6max-<depth>bb`; post-flop `post:<scenario>` (no flop index: the flop is in `pos`) */
   solution: string;
-  /** node id when the answer was given. With `pos` it is only informative: readers look the node up again from `pos`. */
+  /** node number when the answer was given. Only informative (it is what the sync table stores): readers look the node up again from `pos`. */
   nodeId: number;
-  /** position key (docs/03 "局面キー"): pre-flop the action line, post-flop `<flop>@<line>`. Absent in older records. */
-  pos?: string;
-  /** build ID of the solution data the answer was graded against (absent in older records) */
+  /** position key (docs/03 "局面キー"): pre-flop the action line, post-flop `<flop>@<line>` */
+  pos: string;
+  /** build ID of the solution data the answer was graded against */
   build?: string;
   hand: number;
   seat: number;
@@ -82,7 +80,8 @@ export interface Repo {
   getMeta<T>(key: string): Promise<T | undefined>;
   setMeta<T>(key: string, value: T): Promise<void>;
   exportAll(): Promise<ExportBlob>;
-  importAll(blob: ExportBlob): Promise<void>;
+  /** reads a backup file; records in the format before position keys are left out and counted (lib/storage/obsolete.ts) */
+  importAll(blob: ExportBlob): Promise<ImportReport>;
   clear(): Promise<void>;
   putSolve(s: SavedSolve): Promise<void>;
   listSolves(): Promise<SavedSolve[]>;

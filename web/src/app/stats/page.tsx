@@ -11,7 +11,7 @@ import { SEATS } from "@/lib/solution/tree";
 import { ALL_SPOT_COLUMNS } from "@/lib/solution/types";
 import { getRepo } from "@/lib/storage/idb";
 import { readIcmLog, summarizeIcm } from "@/lib/storage/icmLog";
-import { handLabel, recentMistakes, resolveStudyHref, studyHref } from "@/lib/storage/mistakes";
+import { handLabel, recentMistakes, resolveStudyHref } from "@/lib/storage/mistakes";
 import type { StudySources } from "@/lib/storage/mistakes";
 import { loadFlop, PF_INDEX } from "@/lib/postflop/loader";
 import { useSolutionStore } from "@/lib/solution/context";
@@ -56,9 +56,8 @@ export default function StatsPage() {
   const streak = studyStreak(list ?? [], now);
   const today = todayCount(list ?? [], now);
   const notebook = useMemo(() => recentMistakes(list ?? []), [list]);
-  // Study links of the notebook: a record with a position key is looked up in today's data (its node id and flop
-  // index may be out of date), which needs the manifest or the flop file; until then, and when the position is
-  // not there any more, the row has no link
+  // Study links of the notebook: each record's position key is looked up in today's data, which needs the manifest
+  // or the flop file; until then, and when the position is not there any more, the row has no link
   const { getStore } = useSolutionStore();
   const sources = useMemo<StudySources>(
     () => ({
@@ -97,8 +96,8 @@ export default function StatsPage() {
   };
   const importData = async (f: File) => {
     try {
-      await getRepo().importAll(JSON.parse(await f.text()));
-      setNote(t("stats.imported"));
+      const { dropped } = await getRepo().importAll(JSON.parse(await f.text()));
+      setNote(dropped > 0 ? t("stats.importedDropped", { n: dropped }) : t("stats.imported"));
       load();
     } catch (e) {
       setNote(String(e));
@@ -283,7 +282,7 @@ export default function StatsPage() {
             ) : (
               <ul className="space-y-2">
                 {notebook.map((a, i) => {
-                  const href = links?.of === notebook ? links.hrefs[i] : studyHref(a);
+                  const href = links?.of === notebook ? links.hrefs[i] : null;
                   const body = (
                     <>
                       <span>
@@ -300,7 +299,7 @@ export default function StatsPage() {
                     </>
                   );
                   return (
-                    <li key={`${a.solution}:${a.pos ?? a.nodeId}:${a.hand}`}>
+                    <li key={`${a.solution}:${a.pos}:${a.hand}`}>
                       {href ? (
                         <Link href={href} className="flex min-h-tap-lg items-center justify-between gap-2 rounded-control bg-surface-2 px-3 py-2">
                           {body}

@@ -1,4 +1,5 @@
 import { mergeMeta } from "./metaMerge";
+import { currentPart } from "./obsolete";
 import type { SrsItem } from "../practice/srs";
 import type { Attempt, ExportBlob, Repo, SavedRange, SavedSolve, StoredHand } from "./types";
 
@@ -32,7 +33,9 @@ export class MemoryRepo implements Repo {
   async exportAll(): Promise<ExportBlob> {
     return { app: "tessera", version: 1, exportedAt: Date.now(), attempts: await this.allAttempts(), srs: await this.allSrs(), meta: Object.fromEntries(this.meta), ranges: await this.listRanges(), hands: await this.listHands() };
   }
-  async importAll(b: ExportBlob) {
+  async importAll(file: ExportBlob) {
+    if (file?.app !== "tessera") throw new Error("not a Tessera export");
+    const { blob: b, report } = currentPart(file);
     for (const a of b.attempts) await this.addAttempt({ ...a, id: undefined });
     for (const s of b.srs) {
       const cur = this.srs.get(s.key);
@@ -41,6 +44,7 @@ export class MemoryRepo implements Repo {
     for (const [k, v] of Object.entries(b.meta)) this.meta.set(k, mergeMeta(k, this.meta.get(k), v));
     for (const r of b.ranges ?? []) await this.putRange(r);
     await this.putHands(b.hands ?? []);
+    return report;
   }
   async clear() {
     this.attempts = [];

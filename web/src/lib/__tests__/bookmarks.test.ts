@@ -2,17 +2,62 @@ import { describe, expect, it } from "vitest";
 import { BOOKMARKS_KEY, BOOKMARK_DELETIONS_KEY, BOOKMARKS_MAX, mergeBookmarks, mergeSyncedBookmarks, NOTE_MAX, readBookmarkDeletions, readBookmarks, removeBookmark, sanitizeBookmarks, TITLE_MAX, upsertBookmark } from "../storage/bookmarks";
 import type { Bookmark } from "../storage/bookmarks";
 import { MemoryRepo } from "../storage/memory";
-import { postflopLink, preflopHash, preflopLink } from "../study/links";
+import { isPositionHref, parsePostflopHash, parsePreflopHash, postflopHash, postflopLink, postflopTargetFlop, preflopHash, preflopLink, preflopTarget } from "../study/links";
+import { loadManifest, walk } from "./helpers";
 
-const bm = (o: Partial<Bookmark> = {}): Bookmark => ({ id: "a", ts: 1000, created: o.created ?? o.ts ?? 1000, title: "100bb · BTN", note: "", href: "/study/#d=100&n=3", ...o });
+const bm = (o: Partial<Bookmark> = {}): Bookmark => ({ id: "a", ts: 1000, created: o.created ?? o.ts ?? 1000, title: "100bb · BTN", note: "", href: "/study/#d=100&p=F-F-R2.5", ...o });
 
 describe("study links", () => {
   it("builds the deep links Study reads", () => {
-    expect(preflopLink(100, 12)).toBe("/study/#d=100&n=12");
-    expect(preflopLink(60, 0, 14)).toBe("/study/#d=60&n=0&h=14");
-    expect(preflopHash(60, 0, 14)).toBe("#d=60&n=0&h=14");
-    expect(preflopHash(100, 5, null)).toBe("#d=100&n=5");
-    expect(postflopLink("srp-btn-bb", 3, 7)).toBe("/study/postflop/#s=srp-btn-bb&f=3&n=7");
+    // a link names its position by a position key, never by a node number or a flop's index
+    expect(preflopLink(100, "F-F-R2.5-F-F")).toBe("/study/#d=100&p=F-F-R2.5-F-F");
+    expect(preflopLink(60, "root", 14)).toBe("/study/#d=60&p=root&h=14");
+    expect(preflopHash(60, "root", 14)).toBe("#d=60&p=root&h=14");
+    expect(preflopHash(100, "F-F-R2.5", null)).toBe("#d=100&p=F-F-R2.5");
+    expect(postflopLink("srp-btn-bb", "9s6d3c@X-B1.75-C/Td")).toBe("/study/postflop/#s=srp-btn-bb&p=9s6d3c@X-B1.75-C/Td");
+    expect(postflopHash("srp-btn-bb", "9s6d3c@root")).toBe("#s=srp-btn-bb&p=9s6d3c@root");
+  });
+
+  it("reads them back, and reads (but never writes) the addresses that held numbers", () => {
+    expect(parsePreflopHash("#d=60&p=F-F-R2.5&h=14")).toEqual({ depth: 60, pos: "F-F-R2.5", number: null, hand: 14 });
+    expect(parsePreflopHash("d=100&p=root")).toEqual({ depth: 100, pos: "root", number: null, hand: null });
+    expect(parsePreflopHash("")).toEqual({ depth: null, pos: null, number: null, hand: null });
+    expect(parsePreflopHash("#d=x&h=169&n=-1")).toEqual({ depth: null, pos: null, number: null, hand: null });
+    expect(parsePreflopHash("#d=40&n=12")).toEqual({ depth: 40, pos: null, number: 12, hand: null }); // written before position keys
+    expect(parsePostflopHash("#s=srp-btn-bb&p=9s6d3c@X-B1.75-C/Td")).toEqual({ solve: null, scenario: "srp-btn-bb", pos: "9s6d3c@X-B1.75-C/Td", flopNumber: null, number: null });
+    expect(parsePostflopHash("#solve=abc")).toMatchObject({ solve: "abc", scenario: null, pos: null });
+    expect(parsePostflopHash("#s=srp-btn-bb&f=2&n=0")).toEqual({ solve: null, scenario: "srp-btn-bb", pos: null, flopNumber: 2, number: 0 });
+  });
+
+  it("opens the node the key has in the loaded solution; a key it does not have opens the root", () => {
+    const m = loadManifest();
+    const node = walk(m, "FFR");
+    expect(node).toBeGreaterThan(0);
+    const key = parsePreflopHash(preflopHash(100, "F-F-R2.5", null));
+    expect(preflopTarget(m, key)).toBe(node);
+    expect(preflopTarget(m, parsePreflopHash("#d=100&p=root"))).toBe(0);
+    expect(preflopTarget(m, parsePreflopHash("#d=100&p=F-F-R999"))).toBe(0); // not a position of this solution
+    expect(preflopTarget(m, parsePreflopHash("#d=100&p=garbage"))).toBe(0);
+    // the key wins over a number in the same address
+    expect(preflopTarget(m, parsePreflopHash(`#d=100&n=1&p=F-F-R2.5`))).toBe(node);
+    // an old address: its number, when the solution has such a node; otherwise the view stays where it is
+    expect(preflopTarget(m, parsePreflopHash("#n=1"))).toBe(1);
+    expect(preflopTarget(m, parsePreflopHash(`#n=${m.nodes.length}`))).toBeNull();
+    expect(preflopTarget(m, parsePreflopHash("#d=100"))).toBeNull();
+
+    const flops = ["As 7d 2c", "9s 6d 3c"];
+    expect(postflopTargetFlop(flops, parsePostflopHash("#s=x&p=9s6d3c@X-X/Td"))).toEqual({ flopIndex: 1, line: "X-X/Td", number: null });
+    expect(postflopTargetFlop(flops, parsePostflopHash("#s=x&p=KsKdKc@root"))).toEqual({ flopIndex: 0, line: null, number: null }); // a flop that is not there
+    expect(postflopTargetFlop(flops, parsePostflopHash("#s=x&p=nonsense"))).toEqual({ flopIndex: 0, line: null, number: null });
+    expect(postflopTargetFlop(flops, parsePostflopHash("#s=x"))).toBeNull();
+    expect(postflopTargetFlop(flops, parsePostflopHash("#s=x&f=1&n=4"))).toEqual({ flopIndex: 1, line: null, number: 4 });
+    expect(postflopTargetFlop(flops, parsePostflopHash("#s=x&f=99"))).toEqual({ flopIndex: 1, line: null, number: null });
+  });
+
+  it("a saved position needs a position key: addresses with numbers are not kept", () => {
+    for (const ok of ["/study/#d=100&p=root", "/study/#d=60&p=F-F-R2.5-F-F&h=14", "/study/postflop/#s=srp-btn-bb&p=9s6d3c@X-B1.75-C/Td"]) expect(isPositionHref(ok)).toBe(true);
+    for (const bad of ["/study/#d=100&n=3", "/study/#d=100&n=3&h=5", "/study/postflop/#s=srp-btn-bb&f=3&n=7", "/study/#d=100", "/study/#d=100&p=root&n=3", "/study/#", "/solve/#p=root", "https://example.com/study/#d=100&p=root", "javascript:alert(1)", "", null, 5])
+      expect(isPositionHref(bad)).toBe(false);
   });
 });
 
@@ -22,11 +67,11 @@ describe("saved positions", () => {
     const list = sanitizeBookmarks([
       bm({ id: "old", ts: 1 }),
       bm({ id: "new", ts: 9, title: long, note: long }),
-      { id: "", ts: 1, title: "t", note: "", href: "/study/#d=1" }, // no id
-      { ...bm({ id: "x" }), href: "https://example.com/study/#d=1" }, // not an app path
-      { ...bm({ id: "y" }), href: "/solve/#d=1" }, // not a Study path
+      { id: "", ts: 1, title: "t", note: "", href: "/study/#d=1&p=root" }, // no id
+      { ...bm({ id: "x" }), href: "https://example.com/study/#d=1&p=root" }, // not an app path
+      { ...bm({ id: "y" }), href: "/solve/#d=1&p=root" }, // not a Study path
       { ...bm({ id: "z" }), ts: Number.NaN },
-      { id: "legacy", ts: 7, title: "t", note: "", href: "/study/#d=40&n=1" }, // saved before `created` existed: it takes ts
+      { id: "legacy", ts: 7, title: "t", note: "", href: "/study/#d=40&p=F" }, // saved before `created` existed: it takes ts
       { ...bm({ id: "w" }), note: 5 },
       null,
       "text",
@@ -54,9 +99,9 @@ describe("saved positions", () => {
 
   it("saves, edits and removes, also when the taps come at once", async () => {
     const repo = new MemoryRepo();
-    await Promise.all([1, 2, 3, 4].map((i) => upsertBookmark(repo, bm({ id: `b${i}`, ts: i, href: `/study/#d=100&n=${i}` }))));
+    await Promise.all([1, 2, 3, 4].map((i) => upsertBookmark(repo, bm({ id: `b${i}`, ts: i, href: `/study/#d=100&p=F-R${i}` }))));
     expect((await readBookmarks(repo)).map((b) => b.id)).toEqual(["b4", "b3", "b2", "b1"]);
-    await upsertBookmark(repo, bm({ id: "b2", created: 2, ts: 50, note: "limp is a mistake here", href: "/study/#d=100&n=2" }));
+    await upsertBookmark(repo, bm({ id: "b2", created: 2, ts: 50, note: "limp is a mistake here", href: "/study/#d=100&p=F-R2" }));
     const after = await readBookmarks(repo);
     expect(after.map((b) => b.id)).toEqual(["b4", "b3", "b2", "b1"]); // editing a note does not move it
     expect(after[2]).toMatchObject({ note: "limp is a mistake here", ts: 50 });
@@ -91,7 +136,7 @@ describe("saved positions", () => {
     const blob = JSON.parse(JSON.stringify(await a.exportAll()));
     expect(blob.meta[BOOKMARKS_KEY]).toHaveLength(1);
     const b = new MemoryRepo();
-    await upsertBookmark(b, bm({ id: "y", ts: 20, href: "/study/#d=40&n=1" }));
+    await upsertBookmark(b, bm({ id: "y", ts: 20, href: "/study/#d=40&p=F" }));
     await b.importAll(blob);
     await b.importAll(blob);
     expect((await readBookmarks(b)).map((x) => x.id)).toEqual(["y", "x"]);

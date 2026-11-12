@@ -222,6 +222,7 @@ export const en: Record<Key, string> = {
   "stats.export": "Export",
   "stats.import": "Import",
   "stats.imported": "Imported",
+  "stats.importedDropped": "Imported ({n} records in an old format cannot be read and were left out)",
   "stats.nSamples": "{n}×",
   "stats.noDataCell": "no data",
   "stats.gradeDist": "Grades",

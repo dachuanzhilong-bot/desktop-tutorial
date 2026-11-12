@@ -2,7 +2,7 @@ import type { Manifest, NodeSolution, SpotType } from "../solution/types";
 import { spotType } from "../solution/tree";
 import { HandFilterId, matchesFilter, NUM_CLASSES, comboCount } from "../poker/hands";
 import { weightedPick } from "../util/rng";
-import { mixedness, priorityWeight, srsKey, SrsItem } from "./srs";
+import { mixedness, priorityWeight, SrsItem } from "./srs";
 
 export interface PracticeFilter {
   /** hero seats (empty = any) */
@@ -38,20 +38,8 @@ export function pickNode(m: Manifest, nodes: number[], f: PracticeFilter, rnd: (
   return nodes[weightedPick(w, rnd)];
 }
 
-/**
- * `srs`: the spaced-repetition item of a hand class at this decision. The practice screen passes a lookup by
- * position (SrsIndex.find); a Map is read by the key items had before position keys (`srsKey`).
- */
-export function pickHand(
-  sol: NodeSolution,
-  nodeId: number,
-  f: PracticeFilter,
-  rnd: () => number,
-  srs: Map<string, SrsItem> | ((hand: number) => SrsItem | undefined),
-  now: number,
-  solution?: string,
-): number {
-  const itemOf = typeof srs === "function" ? srs : (h: number) => srs.get(srsKey(solution, nodeId, h));
+/** `itemOf`: the spaced-repetition item of a hand class at this decision (looked up by position, see SrsIndex.find) */
+export function pickHand(sol: NodeSolution, f: PracticeFilter, rnd: () => number, itemOf: (hand: number) => SrsItem | undefined, now: number): number {
   const w = new Float64Array(NUM_CLASSES);
   for (let h = 0; h < NUM_CLASSES; h++) {
     if (sol.weight[h] < MIN_WEIGHT || !matchesFilter(h, f.hands)) continue;

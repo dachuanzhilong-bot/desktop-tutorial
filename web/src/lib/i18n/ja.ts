@@ -220,6 +220,7 @@ export const ja = {
   "stats.export": "書き出し",
   "stats.import": "読み込み",
   "stats.imported": "読み込みました",
+  "stats.importedDropped": "読み込みました（古い形式の記録 {n}件は読み込めないため除きました）",
   "stats.nSamples": "{n}回",
   "stats.noDataCell": "データなし",
   "stats.gradeDist": "判定の内訳",

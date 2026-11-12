@@ -1,6 +1,11 @@
+import { isPositionHref } from "../study/links";
 import type { Repo } from "./types";
 
-/** a Study position the user wants to keep, with a note; `href` is the app path that opens it (lib/study/links.ts) */
+/**
+ * A Study position the user wants to keep, with a note; `href` is the app path that opens it. It names the position
+ * by a position key (`p=`, lib/study/links.ts): an address with numbers, as saved before REFACTOR_PLAN step 1-4, is
+ * not a bookmark any more (clean drops it, wherever it comes from: this device, a backup file, another device).
+ */
 export interface Bookmark {
   id: string;
   /** when it was first saved: the list is shown in this order, so a card does not jump when its note is edited */
@@ -25,13 +30,11 @@ export const BOOKMARKS_MAX = 300;
 export const TITLE_MAX = 160;
 export const NOTE_MAX = 2000;
 
-const HREF = /^\/study\/(postflop\/)?#[\w=&.-]*$/;
-
 function clean(x: unknown): Bookmark | null {
   if (!x || typeof x !== "object") return null;
   const b = x as Record<string, unknown>;
   if (typeof b.id !== "string" || !b.id || typeof b.ts !== "number" || !Number.isFinite(b.ts)) return null;
-  if (typeof b.title !== "string" || typeof b.note !== "string" || typeof b.href !== "string" || !HREF.test(b.href)) return null;
+  if (typeof b.title !== "string" || typeof b.note !== "string" || !isPositionHref(b.href)) return null;
   const created = typeof b.created === "number" && Number.isFinite(b.created) ? b.created : b.ts;
   return { id: b.id, created, ts: b.ts, title: b.title.slice(0, TITLE_MAX), note: b.note.slice(0, NOTE_MAX), href: b.href };
 }

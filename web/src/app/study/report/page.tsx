@@ -1,4 +1,6 @@
 "use client";
+import { flopRootPos } from "@/lib/practice/position";
+import { postflopLink } from "@/lib/study/links";
 import Link from "next/link";
 import { useEffect, useMemo, useState } from "react";
 import { PlayingCard } from "@/components/PlayingCard";
@@ -132,7 +134,7 @@ function Report({ index }: { index: PfIndex }) {
                   <td className="text-right font-bold tabular-nums">{r.v === null ? "–" : `${(r.v * 100).toFixed(0)}%`}</td>
                   <td className="text-right tabular-nums text-muted">{r.stats ? `${(r.stats.eqIp * 100).toFixed(0)}%` : "–"}</td>
                   <td className="text-right">
-                    <Link href={`/study/postflop/#s=${scenario}&f=${r.i}&n=0`} aria-label={`${t("rep.open")}: ${r.text}`} className="inline-flex min-h-tap items-center whitespace-nowrap rounded-control border border-line px-3 text-xs font-semibold text-muted">
+                    <Link href={postflopLink(scenario, flopRootPos(r.board))} aria-label={`${t("rep.open")}: ${r.text}`} className="inline-flex min-h-tap items-center whitespace-nowrap rounded-control border border-line px-3 text-xs font-semibold text-muted">
                       {t("rep.open")}
                     </Link>
                   </td>

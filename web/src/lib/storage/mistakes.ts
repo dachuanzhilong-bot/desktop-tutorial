@@ -2,7 +2,7 @@ import { classInfo } from "../poker/hands";
 import { postflopLink, preflopLink } from "../study/links";
 import { cardText, COMBOS } from "../postflop/combos";
 import type { PfFlop } from "../postflop/decode";
-import { currentFlopIndex, currentPostflopNode, currentPreflopNode, parsePostSolution } from "../practice/position";
+import { currentFlopIndex, currentPostflopNode, currentPreflopNode } from "../practice/position";
 import type { Manifest } from "../solution/types";
 import type { Attempt } from "./types";
 
@@ -12,8 +12,7 @@ export function recentMistakes(list: Attempt[], limit = 8): Attempt[] {
   const out: Attempt[] = [];
   for (const a of [...list].sort((x, y) => y.ts - x.ts)) {
     if (a.grade !== "mistake" && a.grade !== "blunder") continue;
-    // the position: its key when the record has one (never the same text as a node id), else the node id
-    const key = `${a.solution}:${a.pos ?? a.nodeId}:${a.hand}`;
+    const key = `${a.solution}:${a.pos}:${a.hand}`;
     if (seen.has(key)) continue;
     seen.add(key);
     out.push(a);
@@ -27,19 +26,6 @@ const preflopDepth = (solution: string): number | null => {
   return m ? Number(m[1]) : null;
 };
 
-/**
- * Where the Study screen shows the position of an attempt made before position keys (the node, and for pre-flop the
- * hand too); null when it cannot be told. An attempt with `pos` gets no link here: its node id may be out of date,
- * the link comes from resolveStudyHref, which looks the position up in today's data.
- */
-export function studyHref(a: Attempt): string | null {
-  if (a.pos !== undefined) return null;
-  const post = parsePostSolution(a.solution);
-  if (post) return post.flopIndex === null ? null : postflopLink(post.scenario, post.flopIndex, a.nodeId);
-  const depth = preflopDepth(a.solution);
-  return depth === null ? null : preflopLink(depth, a.nodeId, a.hand);
-}
-
 /** today's solution data, as far as links need it */
 export interface StudySources {
   /** manifest of a pre-flop solution by its id (`cash6max-100bb`); rejects when there is none */
@@ -50,23 +36,17 @@ export interface StudySources {
 }
 
 /**
- * The Study link of an attempt in today's data. With `pos` the node (and the flop) is looked up again by the
- * position key, so the link stays on the same position after the data was generated again; a position today's
- * data does not have, or data that cannot be loaded, gives null (the record is still counted, it just has no link).
- * Without `pos` this is studyHref.
+ * The Study link of an attempt: its position key (and for pre-flop the hand). The key is looked up in today's data
+ * first — a position that data does not have, or data that cannot be loaded, gives null (the record is still
+ * counted, it just has no link).
  */
 export async function resolveStudyHref(a: Attempt, src: StudySources): Promise<string | null> {
-  if (a.pos === undefined) return studyHref(a);
   try {
     const where = currentFlopIndex(src.flops, a);
-    if (where) {
-      const node = currentPostflopNode(await src.flop(where.scenario, where.flopIndex), a);
-      return node === null ? null : postflopLink(where.scenario, where.flopIndex, node);
-    }
+    if (where) return currentPostflopNode(await src.flop(where.scenario, where.flopIndex), a) === null ? null : postflopLink(where.scenario, a.pos);
     const depth = preflopDepth(a.solution);
     if (depth === null) return null;
-    const node = currentPreflopNode(await src.manifest(a.solution), a);
-    return node === null ? null : preflopLink(depth, node, a.hand);
+    return currentPreflopNode(await src.manifest(a.solution), a) === null ? null : preflopLink(depth, a.pos, a.hand);
   } catch {
     return null;
   }

@@ -169,7 +169,4 @@ export function buildPostQuestion(flop: PfFlop, nodeId: number, combo: number, r
   return { nodeId, hand: classOfCards(c.c1, c.c2), cards, sol: grid, stats, roll, rngAction, potOdds, bars: { sol: barSol, h: 0 } };
 }
 
-/** key of a post-flop spaced-repetition item made before position keys existed (it holds the flop's index and the node id) */
-export const legacyPostSrsKey = (scenario: string, flopIndex: number, nodeId: number, combo: number) => `p:${scenario}/${flopIndex}:${nodeId}:${combo}`;
-
 export { NC };

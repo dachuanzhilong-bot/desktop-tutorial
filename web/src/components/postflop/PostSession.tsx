@@ -9,7 +9,7 @@ import { GridAction } from "@/components/RangeGrid";
 import { Skeleton } from "@/components/Skeleton";
 import { edgeTone, useEdgeText } from "@/components/postflop/edge";
 import { PostTable, PostTableMini } from "@/components/postflop/PostTable";
-import { buildPostQuestion, advance, legacyPostSrsKey, PEnd, pathSteps, pickCombo, pickSpotNode, PStep, spotCandidates } from "@/lib/postflop/practice";
+import { buildPostQuestion, advance, PEnd, pathSteps, pickCombo, pickSpotNode, PStep, spotCandidates } from "@/lib/postflop/practice";
 import { COMBOS, cardOf, classOfCards } from "@/lib/postflop/combos";
 import type { PfFlop } from "@/lib/postflop/decode";
 import { loadFlop, loadIndex, PfIndex } from "@/lib/postflop/loader";
@@ -104,7 +104,7 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
         const node = flop.nodes[nodeId];
         // spaced repetition by position: the item of (scenario, flop + line, combo); an older item by its old key
         const ref = postflopRef(config.scenario, flop, nodeId);
-        const combo = pickCombo(node, rnd, (c) => srs.current.find(ref.solution, ref.pos, c, legacyPostSrsKey(config.scenario, flopIdx, nodeId, c)), Date.now());
+        const combo = pickCombo(node, rnd, (c) => srs.current.find(ref.solution, ref.pos, c), Date.now());
         const q = buildPostQuestion(flop, nodeId, combo, rnd, config.rng);
         setRound({ flop, flopIdx, hero: node.actor as 0 | 1, combo, steps: pathSteps(flop, nodeId), startNode: 0, q, ended: null, lastNode: nodeId });
       } else {
@@ -256,7 +256,7 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
       // the flop's board, the line and the build ID: what the record is found by after the data is generated again
       // (the flop's index and the node id are not: `solution` has no index, `nodeId` is only informative)
       const ref = postflopRef(config.scenario, round.flop, q.nodeId);
-      const attempt = withPosition<Attempt>({
+      const attempt = withPosition<Omit<Attempt, "pos" | "build">>({
         ts: now,
         sessionId: sessionIdOf(sessionId, "p"),
         mode: config.kind === "spot" ? "postSpot" : "post",
@@ -275,7 +275,7 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
         timeout,
         hint: hintUsed.current,
       }, ref);
-      const item = answerSrs(srs.current, ref, legacyPostSrsKey(config.scenario, round.flopIdx, q.nodeId, round.combo), q.nodeId, round.combo, j.grade, now);
+      const item = answerSrs(srs.current, ref, q.nodeId, round.combo, j.grade, now);
       const repo = getRepo();
       repo.addAttempt(attempt).catch(() => {});
       repo.putSrs(item).catch(() => {});

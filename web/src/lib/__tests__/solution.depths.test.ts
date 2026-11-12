@@ -4,7 +4,6 @@ import { describe, expect, it } from "vitest";
 import { classByName } from "../poker/hands";
 import { ActionKind } from "../solution/types";
 import { DEPTHS, depthOf, nearestDepth, solutionId } from "../solution/loader";
-import { srsKey } from "../practice/srs";
 import { loadManifestFor, loadNodeFor } from "./helpers";
 
 const have = (d: number) => existsSync(path.resolve(__dirname, `../../../public/solutions/cash6max-${d}bb/manifest.json.gz`));
@@ -21,12 +20,10 @@ describe("depth helpers", () => {
     expect(nearestDepth(142)).toBe(200);
     expect(nearestDepth(500)).toBe(200);
   });
-  it("round-trips solution ids and keeps the old 100bb SRS keys", () => {
+  it("round-trips solution ids", () => {
     for (const d of DEPTHS) expect(depthOf(solutionId(d))).toBe(d);
     expect(depthOf(undefined)).toBe(100);
-    expect(srsKey("cash6max-100bb", 12, 34)).toBe("12:34");
-    expect(srsKey(undefined, 12, 34)).toBe("12:34");
-    expect(srsKey("cash6max-40bb", 12, 34)).toBe("cash6max-40bb:12:34");
+    // (the spaced-repetition keys that treated 100bb specially are gone with the old records: REFACTOR_PLAN step 1-4)
   });
 });
 

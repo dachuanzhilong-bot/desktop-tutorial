@@ -8,7 +8,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { classByName, NUM_CLASSES } from "../poker/hands";
 import { DEFAULT_FILTER, candidateNodes, pickHand } from "../practice/sampler";
-import { mixedness, srsKey, updateSrs } from "../practice/srs";
+import { mixedness, updateSrs } from "../practice/srs";
 import type { SrsItem } from "../practice/srs";
 import { applyAction, initialState, stateAt } from "../solution/tree";
 import { ActionKind } from "../solution/types";
@@ -118,11 +118,13 @@ describe("spaced repetition asks missed hands more often (real 100bb UTG spot)",
   const control = classByName("J4o");
   const fr = (h: number) => Array.from({ length: sol.na }, (_, a) => sol.freq[a * K + h]);
 
-  const count = (srs: Map<string, SrsItem>, now: number, n = 30_000) => {
+  // the items of the root decision, by hand class (the practice screen looks them up by position: SrsIndex.find)
+  const ROOT = { solution: "cash6max-100bb", pos: "root" };
+  const count = (srs: Map<number, SrsItem>, now: number, n = 30_000) => {
     const rnd = mulberry32(7);
     const c = new Map<number, number>();
     for (let i = 0; i < n; i++) {
-      const h = pickHand(sol, 0, DEFAULT_FILTER, rnd, srs, now);
+      const h = pickHand(sol, DEFAULT_FILTER, rnd, (hand) => srs.get(hand), now);
       c.set(h, (c.get(h) ?? 0) + 1);
     }
     return c;
@@ -142,19 +144,19 @@ describe("spaced repetition asks missed hands more often (real 100bb UTG spot)",
     expect(base).toBeLessThan(1.15);
 
     // answered wrong once: due again immediately
-    const wrong = updateSrs(undefined, 0, missed, "blunder", now - 60_000, srsKey(undefined, 0, missed));
-    const afterMiss = count(new Map([[wrong.key, wrong]]), now);
+    const wrong = updateSrs(undefined, ROOT, 0, missed, "blunder", now - 60_000);
+    const afterMiss = count(new Map([[wrong.hand, wrong]]), now);
     expect((afterMiss.get(missed) ?? 0) / (afterMiss.get(control) ?? 1)).toBeGreaterThan(4);
 
     // answered right twice: scheduled days ahead, asked less until then
-    let ok = updateSrs(undefined, 0, missed, "best", now - 120_000, srsKey(undefined, 0, missed));
-    ok = updateSrs(ok, 0, missed, "best", now - 60_000, srsKey(undefined, 0, missed));
+    let ok = updateSrs(undefined, ROOT, 0, missed, "best", now - 120_000);
+    ok = updateSrs(ok, ROOT, 0, missed, "best", now - 60_000);
     expect(ok.due).toBeGreaterThan(now + 60 * 60_000);
-    const mastered = count(new Map([[ok.key, ok]]), now);
+    const mastered = count(new Map([[ok.hand, ok]]), now);
     expect((mastered.get(missed) ?? 0) / (mastered.get(control) ?? 1)).toBeLessThan(0.5);
 
     // once it is due again, it is back to (more than) normal
-    const later = count(new Map([[ok.key, ok]]), ok.due + 1);
+    const later = count(new Map([[ok.hand, ok]]), ok.due + 1);
     expect((later.get(missed) ?? 0) / (later.get(control) ?? 1)).toBeGreaterThan(1.5);
   });
 
