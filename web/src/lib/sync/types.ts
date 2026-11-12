@@ -24,12 +24,19 @@ export interface AttemptRow {
   score: number;
   ms: number | null;
   flags: number;
+  /** position key and build ID (null for records made before they existed; absent in rows of an older server copy) */
+  pos?: string | null;
+  build?: string | null;
 }
 
 export interface SrsRow {
   key: string;
   node_id: number;
   hand: number;
+  /** solution, position key and build ID of items made with a position key (null / absent for older ones) */
+  solution?: string | null;
+  pos?: string | null;
+  build?: string | null;
   box: number;
   due: string;
   seen: number;
@@ -136,6 +143,9 @@ export function attemptToRow(a: Attempt, clientId: string): AttemptRow {
     score: a.score,
     ms: Number.isFinite(a.ms) ? Math.round(a.ms) : null,
     flags: (a.rng ? 1 : 0) | (a.timeout ? 2 : 0) | (a.hint ? 4 : 0),
+    // always present (null when unknown): every row of one upload must have the same columns
+    pos: a.pos ?? null,
+    build: a.build ?? null,
   };
 }
 
@@ -159,13 +169,42 @@ export function rowToAttempt(r: AttemptRow): Attempt {
     timeout: (r.flags & 2) !== 0,
     hint: (r.flags & 4) !== 0,
     remote: true,
+    ...(typeof r.pos === "string" ? { pos: r.pos } : {}),
+    ...(typeof r.build === "string" ? { build: r.build } : {}),
   };
 }
 
 export const attemptKey = (a: { ts: number; nodeId: number; hand: number }) => `${a.ts}:${a.nodeId}:${a.hand}`;
 
-export const srsToRow = (s: SrsItem): SrsRow => ({ key: s.key, node_id: s.nodeId, hand: s.hand, box: s.box, due: iso(s.due), seen: s.seen, lapses: s.lapses, last_grade: s.lastGrade, updated: iso(s.updated) });
-export const rowToSrs = (r: SrsRow): SrsItem => ({ key: r.key, nodeId: r.node_id, hand: r.hand, box: r.box, due: Date.parse(r.due), seen: r.seen, lapses: r.lapses, lastGrade: r.last_grade, updated: Date.parse(r.updated) });
+export const srsToRow = (s: SrsItem): SrsRow => ({
+  key: s.key,
+  node_id: s.nodeId,
+  hand: s.hand,
+  box: s.box,
+  due: iso(s.due),
+  seen: s.seen,
+  lapses: s.lapses,
+  last_grade: s.lastGrade,
+  updated: iso(s.updated),
+  // always present (null when unknown): every row of one upload must have the same columns
+  solution: s.solution ?? null,
+  pos: s.pos ?? null,
+  build: s.build ?? null,
+});
+export const rowToSrs = (r: SrsRow): SrsItem => ({
+  key: r.key,
+  nodeId: r.node_id,
+  hand: r.hand,
+  box: r.box,
+  due: Date.parse(r.due),
+  seen: r.seen,
+  lapses: r.lapses,
+  lastGrade: r.last_grade,
+  updated: Date.parse(r.updated),
+  ...(typeof r.solution === "string" ? { solution: r.solution } : {}),
+  ...(typeof r.pos === "string" ? { pos: r.pos } : {}),
+  ...(typeof r.build === "string" ? { build: r.build } : {}),
+});
 
 export const rangeToRow = (r: SavedRange): RangeRow => ({ id: r.id, name: r.name, range_text: r.text, ts: iso(r.ts) });
 export const rowToRange = (r: RangeRow): SavedRange => ({ id: r.id, name: r.name, text: r.range_text, ts: Date.parse(r.ts) });

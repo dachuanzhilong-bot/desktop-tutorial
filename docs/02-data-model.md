@@ -8,7 +8,7 @@
 | ストア | キー | 内容 |
 |--------|------|------|
 | `attempts` | `id` (auto) / index `ts` | 1回の判断の記録 |
-| `srs` | `key = "<nodeId>:<handClass>"` | 間隔反復の状態（Leitnerボックス） |
+| `srs` | `key = "k:<solution>:<pos>:<hand>"`（古い項目は `"<nodeId>:<handClass>"` など。[03](03-solution-format.md)「記録が持つ局面」） | 間隔反復の状態（Leitnerボックス）。`solution`・`pos`・`build` を持つ |
 | `meta` | 任意キー | 設定同期状態、ICM回答ログ、Study保存局面と削除墓標など |
 
 `Attempt`（`web/src/lib/storage/types.ts`）
@@ -18,8 +18,9 @@
 | `ts` | number | 回答時刻 (epoch ms) |
 | `sessionId` | string | 練習セッションID |
 | `mode` | `spot`｜`hand` | スポット練習 / 通しプレイ |
-| `solution` | string | 解のID（例 `cash6max-100bb`） |
-| `nodeId`, `hand` | number | 局面ノードと手札クラス(0–168) |
+| `solution` | string | 解のID（例 `cash6max-100bb`。ポストフロップは `post:<シナリオ>`） |
+| `nodeId`, `hand` | number | 局面ノードと手札クラス(0–168)。`pos` がある記録の `nodeId` は参考値 |
+| `pos`, `build` | string（任意） | 局面キーと、採点に使った解データのビルド ID（[03](03-solution-format.md)「記録が持つ局面」）。古い記録には無い |
 | `seat`, `spot` | number, SpotType | 自分の席、局面の種類（集計用に非正規化） |
 | `chosen`, `best` | number | 選んだ/最善のアクション番号 |
 | `grade`, `evLoss`, `score` | enum, bb, 0–100 | 判定・EV損失・スコア |
@@ -56,6 +57,8 @@ create table public.attempts (
   score        smallint not null check (score between 0 and 100),
   ms           int,
   flags        smallint not null default 0,  -- bit0 rng, bit1 timeout, bit2 hint
+  pos          text,                         -- 局面キー（03-solution-format.md）。これがある行の node_id は参考値
+  build        text,                         -- 採点に使った解データのビルド ID
   unique (user_id, client_id, ts, node_id, hand)
 );
 create index on public.attempts (user_id, ts desc);
@@ -65,12 +68,14 @@ create index on public.attempts (user_id, ts desc);
 
 create table public.srs_items (
   user_id    uuid not null references auth.users(id) on delete cascade,
-  key        text not null,                  -- "<solution>:<nodeId>:<hand>"
+  key        text not null,                  -- 新しい項目は "k:<solution>:<pos>:<hand>"。古い項目は "<solution>:<nodeId>:<hand>" など
   box        smallint not null, due timestamptz not null,
   seen       int not null, lapses int not null,
   last_grade text not null, updated timestamptz not null,
+  solution   text, pos text, build text,     -- 局面キーを持つ項目だけ（古い項目は null）
   primary key (user_id, key)
 );
+-- 既存のテーブル向けの列追加（alter table … add column if not exists）は supabase/schema.sql にある。
 
 create table public.user_settings (
   user_id  uuid primary key references auth.users(id) on delete cascade,

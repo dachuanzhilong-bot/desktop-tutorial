@@ -7,10 +7,10 @@ import { appendIcmLog, readIcmLog } from "../storage/icmLog";
 import type { IcmLogEntry } from "../storage/icmLog";
 import { loadState, syncOnce, SettingsIo } from "../sync/engine";
 import { AuthError, SupabaseAuth, SupabaseBackend } from "../sync/supabase";
-import { attemptToRow } from "../sync/types";
+import { attemptToRow, rowToAttempt, rowToSrs, srsToRow } from "../sync/types";
 import type { AttemptRow, BookmarkRow, IcmLogRow, RangeRow, SettingsRow, SrsRow, SyncBackend } from "../sync/types";
 import { updateSrs } from "../practice/srs";
-import { migrationChecks, rejectBatch, schemaChecks, violations } from "./fixtures/schemaChecks";
+import { migrationChecks, readSchema, rejectBatch, schemaChecks, violations } from "./fixtures/schemaChecks";
 
 const attempt = (ts: number, nodeId = 5, hand = 10, extra: Partial<Attempt> = {}): Attempt => ({
   ts,
@@ -289,6 +289,58 @@ describe("sync engine", () => {
     expect(got).toContainEqual(expect.objectContaining({ mode: "post", hand: 169, spot: "postTurn", grade: "mistake", evLoss: 1.2 }));
   });
 
+  it("the position key and the build ID travel: pushed by one device, pulled by another, next to records without them", async () => {
+    const server = new FakeBackend();
+    const a = device();
+    const b = device();
+    const t0 = 1_700_000_000_000;
+    await a.repo.addAttempt(attempt(t0, 12, 34, { pos: "F-F-R2.5-F-F", build: "17035ecae421" }));
+    await a.repo.addAttempt(attempt(t0 + 1000, 40, 1325, { mode: "postSpot", solution: "post:srp-btn-bb", seat: 5, spot: "postTurn", pos: "9s6d3c@X-B1.75-C/Td", build: "fd91cfc9e86b" }));
+    await a.repo.addAttempt(attempt(t0 + 2000, 5, 10)); // made before position keys
+    const preItem = updateSrs(undefined, 12, 34, "mistake", t0, undefined, { solution: "cash6max-100bb", pos: "F-F-R2.5-F-F", build: "17035ecae421" });
+    const postItem = updateSrs(undefined, 40, 1325, "best", t0 + 1000, undefined, { solution: "post:srp-btn-bb", pos: "9s6d3c@X-B1.75-C/Td", build: "fd91cfc9e86b" });
+    const oldItem = updateSrs(undefined, 5, 10, "best", t0 + 2000);
+    for (const it of [preItem, postItem, oldItem]) await a.repo.putSrs(it);
+    expect(preItem.key).toBe("k:cash6max-100bb:F-F-R2.5-F-F:34");
+
+    expect(await syncOnce(a.repo, server, "u", a.io)).toMatchObject({ pushedAttempts: 3, pushedSrs: 3 });
+    // every row of an upload has the same columns: null where a record has no position
+    expect(server.attempts.map((r) => [r.pos, r.build])).toEqual([["F-F-R2.5-F-F", "17035ecae421"], ["9s6d3c@X-B1.75-C/Td", "fd91cfc9e86b"], [null, null]]);
+    expect(server.srs.get(preItem.key)).toMatchObject({ solution: "cash6max-100bb", pos: "F-F-R2.5-F-F", build: "17035ecae421" });
+    expect(server.srs.get(oldItem.key)).toMatchObject({ solution: null, pos: null, build: null });
+
+    expect(await syncOnce(b.repo, server, "u", b.io)).toMatchObject({ pulledAttempts: 3, pulledSrs: 3 });
+    const got = await b.repo.allAttempts();
+    expect(got).toContainEqual(expect.objectContaining({ ts: t0, nodeId: 12, hand: 34, pos: "F-F-R2.5-F-F", build: "17035ecae421", remote: true }));
+    expect(got).toContainEqual(expect.objectContaining({ ts: t0 + 1000, solution: "post:srp-btn-bb", pos: "9s6d3c@X-B1.75-C/Td", build: "fd91cfc9e86b" }));
+    const old = got.find((x) => x.ts === t0 + 2000)!;
+    expect("pos" in old).toBe(false);
+    expect("build" in old).toBe(false);
+    // spaced repetition: exactly the items of the first device (an old one has no position fields at all)
+    const srs = await b.repo.allSrs();
+    expect(srs).toHaveLength(3);
+    expect(srs).toContainEqual(preItem);
+    expect(srs).toContainEqual(postItem);
+    expect(srs).toContainEqual(oldItem);
+    // nothing echoes back
+    expect(await syncOnce(a.repo, server, "u", a.io)).toMatchObject({ pushedAttempts: 0, pulledAttempts: 0 });
+    expect(await a.repo.allAttempts()).toHaveLength(3);
+  });
+
+  it("rows of a server that does not have the new columns yet are read as records without a position", () => {
+    const row = attemptToRow(attempt(1_700_000_000_000, 5, 10, { pos: "root", build: "abc" }), "c1");
+    const { pos: _pos, build: _build, ...oldRow } = row;
+    const back = rowToAttempt(oldRow);
+    expect(back).toMatchObject({ nodeId: 5, hand: 10, remote: true });
+    expect("pos" in back).toBe(false);
+    expect(rowToAttempt(row)).toMatchObject({ pos: "root", build: "abc" });
+    const item = updateSrs(undefined, 5, 10, "best", 1_700_000_000_000, undefined, { solution: "cash6max-100bb", pos: "root", build: "abc" });
+    const { solution: _s, pos: _p, build: _b, ...oldSrsRow } = srsToRow(item);
+    const { solution: _s2, pos: _p2, build: _b2, ...plain } = item;
+    expect(rowToSrs(oldSrsRow)).toEqual(plain);
+    expect(rowToSrs(srsToRow(item))).toEqual(item);
+  });
+
   it("the fake server refuses what the schema refuses: a row outside a constraint fails the whole batch", async () => {
     const server = new FakeBackend();
     const a = device();
@@ -489,6 +541,31 @@ describe("Supabase over fetch", () => {
     expect(srv.tables.attempts).toHaveLength(1);
   });
 
+  it("the position key and the build ID go through the REST backend and come back on another device", async () => {
+    const srv = fakeServer();
+    const auth = new SupabaseAuth(CFG, srv.fetchFn, memStore());
+    const session = await auth.verifyCode("me@example.com", "123456");
+    const backend = new SupabaseBackend(CFG, session, srv.fetchFn);
+    const t0 = 1_700_000_000_000;
+    const a = device();
+    await a.repo.addAttempt(attempt(t0, 12, 34, { pos: "F-F-R2.5-F-F", build: "17035ecae421" }));
+    await a.repo.addAttempt(attempt(t0 + 1000, 5, 10)); // made before position keys
+    const item = updateSrs(undefined, 40, 1325, "mistake", t0, undefined, { solution: "post:srp-btn-bb", pos: "9s6d3c@X-B1.75-C/Td", build: "fd91cfc9e86b" });
+    await a.repo.putSrs(item);
+    await syncOnce(a.repo, backend, session.userId, a.io);
+    expect(srv.tables.attempts).toHaveLength(2);
+    expect(srv.tables.attempts[0]).toMatchObject({ node_id: 12, pos: "F-F-R2.5-F-F", build: "17035ecae421" });
+    expect(srv.tables.attempts[1]).toMatchObject({ node_id: 5, pos: null, build: null });
+    // one upload, one set of columns (PostgREST takes the columns of a bulk insert from its first row)
+    expect(Object.keys(srv.tables.attempts[1]).sort()).toEqual(Object.keys(srv.tables.attempts[0]).sort());
+    expect(srv.tables.srs_items[0]).toMatchObject({ key: item.key, solution: "post:srp-btn-bb", pos: "9s6d3c@X-B1.75-C/Td", build: "fd91cfc9e86b" });
+
+    const b = device();
+    expect(await syncOnce(b.repo, backend, session.userId, b.io)).toMatchObject({ pulledAttempts: 2, pulledSrs: 1 });
+    expect(await b.repo.allAttempts()).toContainEqual(expect.objectContaining({ ts: t0, pos: "F-F-R2.5-F-F", build: "17035ecae421" }));
+    expect(await b.repo.allSrs()).toEqual([item]);
+  });
+
   it("a rejected token is reported as an auth error", async () => {
     const srv = fakeServer();
     const backend = new SupabaseBackend(CFG, { accessToken: "garbage", refreshToken: "", expiresAt: 0, userId: "u", email: "e" }, srv.fetchFn);
@@ -520,6 +597,20 @@ describe("supabase/schema.sql check constraints", () => {
     expect(altered).toHaveLength(1);
     expect(altered[0].name).toBe(created.name);
     expect(altered[0].rule).toBe(created.rule);
+  });
+
+  it("attempts and srs_items have the position columns, nullable and without a constraint, also for a database made from an older copy", () => {
+    const sql = readSchema();
+    const table = (name: string) => new RegExp(`create table if not exists public\\.${name} \\(([\\s\\S]*?)\\n\\);`).exec(sql)![1];
+    for (const [name, columns] of [["attempts", ["pos", "build"]], ["srs_items", ["solution", "pos", "build"]]] as const) {
+      for (const c of columns) {
+        // in the create statement: plain `text`, so null is allowed and nothing is checked
+        expect(table(name)).toMatch(new RegExp(`\\n\\s+${c}\\s+text,`));
+        // and idempotently for an existing table
+        expect(sql).toContain(`alter table public.${name} add column if not exists ${c} text;`);
+      }
+      expect(schemaChecks(name).map((k) => k.column)).not.toEqual(expect.arrayContaining([...columns]));
+    }
   });
 
   it("the other tables are still read (a constraint the reader does not understand must not pass silently)", () => {

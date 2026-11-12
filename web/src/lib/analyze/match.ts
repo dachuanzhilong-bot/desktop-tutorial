@@ -4,11 +4,14 @@ import type { ActionStat, Grade } from "../practice/grading";
 import { formatRange } from "../ranges/range";
 import { ActionKind } from "../solution/types";
 import type { Manifest, NodeSolution, SpotType } from "../solution/types";
+import { preflopKey } from "../solution/positionKey";
 import { spotType } from "../solution/tree";
 import type { NormAction, NormHand } from "./normalize";
 
 export interface SolutionSource {
   manifest: Manifest;
+  /** build ID of the solution data (SolutionStore.build) */
+  build?: string;
   node(id: number): Promise<NodeSolution>;
 }
 
@@ -25,7 +28,10 @@ export function effectiveStack(hand: NormHand): number {
 const SIZE_TOLERANCE = 1.35;
 
 export interface DecisionInfo {
+  /** node id when the hand was analysed. With `pos` it is only informative: readers look the node up again from `pos`. */
   nodeId: number;
+  /** position key of the decision (docs/03 "局面キー"); absent in hands analysed before position keys */
+  pos?: string;
   seat: number;
   spot: SpotType;
   handClass: number;
@@ -60,6 +66,8 @@ export interface HandAnalysis {
   id: string;
   /** id of the solution the node ids refer to (absent in hands analysed before depths existed: 100bb) */
   solution?: string;
+  /** build ID of the solution data the hand was graded against (absent in older analyses) */
+  build?: string;
   status: "ok" | "partial" | "skipped";
   reason?: string;
   decisions: DecisionInfo[];
@@ -104,7 +112,7 @@ function actionIndex(m: Manifest, nodeId: number, act: NormAction, stack: number
  */
 export async function analyzeHand(src: SolutionSource, hand: NormHand): Promise<HandAnalysis> {
   const m = src.manifest;
-  const base: HandAnalysis = { id: hand.id, solution: src.manifest.id, status: "ok", decisions: [], offTree: [], evLoss: 0, worst: null, flopLink: null };
+  const base: HandAnalysis = { id: hand.id, solution: src.manifest.id, ...(src.build ? { build: src.build } : {}), status: "ok", decisions: [], offTree: [], evLoss: 0, worst: null, flopLink: null };
   const skip = (reason: string): HandAnalysis => ({ ...base, status: "skipped", reason });
   const eff = effectiveStack(hand);
   if (eff < MIN_STACK || eff > MAX_STACK) return skip(`effective stack ${eff.toFixed(0)}bb is outside ${MIN_STACK}-${MAX_STACK}bb`);
@@ -142,6 +150,7 @@ export async function analyzeHand(src: SolutionSource, hand: NormHand): Promise<
       const g = gradeAnswer(stats, pick.index);
       base.decisions.push({
         nodeId: node,
+        pos: preflopKey(m, node),
         seat: act.seat,
         spot: spotType(m, node),
         handClass: h,
