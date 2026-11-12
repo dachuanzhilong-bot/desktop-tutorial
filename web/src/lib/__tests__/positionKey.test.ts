@@ -17,6 +17,7 @@ import { keyAmount, preflopKey, resolvePreflopKey, ROOT_KEY } from "../solution/
 import { BB_SEAT, history, stateAt } from "../solution/tree";
 import { ActionKind } from "../solution/types";
 import type { Manifest } from "../solution/types";
+import { renumberFlop, renumberManifest } from "./fixtures/renumber";
 
 const PUBLIC = path.resolve(__dirname, "../../../public");
 const TIMEOUT = 60_000;
@@ -30,22 +31,6 @@ const loadManifest = (depth: number): Manifest =>
   parseManifest(JSON.parse(gunzipSync(readFileSync(path.join(PUBLIC, "solutions", solutionId(depth), "manifest.json.gz"))).toString("utf8")));
 const loadFlop = (scenario: string, flop: number): PfFlop =>
   decodeFlop(new Uint8Array(gunzipSync(readFileSync(path.join(PUBLIC, "postflop", scenario, `${flop}.bin.gz`)))));
-
-/** the same tree with different node ids (root stays 0, the others are reversed), as a re-generation may produce */
-function renumberManifest(m: Manifest): { m: Manifest; map: (id: number) => number } {
-  const n = m.nodes.length;
-  const map = (id: number) => (id <= 0 ? id : n - id);
-  const nodes = m.nodes.map((x) => ({ ...x, id: map(x.id), parent: map(x.parent), chunk: (x.chunk + 1) % Math.max(1, m.chunks.length), actions: x.actions.map((a) => ({ ...a, child: map(a.child) })) }));
-  nodes.sort((a, b) => a.id - b.id);
-  return { m: { ...m, nodes }, map };
-}
-function renumberFlop(f: PfFlop): { f: PfFlop; map: (id: number) => number } {
-  const n = f.nodes.length;
-  const map = (id: number) => (id <= 0 ? id : n - id);
-  const nodes = f.nodes.map((x) => ({ ...x, id: map(x.id), parent: map(x.parent), edges: x.edges.map((e) => ({ ...e, code: map(e.code) })) }));
-  nodes.sort((a, b) => a.id - b.id);
-  return { f: { ...f, nodes }, map };
-}
 
 describe("keyAmount", () => {
   it("drops trailing zeros and is stable against floating-point noise", () => {
