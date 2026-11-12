@@ -220,12 +220,26 @@ test.describe("pwa", () => {
       )
       .toBeGreaterThanOrEqual(8);
     await page.reload(); // now controlled by the SW
+    // every solution file is cached under the address the app asks for: with its build ID (?b=…)
+    const cached = await page.evaluate(async () => {
+      const name = (await caches.keys()).find((k) => k.startsWith("tessera-data-"));
+      return name ? (await (await caches.open(name)).keys()).map((r) => r.url) : [];
+    });
+    const data = cached.filter((u) => /\/(solutions|postflop)\/.*\.gz/.test(u));
+    expect(data.length).toBeGreaterThanOrEqual(40); // 5 depths x (manifest + 7 chunks)
+    for (const u of data) expect(u).toMatch(/\.gz\?b=[0-9a-f]{12}$/);
+    // a postflop flop is cached when it is first opened
+    await page.goto("/study/postflop/");
+    await expect(page.getByTestId("pf-actor")).toContainText("BB", { timeout: 20_000 });
     await context.setOffline(true);
     await page.goto("/practice/");
     await page.getByTestId("start-practice").click();
     await expect(page.locator('[data-testid^="action-"]').first()).toBeVisible({ timeout: 20_000 });
     await page.locator('[data-testid^="action-"]').first().click();
     await expect(page.getByTestId("result")).toBeVisible();
+    // … and opens again without a network
+    await page.goto("/study/postflop/");
+    await expect(page.getByTestId("pf-actor")).toContainText("BB", { timeout: 20_000 });
 
     // the WebAssembly solver and its worker are cached too: Solve works without a network
     await page.goto("/solve/");

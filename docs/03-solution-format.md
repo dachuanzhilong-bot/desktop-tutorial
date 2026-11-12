@@ -12,6 +12,16 @@
 `.gz` は **gzip**。ブラウザは `DecompressionStream("gzip")` で展開する。
 ホスティング側が `.gz` を自動展開して配信する場合に備え、ローダーは先頭2バイト(`1f 8b`)を見て展開するかを決める。
 
+### ビルド ID（`build`）
+
+梱包した解には、中身から決まる ID を付ける（`web/scripts/build-id.mjs`。`npm run solutions:pack` が書く。梱包済みのデータに付け直すだけなら `npm run solutions:stamp`）。
+
+- 値: 梱包後のファイル（gzip のバイト列）の SHA-256 の先頭 12 桁（16 進）。日時やファイルの列挙順には依存しない。
+- プリフロップ: 1 つの解（`<id>/` の全ファイルをファイル名の昇順に連結）ごとに 1 つ。`/solutions/index.json` の `solutions[].build`。
+- ポストフロップ: シナリオ × フロップのファイル 1 つごとに 1 つ。`/postflop/index.json` の `build["<scenario>/<flopIndex>"]`（`stats` と同じキー）。
+- ローダーと Service Worker は、解のファイルを `?b=<build>` 付きの URL で取得・キャッシュする。キャッシュは URL 全体で照合されるので、別の世代のファイルが混ざらない。`index.json` 自体にはクエリを付けない。
+- 2 つの `index.json` はアプリのビルドに取り込まれる（`lib/solution/loader.ts` の `solutionBuild`、`lib/postflop/loader.ts` の `PF_INDEX`）。`data.validate.test.ts` が「`build` が実ファイルのハッシュと一致する」を検査する。
+
 ## manifest.json
 
 ```jsonc

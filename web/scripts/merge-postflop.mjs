@@ -31,5 +31,8 @@ for (const dir of extras.map((d) => resolve(d))) {
 }
 // every scenario must have a file for every flop
 for (const sc of idx.scenarios) for (let i = 0; i < idx.flops.length; i++) if (!existsSync(join(base, sc.id, `${i}.bin`))) throw new Error(`missing ${sc.id}/${i}.bin`);
+// build IDs are those of the packed (.gz) files: `npm run solutions:pack` writes them (scripts/build-id.mjs).
+// One carried over from an index that was packed before would name files that this merge may have replaced.
+delete idx.build;
 writeFileSync(join(base, "index.json"), JSON.stringify(idx));
 console.log(`${idx.scenarios.length} scenarios x ${idx.flops.length} flops`);

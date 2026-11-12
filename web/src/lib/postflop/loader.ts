@@ -1,4 +1,5 @@
 import { gunzip } from "../solution/decode";
+import { withBuild } from "../solution/loader";
 import { withBase } from "../util/base";
 import { decodeFlop, PfFlop } from "./decode";
 import { parseBoard } from "./combos";
@@ -33,6 +34,8 @@ export interface PfIndex {
   flops: string[];
   scenarios: PfScenario[];
   stats: Record<string, FlopStats>;
+  /** build ID of each flop file, by the keys of `stats` ("<scenario>/<flop>"); see scripts/build-id.mjs */
+  build: Record<string, string>;
 }
 
 const base = withBase("/postflop");
@@ -87,19 +90,25 @@ const fetchAndDecode = (url: string) =>
     .then(gunzip)
     .then(decodeFlop);
 
+/** the build ID of a flop file ("" when the index does not know it) */
+export const flopBuild = (scenario: string, flop: number): string => PF_INDEX.build[`${scenario}/${flop}`] ?? "";
+
 export function loadFlop(scenario: string, flop: number): Promise<PfFlop> {
   const key = `${scenario}/${flop}`;
   let p = flopCache.get(key);
   if (!p) {
-    const url = `${base}/${scenario}/${flop}.bin.gz`;
+    const build = flopBuild(scenario, flop);
+    // the worker and the fallback fetch the same address, ?b=<build> included
+    const url = withBuild(`${base}/${scenario}/${flop}.bin.gz`, build);
     const w = flopWorker();
-    p = w
+    const decoded = w
       ? new Promise<PfFlop>((resolve, reject) => {
           const id = nextId++;
           waiting.set(id, { resolve, reject });
           w.postMessage({ id, url: new URL(url, location.href).href });
         }).catch(() => fetchAndDecode(url)) // a worker that cannot start or fetch: decode here
       : fetchAndDecode(url);
+    p = decoded.then((f) => ({ ...f, build }));
     p.catch(() => flopCache.delete(key));
     flopCache.set(key, p);
   }

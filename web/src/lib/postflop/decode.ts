@@ -46,6 +46,8 @@ export interface PfFlop {
   pot: number;
   stack: number;
   nodes: PfNode[];
+  /** build ID of the shipped file this came from (lib/postflop/loader.ts); absent for a flop solved on the device */
+  build?: string;
 }
 
 export function decodeLoss(c: number): number {

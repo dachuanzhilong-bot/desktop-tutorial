@@ -1,13 +1,15 @@
 /* Tessera service worker – offline-first for the app shell and the solution data.
  *
  *  - precache: pages + solution files listed in /solutions/index.json (written by scripts/pack-solutions.mjs)
+ *  - solution files are fetched and cached as <file>?b=<build> (the build ID of index.json, scripts/build-id.mjs):
+ *    the cache matches the whole URL, so the files of one build are never served for another
  *  - /_next/static, /icons: cache-first; /solutions, /postflop, /wasm, /solver-worker.js: stale-while-revalidate
  *  - navigations: network-first with a short timeout, falling back to the cache, then to the home page
  *  Bump VERSION to drop old caches (the solution data); BUILD is stamped by the build and renews the app shell cache.
  */
 // the app may live under a sub-path (GitHub Pages project site): the scope of this worker is that path
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, "");
-const VERSION = "v9";
+const VERSION = "v10";
 // written into the built copy of this file by scripts/stamp-sw.mjs: every build gets its own worker, so a new deploy is noticed
 const BUILD = "dev";
 const CORE = `tessera-core-${VERSION}-${BUILD}`;
@@ -38,9 +40,11 @@ self.addEventListener("install", (event) => {
         const addNew = async (u) => {
           if (!(await data.match(BASE + u))) await data.add(BASE + u).catch(() => {});
         };
-        await Promise.all(idx.solutions.flatMap((s) => s.files).map(addNew));
+        // the same addresses the app asks for (lib/solution/loader.ts): with the build ID of the solution
+        await Promise.all(idx.solutions.flatMap((s) => s.files.map((f) => (s.build ? `${f}?b=${s.build}` : f))).map(addNew));
         await data.put(BASE + "/solutions/index.json", new Response(JSON.stringify(idx), { headers: { "content-type": "application/json" } }));
         // postflop flops are large: only the index is precached, each flop is cached the first time it is opened
+        // (as <n>.bin.gz?b=<build>, the address lib/postflop/loader.ts asks for)
         await data.add(BASE + "/postflop/index.json").catch(() => {});  // small; fetched again so the list of flops is current
         // the Solve screen runs the WebAssembly solver in a worker: keep both offline
         await Promise.all(["/wasm/tessera_solver.wasm", "/solver-worker.js", "/data/equity169.bin"].map(addNew));

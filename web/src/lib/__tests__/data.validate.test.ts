@@ -7,6 +7,7 @@
  * Postflop (every scenario x flop): raw frequency sums, combos never blocked by the board, value ranges.
  * Equity table: size, symmetry, known match-ups.
  */
+import { createHash } from "node:crypto";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import path from "node:path";
@@ -15,7 +16,8 @@ import { ALL_CLASSES, NUM_CLASSES } from "../poker/hands";
 import { COMBOS, NC } from "../postflop/combos";
 import { decodeFlop } from "../postflop/decode";
 import { decodeChunk, parseManifest } from "../solution/decode";
-import { DEPTHS, solutionId } from "../solution/loader";
+import { flopBuild } from "../postflop/loader";
+import { DEPTHS, solutionBuild, solutionId } from "../solution/loader";
 import { applyAction, initialState, stateAt as stateAtNode } from "../solution/tree";
 import { ActionKind } from "../solution/types";
 import type { Manifest, NodeSolution, PublicState } from "../solution/types";
@@ -167,6 +169,43 @@ describe.each(DEPTHS)("preflop solution %dbb", (depth) => {
       }
     }
     done();
+  });
+});
+
+/** build ID as scripts/build-id.mjs defines it, computed here on its own: SHA-256 of the packed bytes, first 12 hex digits */
+function buildOf(files: string[]): string {
+  const h = createHash("sha256");
+  for (const f of files) h.update(readFileSync(f));
+  return h.digest("hex").slice(0, 12);
+}
+
+describe("build IDs of the solution data", () => {
+  const dir = path.join(PUBLIC, "solutions");
+  const index: { solutions: { id: string; files: string[]; build?: string }[] } = JSON.parse(readFileSync(path.join(dir, "index.json"), "utf8"));
+
+  it("the index lists every shipped depth", () => {
+    expect(index.solutions.map((s) => s.id).sort()).toEqual(DEPTHS.map(solutionId).sort());
+  });
+
+  it.each(index.solutions)("preflop $id: the build of the index is the hash of its files", ({ id, files, build }) => {
+    const names = readdirSync(path.join(dir, id)).sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
+    expect(files.map((f) => f.replace(`/solutions/${id}/`, "")).sort(), "the index lists the files of the directory").toEqual(names);
+    expect(build).toMatch(/^[0-9a-f]{12}$/);
+    expect(build).toBe(buildOf(names.map((f) => path.join(dir, id, f))));
+    expect(solutionBuild(id), "the loader asks for this build").toBe(build);
+  });
+
+  it("no two solutions share a build", () => {
+    expect(new Set(index.solutions.map((s) => s.build)).size).toBe(index.solutions.length);
+  });
+
+  it("postflop: the build of every scenario x flop is the hash of its file, and nothing else is listed", () => {
+    const pf = path.join(PUBLIC, "postflop");
+    const idx: { flops: string[]; scenarios: { id: string }[]; build?: Record<string, string> } = JSON.parse(readFileSync(path.join(pf, "index.json"), "utf8"));
+    const expected: Record<string, string> = {};
+    for (const sc of idx.scenarios) for (let i = 0; i < idx.flops.length; i++) expected[`${sc.id}/${i}`] = buildOf([path.join(pf, sc.id, `${i}.bin.gz`)]);
+    expect(idx.build).toEqual(expected);
+    for (const sc of idx.scenarios) for (let i = 0; i < idx.flops.length; i++) expect(flopBuild(sc.id, i), "the loader asks for this build").toBe(expected[`${sc.id}/${i}`]);
   });
 });
 

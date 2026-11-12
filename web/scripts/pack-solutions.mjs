@@ -1,10 +1,12 @@
 // Packs solver output (raw .bin + manifest.json) into gzip files under public/solutions/<id>/
 // and writes public/solutions/index.json (used by the service worker to precache for offline use).
+// Both index.json files get the build IDs of the packed files (scripts/build-id.mjs).
 //
 //   node scripts/pack-solutions.mjs [../solver/out]
 import { gzipSync } from "node:zlib";
 import { mkdirSync, readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { join, resolve } from "node:path";
+import { stampPostflop, stampSolutions } from "./build-id.mjs";
 
 const src = resolve(process.argv[2] ?? "../solver/out");
 const dst = resolve("public/solutions");
@@ -27,6 +29,7 @@ for (const id of readdirSync(src, { withFileTypes: true }).filter((d) => d.isDir
   console.log(`packed ${id}: ${files.length} files`);
 }
 writeFileSync(join(dst, "index.json"), JSON.stringify(index));
+for (const s of stampSolutions(dst).solutions) console.log(`build ${s.id}: ${s.build}`);
 
 // ---- postflop: out/postflop/<scenario>/<n>.bin  ->  public/postflop/<scenario>/<n>.bin.gz  (+ index.json as is)
 const pfSrc = resolve(process.argv[3] ?? "../solver/out/postflop");
@@ -45,5 +48,6 @@ if (existsSync(join(pfSrc, "index.json"))) {
     }
   }
   writeFileSync(join(pfDst, "index.json"), readFileSync(join(pfSrc, "index.json")));
+  stampPostflop(pfDst); // the IDs are those of the packed bytes: they are made here, not by the solver or the merge
   console.log(`packed postflop: ${files} files, ${(bytes / 1e6).toFixed(2)} MB gzip`);
 }
