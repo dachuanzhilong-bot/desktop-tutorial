@@ -16,6 +16,7 @@
     "e2e": "node scripts/e2e.mjs",
     "e2e:subpath": "node scripts/e2e-subpath.mjs",
     "solutions:pack": "node scripts/pack-solutions.mjs",
+    "solutions:stamp": "node scripts/build-id.mjs",
     "icons": "node scripts/make-icons.mjs",
     "wasm": "bash scripts/build-wasm.sh",
     "verify": "npm run typecheck && npm run lint && npm test && npm run e2e"
