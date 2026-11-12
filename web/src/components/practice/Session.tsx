@@ -19,7 +19,7 @@ import { ActionKind, PublicState, Terminal } from "@/lib/solution/types";
 import type { SpotType } from "@/lib/solution/types";
 import { getRepo } from "@/lib/storage/idb";
 import type { Attempt } from "@/lib/storage/types";
-import { cryptoRandom, weightedPick } from "@/lib/util/rng";
+import { cryptoRandom, shuffle, weightedPick } from "@/lib/util/rng";
 import { haptic } from "@/lib/util/haptics";
 import { AnswerInfo, ResultPanel } from "./ResultPanel";
 import type { PostConfig } from "@/components/postflop/PostSession";
@@ -87,7 +87,7 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
     if (config.fixed?.length) {
       // a fixed question list: shuffle once per pass
       if (fixedPos.current >= fixedOrder.current.length) {
-        fixedOrder.current = config.fixed.map((_, i) => i).sort(() => rnd() - 0.5);
+        fixedOrder.current = shuffle(config.fixed.map((_, i) => i), rnd);
         fixedPos.current = 0;
       }
       const item = config.fixed[fixedOrder.current[fixedPos.current++]];
