@@ -126,7 +126,7 @@ node × nNodes (DFS順):
 
 ### 記録が持つ局面（`pos` / `solution` / `build`）
 
-練習の記録（`Attempt`）、間隔反復の項目（`SrsItem`）、取り込んだハンドの判断（`DecisionInfo`）、練習セットの問題は、局面を次の 3 つで持つ（`web/src/lib/practice/position.ts`）。ノード番号（`nodeId`）も書くが、`pos` がある記録では参考値で、読むときは必ず `pos` から現在の番号を引き直す。
+練習の記録（`Attempt`）、間隔反復の項目（`SrsItem`）、取り込んだハンドの判断（`DecisionInfo`）、練習セットの問題は、局面を次の 3 つで持つ（`web/src/lib/practice/position.ts`）。`solution` と `pos` は必須。ノード番号（`nodeId`）も書く記録があるが参考値で、読むときは必ず `pos` から現在の番号を引き直す（練習セットの問題は番号を持たない）。
 
 | 項目 | プリフロップ | ポストフロップ |
 |------|--------------|----------------|
@@ -139,7 +139,20 @@ node × nNodes (DFS順):
 - 引けない記録（今の解にその局面が無い）は、成績の集計には数えるが、Study へのリンクは出さず、復習や練習セットの問題にもしない。
 - `build` は「どのデータで採点したか」の記録で、局面の解決には使わない。
 - 間隔反復の主キーは `k:<solution>:<pos>:<hand>`（番号を含まない）。キー文字列は分解せず、項目の `solution`・`pos`・`hand` を読む。
-- **古い記録**（`pos` が無い）は従来どおり読む: `nodeId` をそのまま使い、ポストフロップは `solution` が `post:<シナリオ>/<フロップの添字>`、間隔反復のキーは `<node>:<hand>`（100bb）/ `<solution>:<node>:<hand>` / `p:<シナリオ>/<添字>:<node>:<combo>`。古い項目は同じキーのまま更新する（新しい形式に書き換えない）。REFACTOR_PLAN ステップ 1-4 で古い記録ごと消す。
+- **古い記録**（`pos` が無い。ポストフロップは `solution` が `post:<シナリオ>/<フロップの添字>`、間隔反復のキーは `<node>:<hand>` / `<solution>:<node>:<hand>` / `p:<シナリオ>/<添字>:<node>:<combo>`）は読まない。IndexedDB を v4 に上げるときに消し、バックアップと同期からも取り込まない（[02](02-data-model.md)「古い形式の記録」、`web/src/lib/storage/obsolete.ts`）。変換はしない。
+
+### Study のリンク（`web/src/lib/study/links.ts`）
+
+Study 画面のアドレスと保存局面の `href` も、番号ではなく局面キーで局面を持つ。
+
+| 画面 | 形 | 例 |
+|------|----|----|
+| プリフロップ | `/study/#d=<深度>&p=<局面キー>[&h=<ハンドクラス>]` | `/study/#d=100&p=F-F-R2.5-F-F&h=14` |
+| ポストフロップ | `/study/postflop/#s=<シナリオ>&p=<flopKey>@<局面キー>` | `/study/postflop/#s=srp-btn-bb&p=QsJd6s@X-B1.75-C/Td` |
+
+- Study 画面は `p=` を読み込んだ解で引き直す（`preflopTarget`、`postflopTargetFlop` → `postflopTarget`）。今の解に無い局面・フロップは、エラーにせずルート（フロップが無ければ最初のフロップ）を開く。
+- 画面が書き出すアドレスと保存する `href` は `p=` だけ。`p=` の無い `href`、`n=`・`f=` を含む `href` は保存局面として受け付けない（`isPositionHref`）。
+- 以前の形（`#d=40&n=12`、`#s=…&f=2&n=0`）は**読み取りだけ**続ける。手で書かれた・共有されたアドレスが残りうるため。番号なので、解を作り直した後は別の局面を開くことがある。ポストフロップは開いた後にアドレスを `p=` の形に書き直す。
 
 ## 前方互換
 - `format` を上げて互換を管理する。ローダーは未知の `format` を拒否する。

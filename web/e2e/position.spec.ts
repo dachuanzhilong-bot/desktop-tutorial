@@ -116,16 +116,20 @@ test.describe("position keys in the records", () => {
     await page.reload();
     const rows = page.getByTestId("notebook").getByRole("listitem");
     await expect(rows).toHaveCount(3);
-    await expect(rows.nth(0).getByRole("link")).toHaveAttribute("href", new RegExp(`/study/#d=100&n=${node}&h=0$`));
-    await expect(rows.nth(1).getByRole("link")).toHaveAttribute("href", /\/study\/postflop\/#s=srp-btn-bb&f=2&n=0$/);
+    // the links hold the position keys: no node number, no flop index
+    await expect(rows.nth(0).getByRole("link")).toHaveAttribute("href", /\/study\/#d=100&p=F-F-R2\.5&h=0$/);
+    await expect(rows.nth(1).getByRole("link")).toHaveAttribute("href", /\/study\/postflop\/#s=srp-btn-bb&p=QsJd6s@root$/);
     await expect(rows.nth(2)).toContainText("KK");
     await expect(rows.nth(2).getByRole("link")).toHaveCount(0);
     // all three count in the totals
     await expect(page.getByTestId("notebook")).toBeVisible();
 
+    // Study looks the key up in the solution it loads: the seat that acts after UTG and HJ fold and CO opens to 2.5bb
     await rows.nth(0).getByRole("link").click();
-    await expect(page).toHaveURL(new RegExp(`/study/#d=100&n=${node}&h=0`));
+    await expect(page).toHaveURL(/\/study\/#d=100&p=F-F-R2\.5&h=0/);
     await expect(page.getByTestId("hand-panel")).toContainText("AA");
+    await expect(page.getByTestId("study-pot")).toContainText(loadManifest().players[loadManifest().nodes[node].actor]);
+    await expect(page.getByTestId("study-pot")).not.toContainText("UTG");
   });
 
   test("a review round asks a new item at the node its position has now, and skips a position that is gone", async ({ page }) => {

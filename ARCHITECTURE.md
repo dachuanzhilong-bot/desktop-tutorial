@@ -43,8 +43,8 @@ solver/ (Rust, 依存なし)                    web/ (Next.js 16 静的書き出
 
 | データ | 置き場所 | キー | 同期 |
 |--------|----------|------|------|
-| 回答記録 `Attempt` | IDB `attempts` | 自動採番。重複判定は `ts:nodeId:hand` | 追記 |
-| 間隔反復 `SrsItem` | IDB `srs` | `nodeId:hand`（100bb）/ `<solution>:nodeId:hand` / `p:<scenario>/<flop>:node:combo` | 新しい方が勝つ |
+| 回答記録 `Attempt` | IDB `attempts` | 自動採番。局面は `solution` + `pos`（局面キー）。重複判定は `ts:pos:hand` | 追記 |
+| 間隔反復 `SrsItem` | IDB `srs` | `k:<solution>:<pos>:<hand>`（番号を含まない。局面キーの無い古い記録は IDB v4 への更新で消した: REFACTOR_PLAN 1-4） | 新しい方が勝つ |
 | 保存レンジ・Solve 結果・取り込みハンド | IDB `ranges` / `solves` / `hands` | id | レンジのみ |
 | ICM 練習ログ、保存局面、同期状態 | IDB `meta`（1 キーに配列ごと） | 固定キー | あり |
 | 設定 | `localStorage["tessera.settings.v1"]` | – | 全体で新しい方 |

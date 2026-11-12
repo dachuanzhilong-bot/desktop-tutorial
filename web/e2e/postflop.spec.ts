@@ -56,8 +56,25 @@ test.describe("postflop study", () => {
   });
 
   test("deep link restores scenario, flop and node", async ({ page }) => {
+    // the flop by its board (flop 2 = "Qs Jd 6s", cards in any order), the node by its line: BB checks, BTN to act
+    await page.goto("/study/postflop/#s=srp-btn-bb&p=QsJd6s@X");
+    await expect(page.getByTestId("flop-2")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("pf-actor")).toContainText("BTN", { timeout: 20_000 });
+    // a flop or a line today's data does not have opens a root instead of failing
+    await page.goto("/study/postflop/#s=srp-btn-bb&p=QsJd6s@X-B999");
+    await page.reload();
+    await expect(page.getByTestId("flop-2")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("pf-actor")).toContainText("BB", { timeout: 20_000 });
+    await page.goto("/study/postflop/#s=srp-btn-bb&p=AsAhAd@root");
+    await page.reload();
+    await expect(page.getByTestId("flop-0")).toHaveAttribute("aria-selected", "true");
+    await expect(page.getByTestId("pf-actor")).toContainText("BB", { timeout: 20_000 });
+  });
+
+  test("an address written before position keys (flop and node numbers) is still read, and rewritten with the key", async ({ page }) => {
     await page.goto("/study/postflop/#s=srp-btn-bb&f=2&n=0");
     await expect(page.getByTestId("flop-2")).toHaveAttribute("aria-selected", "true");
+    await expect(page).toHaveURL(/\/study\/postflop\/#s=srp-btn-bb&p=QsJd6s@root$/, { timeout: 20_000 });
   });
 });
 

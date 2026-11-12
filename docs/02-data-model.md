@@ -3,13 +3,14 @@
 方針: **端末内(IndexedDB)が正**。クラウド(Supabase)は「複数端末で同じ記録を使う」ための複製。
 練習/ICMのログは追記型。間隔反復・レンジ・保存局面・設定は更新時刻で競合を解決する（[同期仕様](10-analyze-and-sync.md)）。
 
-## 1. 端末内 (IndexedDB `tessera` v3) — 実装済み
+## 1. 端末内 (IndexedDB `tessera` v4) — 実装済み
 
 | ストア | キー | 内容 |
 |--------|------|------|
 | `attempts` | `id` (auto) / index `ts` | 1回の判断の記録 |
-| `srs` | `key = "k:<solution>:<pos>:<hand>"`（古い項目は `"<nodeId>:<handClass>"` など。[03](03-solution-format.md)「記録が持つ局面」） | 間隔反復の状態（Leitnerボックス）。`solution`・`pos`・`build` を持つ |
-| `meta` | 任意キー | 設定同期状態、ICM回答ログ、Study保存局面と削除墓標など |
+| `srs` | `key = "k:<solution>:<pos>:<hand>"`（[03](03-solution-format.md)「記録が持つ局面」） | 間隔反復の状態（Leitnerボックス）。`solution`・`pos`（必須）と `build` を持つ |
+| `meta` | 任意キー | 下の「`meta` のキー」 |
+| `solves` / `ranges` / `hands` | `id` | Solve の保存結果 / 保存レンジ / 取り込んだハンド履歴（v2・v3 で追加） |
 
 `Attempt`（`web/src/lib/storage/types.ts`）
 
@@ -19,8 +20,9 @@
 | `sessionId` | string | 練習セッションID |
 | `mode` | `spot`｜`hand` | スポット練習 / 通しプレイ |
 | `solution` | string | 解のID（例 `cash6max-100bb`。ポストフロップは `post:<シナリオ>`） |
-| `nodeId`, `hand` | number | 局面ノードと手札クラス(0–168)。`pos` がある記録の `nodeId` は参考値 |
-| `pos`, `build` | string（任意） | 局面キーと、採点に使った解データのビルド ID（[03](03-solution-format.md)「記録が持つ局面」）。古い記録には無い |
+| `pos` | string（必須） | 局面キー（[03](03-solution-format.md)「記録が持つ局面」）。局面はこれで特定する |
+| `build` | string（任意） | 採点に使った解データのビルド ID |
+| `nodeId`, `hand` | number | 回答時のノード番号（参考値。同期テーブルの列のために書くだけで、読むときは使わない）と、手札クラス(0–168) / コンボ(0–1325) |
 | `seat`, `spot` | number, SpotType | 自分の席、局面の種類（集計用に非正規化） |
 | `chosen`, `best` | number | 選んだ/最善のアクション番号 |
 | `grade`, `evLoss`, `score` | enum, bb, 0–100 | 判定・EV損失・スコア |
@@ -31,8 +33,30 @@
 
 - 設定（言語・テーマ等）は `localStorage["tessera.settings.v1"]`。起動前スクリプトでちらつきを防ぐ。
 - IndexedDBが使えない環境（プライベートモード等）は `MemoryRepo` にフォールバック。
-- 書き出し/読み込み: JSON（`ExportBlob`）。読み込みは `ts:nodeId:hand` で重複排除、SRSは新しい方を採用。
-- `meta` の `icm.log` は新しい2,000件、`study.bookmarks` は保存局面、`study.bookmarkDeletions` は同期/バックアップ用の削除墓標を保持する。DB版は上げず、バックアップ取り込みでは端末データと統合する。
+- 書き出し/読み込み: JSON（`ExportBlob`）。読み込みは `ts:pos:hand` で重複排除、SRSは新しい方を採用。局面キーの無い記録（下の「古い形式の記録」）は取り込まず、除いた件数を画面に出す。
+- `meta` の `icm.log` は新しい2,000件、`study.bookmarks` は保存局面、`study.bookmarkDeletions` は同期/バックアップ用の削除墓標を保持する。バックアップ取り込みでは端末データと統合する。
+
+### `meta` のキー
+
+| キー | 中身 | v4 への更新 | バックアップの読み込み |
+|------|------|-------------|------------------------|
+| `icm.log` | ICM 練習の回答ログ（局面キーを使わない） | 残す | 統合 |
+| `learn.done` | 終えたレッスン | 残す | 統合 |
+| `study.bookmarks` | Study の保存局面。`href` は局面キー（`p=`）を持つ | **消す**（`href` が番号だった） | 統合。番号を含む `href` のものは捨てる |
+| `study.bookmarkDeletions` | 保存局面の削除墓標 | **消す** | 統合 |
+| `sync.state.<userId>` | 同期のカーソルと端末 ID | **消す**（次の同期は最初から。重複は排除される） | 取り込まない |
+| `practiceSet:<id>` | 用意した出題リスト（復習の 1 ラウンド、Analyze のミス）。問題は `{ pos, hand }` | **消す**（必要なときに作り直される） | 取り込まない |
+| その他 | – | 残す | 置き換え |
+
+### 古い形式の記録（v4 で消す。REFACTOR_PLAN ステップ 1-4）
+
+局面キー（`pos`）の無い記録は、解を作り直すと別の局面を指してしまうので読めない。変換はせず、消す（持ち主の方針: 既存の学習記録は残さなくてよい）。規則は `web/src/lib/storage/obsolete.ts` の 1 か所にあり、次の 3 つが同じものを使う。
+
+- **DB の更新（v1〜v3 → v4、1 度だけ）**: `attempts`・`srs`・`hands` のうち `pos` の無い行（`srs` は `solution` も必要。`hands` は解析に解 ID が無いか、採点した判断に `pos` の無いもの）と、上の表で「消す」の `meta` キーを消す。`pos` 付きの行、`ranges`、`solves`、残りの `meta`、`localStorage` の設定はそのまま。更新のトランザクションの中で行うので、途中で失敗すれば全体が中止され、DB は元の版のまま何も失わない。
+- **バックアップの読み込み**: 古い記録は取り込まない（件数を返す）。
+- **同期の取得**: `pos` が null の行（更新前の端末が上げた行）は取り込まない。サーバーの行は消さない。
+
+利用者への通知は出さない（消えるのは持ち主が不要とした記録だけ）。
 
 ## 2. Supabase (Postgres) — Phase 5 で実装
 
@@ -68,7 +92,7 @@ create index on public.attempts (user_id, ts desc);
 
 create table public.srs_items (
   user_id    uuid not null references auth.users(id) on delete cascade,
-  key        text not null,                  -- 新しい項目は "k:<solution>:<pos>:<hand>"。古い項目は "<solution>:<nodeId>:<hand>" など
+  key        text not null,                  -- "k:<solution>:<pos>:<hand>"。更新前の端末が上げた古い行（"<solution>:<nodeId>:<hand>" など、pos が null）は取得しない
   box        smallint not null, due timestamptz not null,
   seen       int not null, lapses int not null,
   last_grade text not null, updated timestamptz not null,

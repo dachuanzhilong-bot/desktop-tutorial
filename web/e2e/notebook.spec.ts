@@ -35,10 +35,10 @@ test.describe("mistake notebook", () => {
   test("lists the latest big mistakes and opens the position in Study with the hand picked", async ({ page }) => {
     const now = Date.now();
     await seed(page, [
-      { ...base, ts: now - 3000, solution: "cash6max-60bb", nodeId: 0, hand: 0, seat: 0, spot: "rfi", grade: "mistake", evLoss: 0.4 },
-      { ...base, ts: now - 2000, solution: "cash6max-100bb", nodeId: 0, hand: 14, seat: 0, spot: "rfi", grade: "blunder", evLoss: 1.25 },
-      { ...base, ts: now - 1000, solution: "cash6max-100bb", nodeId: 0, hand: 1, seat: 0, spot: "rfi", grade: "inaccurate", evLoss: 0.1 }, // not a big one
-      { ...base, ts: now, mode: "postSpot", solution: "post:srp-btn-bb/2", nodeId: 0, hand: 0, seat: 5, spot: "postFlop", grade: "mistake", evLoss: 0.7 },
+      { ...base, ts: now - 3000, solution: "cash6max-60bb", nodeId: 0, pos: "root", hand: 0, seat: 0, spot: "rfi", grade: "mistake", evLoss: 0.4 },
+      { ...base, ts: now - 2000, solution: "cash6max-100bb", nodeId: 0, pos: "root", hand: 14, seat: 0, spot: "rfi", grade: "blunder", evLoss: 1.25 },
+      { ...base, ts: now - 1000, solution: "cash6max-100bb", nodeId: 0, pos: "root", hand: 1, seat: 0, spot: "rfi", grade: "inaccurate", evLoss: 0.1 }, // not a big one
+      { ...base, ts: now, mode: "postSpot", solution: "post:srp-btn-bb", nodeId: 0, pos: "QsJd6s@root", hand: 0, seat: 5, spot: "postFlop", grade: "mistake", evLoss: 0.7 }, // flop 2 = "Qs Jd 6s"
     ]);
     const nb = page.getByTestId("notebook");
     await expect(nb).toBeVisible();
@@ -52,7 +52,7 @@ test.describe("mistake notebook", () => {
 
     // the oldest one: UTG with AA at 60bb
     await rows.nth(2).getByRole("link").click();
-    await expect(page).toHaveURL(/\/study\/#d=60&n=0&h=0/);
+    await expect(page).toHaveURL(/\/study\/#d=60&p=root&h=0/);
     await expect(page.locator(".cell")).toHaveCount(169);
     await expect(page.getByTestId("hand-panel")).toContainText("AA");
     await expect(page.getByTestId("hand-panel")).toBeVisible();
@@ -60,21 +60,22 @@ test.describe("mistake notebook", () => {
     // and the post-flop one opens that flop
     await page.goBack();
     await page.getByTestId("notebook").getByRole("listitem").nth(0).getByRole("link").click();
-    await expect(page).toHaveURL(/\/study\/postflop\/#s=srp-btn-bb&f=2&n=0/);
+    await expect(page).toHaveURL(/\/study\/postflop\/#s=srp-btn-bb&p=QsJd6s@root/);
+    await expect(page.getByTestId("flop-2")).toHaveAttribute("aria-selected", "true");
     await expect(page.getByTestId("pf-actor")).toContainText("BB", { timeout: 20_000 });
   });
 
   test("a deep link with a hand opens the chart on that hand, at the same depth too", async ({ page }) => {
-    await page.goto("/study/#d=100&n=0&h=0");
+    await page.goto("/study/#d=100&p=root&h=0");
     await expect(page.getByTestId("hand-panel")).toContainText("AA");
-    await page.goto("/study/#d=100&n=0&h=168");
+    await page.goto("/study/#d=100&p=root&h=168");
     await page.reload();
     await expect(page.getByTestId("hand-panel")).toContainText("22");
   });
 
   test("says so when there is nothing to note", async ({ page }) => {
     const now = Date.now();
-    await seed(page, [{ ...base, ts: now, solution: "cash6max-100bb", nodeId: 0, hand: 0, seat: 0, spot: "rfi", grade: "best", evLoss: 0 }]);
+    await seed(page, [{ ...base, ts: now, solution: "cash6max-100bb", nodeId: 0, pos: "root", hand: 0, seat: 0, spot: "rfi", grade: "best", evLoss: 0 }]);
     await expect(page.getByTestId("notebook")).toContainText("大きなミスはまだありません");
   });
 });
