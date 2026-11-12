@@ -30,3 +30,20 @@ export function weightedPick(weights: ArrayLike<number>, rnd: () => number): num
   }
   return weights.length - 1;
 }
+
+/**
+ * Fisher–Yates shuffle. Returns a new array; the input is left untouched.
+ * Every permutation is equally likely when `rnd` is uniform on [0, 1).
+ * (`sort(() => rnd() - 0.5)` is not: the comparator is inconsistent, so the
+ * result depends on the engine's sort algorithm and favours some orders.)
+ */
+export function shuffle<T>(items: readonly T[], rnd: () => number): T[] {
+  const out = items.slice();
+  for (let i = out.length - 1; i > 0; i--) {
+    const j = Math.floor(rnd() * (i + 1));
+    const tmp = out[i];
+    out[i] = out[j];
+    out[j] = tmp;
+  }
+  return out;
+}
