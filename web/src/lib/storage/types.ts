@@ -9,8 +9,17 @@ export interface Attempt {
   ts: number;
   sessionId: string;
   mode: "spot" | "hand" | "post" | "postSpot";
+  /**
+   * `cash6max-<depth>bb`; post-flop `post:<scenario>` — records made before position keys (no `pos`) have
+   * `post:<scenario>/<flop index>` instead (lib/practice/position.ts: parsePostSolution)
+   */
   solution: string;
+  /** node id when the answer was given. With `pos` it is only informative: readers look the node up again from `pos`. */
   nodeId: number;
+  /** position key (docs/03 "局面キー"): pre-flop the action line, post-flop `<flop>@<line>`. Absent in older records. */
+  pos?: string;
+  /** build ID of the solution data the answer was graded against (absent in older records) */
+  build?: string;
   hand: number;
   seat: number;
   spot: SpotType;

@@ -7,6 +7,7 @@ import { Session } from "@/components/practice/Session";
 import { Setup } from "@/components/practice/Setup";
 import type { PracticeSet, StartConfig } from "@/components/practice/types";
 import { PostSession } from "@/components/postflop/PostSession";
+import { resolveItems } from "@/lib/practice/review";
 import { DEFAULT_FILTER } from "@/lib/practice/sampler";
 import type { PracticeFilter } from "@/lib/practice/sampler";
 import { getRepo } from "@/lib/storage/idb";
@@ -117,7 +118,11 @@ export default function PracticePage() {
             store={store}
             pending={pending}
             onStart={() => {
-              setConfig({ type: "pre", config: { mode: "spot", filter: { ...DEFAULT_FILTER }, rng: false, timer: 0, fixed: pending.items, title: pending.title } });
+              // questions with a position key get the node that position has in the loaded data; the others keep their node id
+              const fixed = resolveItems(store.manifest, pending.items);
+              // nothing left to ask (today's data has none of the positions): back to the setup screen
+              if (fixed.length) setConfig({ type: "pre", config: { mode: "spot", filter: { ...DEFAULT_FILTER }, rng: false, timer: 0, fixed, title: pending.title } });
+              else setInitial(NO_PRESET);
               setPending(null);
             }}
           />

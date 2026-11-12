@@ -82,8 +82,11 @@ export function mistakeSolution(list: StoredHand[], seat?: number, spot?: SpotTy
   return best;
 }
 
-/** hands the player got wrong, worst first, as practice questions (each (node, hand) once, all from one solution) */
-export function practiceItems(list: StoredHand[], limit = 30, seat?: number, spot?: SpotType, solution?: string): { nodeId: number; hand: number }[] {
+/**
+ * Hands the player got wrong, worst first, as practice questions (each (position, hand) once, all from one solution).
+ * A question carries the decision's position key when the analysis has one; the practice screen looks the node up from it.
+ */
+export function practiceItems(list: StoredHand[], limit = 30, seat?: number, spot?: SpotType, solution?: string): { nodeId: number; hand: number; pos?: string }[] {
   const all: DecisionInfo[] = [];
   const sol = solution ?? mistakeSolution(list, seat, spot);
   for (const h of list)
@@ -96,12 +99,12 @@ export function practiceItems(list: StoredHand[], limit = 30, seat?: number, spo
     }
   all.sort((a, b) => b.evLoss - a.evLoss);
   const seen = new Set<string>();
-  const out: { nodeId: number; hand: number }[] = [];
+  const out: { nodeId: number; hand: number; pos?: string }[] = [];
   for (const d of all) {
-    const k = `${d.nodeId}:${d.handClass}`;
+    const k = `${d.pos ?? d.nodeId}:${d.handClass}`;
     if (seen.has(k)) continue;
     seen.add(k);
-    out.push({ nodeId: d.nodeId, hand: d.handClass });
+    out.push(d.pos === undefined ? { nodeId: d.nodeId, hand: d.handClass } : { nodeId: d.nodeId, hand: d.handClass, pos: d.pos });
     if (out.length >= limit) break;
   }
   return out;

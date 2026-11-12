@@ -10,7 +10,8 @@ import { Card, comboCount, matchesFilter, NUM_CLASSES, randomCombo } from "@/lib
 import { buildQuestion, judge, PendingStep, playOutOpponents, Question, shortcutFor, stepsTo } from "@/lib/practice/engine";
 import { candidateNodes, pickHand, pickNode } from "@/lib/practice/sampler";
 import { Result, sessionStats } from "@/lib/practice/session";
-import { srsKey, updateSrs, SrsItem } from "@/lib/practice/srs";
+import { answerSrs, preflopRef, withPosition } from "@/lib/practice/position";
+import { srsKey, SrsIndex } from "@/lib/practice/srs";
 import { useSettings } from "@/lib/settings";
 import { sessionIdOf } from "@/lib/util/hooks";
 import type { SolutionStore } from "@/lib/solution/loader";
@@ -63,7 +64,7 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
   const [hintIdx, setHintIdx] = useState<number | null>(null);
   const hintUsed = useRef(false);
   const askedAt = useRef(0);
-  const srs = useRef<Map<string, SrsItem>>(new Map());
+  const srs = useRef(new SrsIndex());
   const sessionId = useRef("");
   const nodes = useMemo(() => candidateNodes(m, config.filter), [m, config.filter]);
 
@@ -74,7 +75,7 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
     getRepo()
       .allSrs()
       .then((all) => {
-        srs.current = new Map(all.map((s) => [s.key, s]));
+        srs.current = new SrsIndex(all);
       })
       .catch(() => {});
   }, []);
@@ -104,7 +105,9 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
     for (let tries = 0; tries < 12; tries++) {
       const nodeId = pickNode(m, nodes, config.filter, rnd);
       const sol = await store.node(nodeId);
-      const hand = pickHand(sol, nodeId, config.filter, rnd, srs.current, Date.now(), m.id);
+      // spaced repetition by position: the item of (solution, position key, hand); an older item by its old key
+      const pos = preflopRef(m, store.build, nodeId).pos;
+      const hand = pickHand(sol, nodeId, config.filter, rnd, (h) => srs.current.find(m.id, pos, h, srsKey(m.id, nodeId, h)), Date.now());
       if (sol.weight[hand] < 0.02 || !matchesFilter(hand, config.filter.hands)) continue;
       const q = buildQuestion(m, nodeId, sol, hand, rnd, config.rng);
       setRound({ heroSeat: m.nodes[nodeId].actor, hand, cards: q.cards, queue: stepsTo(m, nodeId), startState: initialState(m), q, endedWith: null });
@@ -233,7 +236,9 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
       setPhase("answered");
       // persist (local-first)
       const now = Date.now();
-      const attempt: Attempt = {
+      // the position key and the build ID: what the record is found by after the data is generated again
+      const ref = preflopRef(m, store.build, q.nodeId);
+      const attempt = withPosition<Attempt>({
         ts: now,
         sessionId: sessionIdOf(sessionId, "s"),
         mode: config.mode,
@@ -251,15 +256,13 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
         rng: q.roll !== null,
         timeout,
         hint: hintUsed.current,
-      };
-      const key = srsKey(m.id, q.nodeId, q.hand);
-      const item = updateSrs(srs.current.get(key), q.nodeId, q.hand, j.grade, now, key);
-      srs.current.set(key, item);
+      }, ref);
+      const item = answerSrs(srs.current, ref, srsKey(m.id, q.nodeId, q.hand), q.nodeId, q.hand, j.grade, now);
       const repo = getRepo();
       repo.addAttempt(attempt).catch(() => {});
       repo.putSrs(item).catch(() => {});
     },
-    [phase, round, m, config.mode, t],
+    [phase, round, m, store.build, config.mode, t],
   );
 
   // time limit: auto-fold (or the first action) when the clock runs out

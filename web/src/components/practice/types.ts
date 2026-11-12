@@ -15,9 +15,10 @@ export interface PracticeConfig {
 /** a prepared question list: the mistakes Analyze found, or a round of spaced-repetition reviews */
 export interface PracticeSet {
   title: string;
-  /** solution id the node ids belong to (absent in sets made before stack depths existed: 100bb) */
+  /** solution id the questions belong to (absent in sets made before stack depths existed: 100bb) */
   solution?: string;
-  items: { nodeId: number; hand: number }[];
+  /** with `pos` (a position key) the node id is looked up again when the set starts (lib/practice/review.ts: resolveItems) */
+  items: { nodeId: number; hand: number; pos?: string }[];
 }
 
 import type { PostConfig } from "@/components/postflop/PostSession";

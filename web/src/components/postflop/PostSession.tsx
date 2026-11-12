@@ -9,14 +9,15 @@ import { GridAction } from "@/components/RangeGrid";
 import { Skeleton } from "@/components/Skeleton";
 import { edgeTone, useEdgeText } from "@/components/postflop/edge";
 import { PostTable, PostTableMini } from "@/components/postflop/PostTable";
-import { buildPostQuestion, advance, PEnd, pathSteps, pickCombo, pickSpotNode, PStep, spotCandidates } from "@/lib/postflop/practice";
+import { buildPostQuestion, advance, legacyPostSrsKey, PEnd, pathSteps, pickCombo, pickSpotNode, PStep, spotCandidates } from "@/lib/postflop/practice";
 import { COMBOS, cardOf, classOfCards } from "@/lib/postflop/combos";
 import type { PfFlop } from "@/lib/postflop/decode";
 import { loadFlop, loadIndex, PfIndex } from "@/lib/postflop/loader";
 import { contextAt, labelEdge } from "@/lib/postflop/replay";
 import { judge, Question } from "@/lib/practice/engine";
 import { Result, sessionStats } from "@/lib/practice/session";
-import { updateSrs, SrsItem } from "@/lib/practice/srs";
+import { answerSrs, postflopRef, withPosition } from "@/lib/practice/position";
+import { SrsIndex } from "@/lib/practice/srs";
 import { useSettings } from "@/lib/settings";
 import { sessionIdOf } from "@/lib/util/hooks";
 import { ActionKind } from "@/lib/solution/types";
@@ -73,13 +74,13 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
   const [hintIdx, setHintIdx] = useState<number | null>(null);
   const hintUsed = useRef(false);
   const askedAt = useRef(0);
-  const srs = useRef<Map<string, SrsItem>>(new Map());
+  const srs = useRef(new SrsIndex());
   const sessionId = useRef("");
 
   useEffect(() => {
     getRepo()
       .allSrs()
-      .then((all) => (srs.current = new Map(all.map((s) => [s.key, s]))))
+      .then((all) => (srs.current = new SrsIndex(all)))
       .catch(() => {});
     loadIndex()
       .then(setIndex)
@@ -88,8 +89,6 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
 
   const sc = index?.scenarios.find((s) => s.id === config.scenario);
   const seatNames: [string, string] = sc ? [sc.oop, sc.ip] : ["OOP", "IP"];
-
-  const keyOf = (flopIdx: number, node: number, combo: number) => `p:${config.scenario}/${flopIdx}:${node}:${combo}`;
 
   const start = useCallback(async () => {
     if (!index) return;
@@ -103,7 +102,9 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
         if (!nodes.length) continue;
         const nodeId = pickSpotNode(flop, nodes, 0.5, rnd);
         const node = flop.nodes[nodeId];
-        const combo = pickCombo(node, rnd, srs.current, (c) => keyOf(flopIdx, nodeId, c), Date.now());
+        // spaced repetition by position: the item of (scenario, flop + line, combo); an older item by its old key
+        const ref = postflopRef(config.scenario, flop, nodeId);
+        const combo = pickCombo(node, rnd, (c) => srs.current.find(ref.solution, ref.pos, c, legacyPostSrsKey(config.scenario, flopIdx, nodeId, c)), Date.now());
         const q = buildPostQuestion(flop, nodeId, combo, rnd, config.rng);
         setRound({ flop, flopIdx, hero: node.actor as 0 | 1, combo, steps: pathSteps(flop, nodeId), startNode: 0, q, ended: null, lastNode: nodeId });
       } else {
@@ -252,11 +253,14 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
       setPhase("answered");
       const now = Date.now();
       const seatName = node.actor === 0 ? sc.oop : sc.ip;
-      const attempt: Attempt = {
+      // the flop's board, the line and the build ID: what the record is found by after the data is generated again
+      // (the flop's index and the node id are not: `solution` has no index, `nodeId` is only informative)
+      const ref = postflopRef(config.scenario, round.flop, q.nodeId);
+      const attempt = withPosition<Attempt>({
         ts: now,
         sessionId: sessionIdOf(sessionId, "p"),
         mode: config.kind === "spot" ? "postSpot" : "post",
-        solution: `post:${config.scenario}/${round.flopIdx}`,
+        solution: ref.solution,
         nodeId: q.nodeId,
         hand: round.combo,
         seat: Math.max(0, SEATS.indexOf(seatName as (typeof SEATS)[number])),
@@ -270,15 +274,12 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
         rng: q.roll !== null,
         timeout,
         hint: hintUsed.current,
-      };
-      const key = keyOf(round.flopIdx, q.nodeId, round.combo);
-      const item = updateSrs(srs.current.get(key), q.nodeId, round.combo, j.grade, now, key);
-      srs.current.set(key, item);
+      }, ref);
+      const item = answerSrs(srs.current, ref, legacyPostSrsKey(config.scenario, round.flopIdx, q.nodeId, round.combo), q.nodeId, round.combo, j.grade, now);
       const repo = getRepo();
       repo.addAttempt(attempt).catch(() => {});
       repo.putSrs(item).catch(() => {});
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [phase, round, sc, config, t],
   );
 

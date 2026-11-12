@@ -16,6 +16,8 @@ import type { ParsedHand } from "@/lib/analyze/parse";
 import { reasonText } from "@/lib/analyze/reasons";
 import type { Key } from "@/lib/i18n/ja";
 import { cardOf } from "@/lib/postflop/combos";
+import { currentPreflopNode } from "@/lib/practice/position";
+import { preflopLink } from "@/lib/study/links";
 import { saveDraft } from "@/lib/solve/draft";
 import { newId } from "@/lib/util/id";
 import { timeSlicer } from "@/lib/util/yield";
@@ -398,6 +400,9 @@ function HandCard({ h, onChange }: { h: StoredHand; onChange: () => void }) {
   const router = useRouter();
   const m = useManifestOf(solutionOf(h));
   const a = h.analysis;
+  // the worst decision's node in today's data: looked up from its position key (an older analysis has the node id only);
+  // null until the manifest is there, and when today's data does not have the position
+  const worstNode = a.worst && (a.worst.pos === undefined ? a.worst.nodeId : m ? currentPreflopNode(m, a.worst) : null);
   const [c1, c2] = h.hand.heroCards;
   const net = h.hand.heroNet;
   const openSolve = () => {
@@ -433,8 +438,8 @@ function HandCard({ h, onChange }: { h: StoredHand; onChange: () => void }) {
       </ul>
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
-        {a.worst && (
-          <Link href={`/study/#d=${depthOf(a.solution)}&n=${a.worst.nodeId}`} className="min-h-tap rounded-control border border-line px-3 py-2 text-sm font-semibold">
+        {worstNode !== null && (
+          <Link href={preflopLink(depthOf(a.solution), worstNode)} className="min-h-tap rounded-control border border-line px-3 py-2 text-sm font-semibold">
             {t("analyze.openStudy")}
           </Link>
         )}
@@ -463,18 +468,29 @@ function DecisionRow({ d, m }: { d: DecisionInfo; m: Manifest | null }) {
   const { t } = useSettings();
   const tt = t as (k: Key) => string;
   if (!m) return <li className="rounded-control bg-surface-2 p-2 text-sm text-muted">…</li>;
-  const acts = m.nodes[d.nodeId].actions;
+  // the decision's node in today's data, by its position key (an older analysis: the stored node id)
+  const nodeId = currentPreflopNode(m, d);
+  // today's data does not have this decision: the grade and the loss still count, the action names cannot be shown
+  if (nodeId === null || !m.nodes[nodeId] || m.nodes[nodeId].actions.length !== d.stats.length)
+    return (
+      <li className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-control bg-surface-2 p-2">
+        <GradeBadge grade={d.grade} />
+        <span className="text-sm text-muted">{t(`spot.${d.spot}` as Key)}</span>
+        {d.evLoss > 0.005 && <span className="ml-auto font-bold tabular-nums">{t("analyze.loss", { n: d.evLoss.toFixed(2) })}</span>}
+      </li>
+    );
+  const acts = m.nodes[nodeId].actions;
   return (
     <li className="rounded-control bg-surface-2 p-2">
       <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
         <GradeBadge grade={d.grade} />
         <span className="text-sm">
           <span className="text-muted">{t(`spot.${d.spot}` as Key)} · </span>
-          {t("analyze.you")}: <b>{actionText(m, d.nodeId, d.chosen, tt)}</b> ({Math.round(d.stats[d.chosen].freq * 100)}%)
+          {t("analyze.you")}: <b>{actionText(m, nodeId, d.chosen, tt)}</b> ({Math.round(d.stats[d.chosen].freq * 100)}%)
           {d.best !== d.chosen && (
             <>
               {" · "}
-              {t("analyze.solution")}: <b>{actionText(m, d.nodeId, d.best, tt)}</b> ({Math.round(d.stats[d.best].freq * 100)}%)
+              {t("analyze.solution")}: <b>{actionText(m, nodeId, d.best, tt)}</b> ({Math.round(d.stats[d.best].freq * 100)}%)
             </>
           )}
         </span>
@@ -501,7 +517,7 @@ function DecisionRow({ d, m }: { d: DecisionInfo; m: Manifest | null }) {
             {acts.map((_, i) => (
               <tr key={i} className={i === d.chosen ? "font-bold" : ""}>
                 <th scope="row" className="py-0.5 text-left font-inherit">
-                  {actionText(m, d.nodeId, i, tt)}
+                  {actionText(m, nodeId, i, tt)}
                   {i === d.chosen ? " ◀" : ""}
                 </th>
                 <td className="text-right tabular-nums">{Math.round(d.stats[i].freq * 100)}%</td>

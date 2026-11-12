@@ -118,7 +118,8 @@ export function pickSpotNode(flop: PfFlop, nodes: number[], flatten: number, rnd
   return nodes[weightedPick(nodes.map((id) => Math.pow(flop.nodes[id].reach, 1 - flatten)), rnd)];
 }
 
-export function pickCombo(node: PfNode, rnd: () => number, srs: Map<string, SrsItem>, keyOf: (combo: number) => string, now: number): number {
+/** `itemOf`: the spaced-repetition item of a combo at this node (looked up by position, see SrsIndex.find) */
+export function pickCombo(node: PfNode, rnd: () => number, itemOf: (combo: number) => SrsItem | undefined, now: number): number {
   const d = node.data!;
   const na = node.edges.length;
   const w = new Float64Array(d.n);
@@ -126,7 +127,7 @@ export function pickCombo(node: PfNode, rnd: () => number, srs: Map<string, SrsI
     if (d.weight[j] < 0.02) continue;
     const fr = new Float32Array(na);
     for (let a = 0; a < na; a++) fr[a] = d.freq[a * d.n + j];
-    w[j] = d.weight[j] * priorityWeight({ item: srs.get(keyOf(d.hands[j])), now, mixedness: mixedness(fr), mixedBoost: true });
+    w[j] = d.weight[j] * priorityWeight({ item: itemOf(d.hands[j]), now, mixedness: mixedness(fr), mixedBoost: true });
   }
   return d.hands[weightedPick(w, rnd)];
 }
@@ -167,5 +168,8 @@ export function buildPostQuestion(flop: PfFlop, nodeId: number, combo: number, r
   const cards: [Card, Card] = [cardOf(c.c1), cardOf(c.c2)];
   return { nodeId, hand: classOfCards(c.c1, c.c2), cards, sol: grid, stats, roll, rngAction, potOdds, bars: { sol: barSol, h: 0 } };
 }
+
+/** key of a post-flop spaced-repetition item made before position keys existed (it holds the flop's index and the node id) */
+export const legacyPostSrsKey = (scenario: string, flopIndex: number, nodeId: number, combo: number) => `p:${scenario}/${flopIndex}:${nodeId}:${combo}`;
 
 export { NC };

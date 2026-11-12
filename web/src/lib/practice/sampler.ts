@@ -38,15 +38,20 @@ export function pickNode(m: Manifest, nodes: number[], f: PracticeFilter, rnd: (
   return nodes[weightedPick(w, rnd)];
 }
 
+/**
+ * `srs`: the spaced-repetition item of a hand class at this decision. The practice screen passes a lookup by
+ * position (SrsIndex.find); a Map is read by the key items had before position keys (`srsKey`).
+ */
 export function pickHand(
   sol: NodeSolution,
   nodeId: number,
   f: PracticeFilter,
   rnd: () => number,
-  srs: Map<string, SrsItem>,
+  srs: Map<string, SrsItem> | ((hand: number) => SrsItem | undefined),
   now: number,
   solution?: string,
 ): number {
+  const itemOf = typeof srs === "function" ? srs : (h: number) => srs.get(srsKey(solution, nodeId, h));
   const w = new Float64Array(NUM_CLASSES);
   for (let h = 0; h < NUM_CLASSES; h++) {
     if (sol.weight[h] < MIN_WEIGHT || !matchesFilter(h, f.hands)) continue;
@@ -54,7 +59,7 @@ export function pickHand(
     for (let a = 0; a < sol.na; a++) fr[a] = sol.freq[a * NUM_CLASSES + h];
     const mx = mixedness(fr);
     if (f.mixedOnly && mx < 0.12) continue;
-    w[h] = comboCount(h) * sol.weight[h] * priorityWeight({ item: srs.get(srsKey(solution, nodeId, h)), now, mixedness: mx, mixedBoost: true });
+    w[h] = comboCount(h) * sol.weight[h] * priorityWeight({ item: itemOf(h), now, mixedness: mx, mixedBoost: true });
   }
   return weightedPick(w, rnd);
 }

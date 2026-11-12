@@ -11,7 +11,11 @@ import { SEATS } from "@/lib/solution/tree";
 import { ALL_SPOT_COLUMNS } from "@/lib/solution/types";
 import { getRepo } from "@/lib/storage/idb";
 import { readIcmLog, summarizeIcm } from "@/lib/storage/icmLog";
-import { handLabel, recentMistakes, studyHref } from "@/lib/storage/mistakes";
+import { handLabel, recentMistakes, resolveStudyHref, studyHref } from "@/lib/storage/mistakes";
+import type { StudySources } from "@/lib/storage/mistakes";
+import { loadFlop, PF_INDEX } from "@/lib/postflop/loader";
+import { useSolutionStore } from "@/lib/solution/context";
+import { depthOf } from "@/lib/solution/loader";
 import type { IcmLogEntry } from "@/lib/storage/icmLog";
 import { dailySeries, heatmap, studyStreak, summarize, todayCount, weakSpots } from "@/lib/storage/stats";
 import type { Attempt } from "@/lib/storage/types";
@@ -52,6 +56,30 @@ export default function StatsPage() {
   const streak = studyStreak(list ?? [], now);
   const today = todayCount(list ?? [], now);
   const notebook = useMemo(() => recentMistakes(list ?? []), [list]);
+  // Study links of the notebook: a record with a position key is looked up in today's data (its node id and flop
+  // index may be out of date), which needs the manifest or the flop file; until then, and when the position is
+  // not there any more, the row has no link
+  const { getStore } = useSolutionStore();
+  const sources = useMemo<StudySources>(
+    () => ({
+      manifest: async (id) => {
+        const m = (await getStore(depthOf(id))).manifest;
+        if (m.id !== id) throw new Error(`no solution ${id}`);
+        return m;
+      },
+      flops: PF_INDEX.flops,
+      flop: loadFlop,
+    }),
+    [getStore],
+  );
+  const [links, setLinks] = useState<{ of: Attempt[]; hrefs: (string | null)[] } | null>(null);
+  useEffect(() => {
+    let alive = true;
+    Promise.all(notebook.map((a) => resolveStudyHref(a, sources))).then((hrefs) => alive && setLinks({ of: notebook, hrefs }));
+    return () => {
+      alive = false;
+    };
+  }, [notebook, sources]);
   const icm = useMemo(() => (icmLog.length ? summarizeIcm(icmLog) : null), [icmLog]);
   const byGrade = useMemo(() => {
     const c: Record<string, number> = { best: 0, correct: 0, inaccurate: 0, mistake: 0, blunder: 0 };
@@ -254,8 +282,8 @@ export default function StatsPage() {
               <p className="text-sm text-muted">{t("stats.notebookNone")}</p>
             ) : (
               <ul className="space-y-2">
-                {notebook.map((a) => {
-                  const href = studyHref(a);
+                {notebook.map((a, i) => {
+                  const href = links?.of === notebook ? links.hrefs[i] : studyHref(a);
                   const body = (
                     <>
                       <span>
@@ -272,7 +300,7 @@ export default function StatsPage() {
                     </>
                   );
                   return (
-                    <li key={`${a.solution}:${a.nodeId}:${a.hand}`}>
+                    <li key={`${a.solution}:${a.pos ?? a.nodeId}:${a.hand}`}>
                       {href ? (
                         <Link href={href} className="flex min-h-tap-lg items-center justify-between gap-2 rounded-control bg-surface-2 px-3 py-2">
                           {body}

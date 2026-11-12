@@ -1,4 +1,8 @@
-/** deep links into the Study screens (app paths; <Link> adds the hosting sub-path itself) */
+/**
+ * Deep links into the Study screens (app paths; <Link> adds the hosting sub-path itself).
+ * `node` and `flop` are today's numbers: a record with a position key has them looked up first
+ * (lib/practice/position.ts: currentPreflopNode, currentFlopIndex, currentPostflopNode), never taken from storage.
+ */
 export const preflopLink = (depth: number, node: number, hand: number | null = null): string => `/study/#d=${depth}&n=${node}${hand === null ? "" : `&h=${hand}`}`;
 export const postflopLink = (scenario: string, flop: number, node: number): string => `/study/postflop/#s=${scenario}&f=${flop}&n=${node}`;
 

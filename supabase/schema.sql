@@ -21,6 +21,8 @@ create table if not exists public.attempts (
   score        smallint not null check (score between 0 and 100),
   ms           int,
   flags        smallint not null default 0,  -- bit0 rng, bit1 timeout, bit2 hint
+  pos          text,                         -- position key (docs/03); null in rows made before it existed. node_id is then only informative
+  build        text,                         -- build ID of the solution data the answer was graded against
   unique (user_id, client_id, ts, node_id, hand)
 );
 create index if not exists attempts_user_ts on public.attempts (user_id, ts);
@@ -29,6 +31,10 @@ create index if not exists attempts_user_ts on public.attempts (user_id, ts);
 -- post-flop answer (a combo number up to 1325). Widen it; safe to run again, and a no-op on a fresh database.
 alter table public.attempts drop constraint if exists attempts_hand_check;
 alter table public.attempts add constraint attempts_hand_check check (hand between 0 and 1325);
+
+-- Databases created before position keys: add the columns (a no-op on a fresh database).
+alter table public.attempts add column if not exists pos text;
+alter table public.attempts add column if not exists build text;
 
 create table if not exists public.srs_items (
   user_id    uuid not null references auth.users(id) on delete cascade,
@@ -41,8 +47,14 @@ create table if not exists public.srs_items (
   lapses     int not null,
   last_grade text not null,
   updated    timestamptz not null,
+  solution   text,                           -- with pos: what pos is a position of ('cash6max-100bb', 'post:<scenario>')
+  pos        text,                           -- position key (docs/03); null in items made before it existed
+  build      text,                           -- build ID of the solution data the item was last answered against
   primary key (user_id, key)
 );
+alter table public.srs_items add column if not exists solution text;
+alter table public.srs_items add column if not exists pos text;
+alter table public.srs_items add column if not exists build text;
 create index if not exists srs_user_updated on public.srs_items (user_id, updated);
 
 create table if not exists public.range_presets (
