@@ -43,10 +43,10 @@ create table public.attempts (
   client_id    text not null,                -- 端末ごとのID。重複排除に使う
   ts           timestamptz not null,
   session_id   text not null,
-  mode         text not null check (mode in ('spot','hand')),
+  mode         text not null check (mode in ('spot','hand','post','postSpot')),
   solution     text not null,
   node_id      int  not null,
-  hand         smallint not null check (hand between 0 and 168),
+  hand         smallint not null check (hand between 0 and 1325),   -- プリフロップ: ハンドクラス 0..168 / ポストフロップ: コンボ 0..1325
   seat         smallint not null check (seat between 0 and 5),
   spot         text not null,
   chosen       smallint not null,
@@ -59,6 +59,9 @@ create table public.attempts (
   unique (user_id, client_id, ts, node_id, hand)
 );
 create index on public.attempts (user_id, ts desc);
+-- 最初の版は hand を 0..168 に制限していた（ポストフロップの回答が全部拒否される）。既存のテーブル向けの冪等な修正は supabase/schema.sql にある:
+--   alter table public.attempts drop constraint if exists attempts_hand_check;
+--   alter table public.attempts add constraint attempts_hand_check check (hand between 0 and 1325);
 
 create table public.srs_items (
   user_id    uuid not null references auth.users(id) on delete cascade,

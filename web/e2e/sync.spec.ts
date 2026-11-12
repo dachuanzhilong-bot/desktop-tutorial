@@ -1,4 +1,5 @@
 import { expect, test, Page } from "@playwright/test";
+import { rejectBatch, schemaChecks } from "../src/lib/__tests__/fixtures/schemaChecks";
 
 /** a tiny fake Supabase (GoTrue + PostgREST) behind page.route: the build is configured with https://e2e.supabase.test */
 const HOST = "https://e2e.supabase.test";
@@ -14,6 +15,8 @@ function fakeSupabase(page: Page) {
     study_bookmarks: ["user_id", "id"],
     user_settings: ["user_id"],
   };
+  // the `check` constraints of supabase/schema.sql: a batch with a row that breaks one is refused whole, as Postgres does
+  const checks = { attempts: schemaChecks("attempts") } as Record<string, ReturnType<typeof schemaChecks>>;
   const log: string[] = [];
   return page.route(`${HOST}/**`, async (route) => {
     const req = route.request();
@@ -31,6 +34,8 @@ function fakeSupabase(page: Page) {
     if (req.method() === "POST") {
       const conflict = unique[table];
       const merge = req.headers()["prefer"]?.includes("merge-duplicates");
+      const refused = checks[table] ? rejectBatch(table, checks[table], body as Record<string, unknown>[]) : null;
+      if (refused) return json(400, refused);
       for (const row of body as Record<string, unknown>[]) {
         const index = tables[table].findIndex((have) => conflict.every((key) => have[key] === row[key]));
         if (index < 0) tables[table].push(row);
@@ -47,6 +52,26 @@ test.beforeEach(async ({ context }) => {
 });
 
 test.describe("login and cloud sync", () => {
+  test("the fake server enforces the schema's constraints: a post-flop combo number is stored, a row past the schema's limit gets a 400", async ({ page }) => {
+    const srv = await fakeSupabase(page);
+    await page.goto("/settings/");
+    const post = (hand: number) =>
+      page.evaluate(
+        async ({ host, hand }) => {
+          const row = { user_id: "u-1", client_id: "c", ts: "2026-01-01T00:00:00Z", session_id: "s", mode: "postSpot", solution: "post:srp-btn-bb/3", node_id: 40, hand, seat: 5, spot: "postFlop", chosen: 1, best: 1, grade: "best", ev_loss: 0, score: 100, ms: 900, flags: 0 };
+          const res = await fetch(`${host}/rest/v1/attempts?on_conflict=user_id,client_id,ts,node_id,hand`, { method: "POST", headers: { "content-type": "application/json", prefer: "resolution=ignore-duplicates,return=minimal" }, body: JSON.stringify([row]) });
+          return { status: res.status, body: await res.text() };
+        },
+        { host: HOST, hand },
+      );
+    expect((await post(1325)).status).toBe(201);
+    const refused = await post(1326);
+    expect(refused.status).toBe(400);
+    expect(refused.body).toContain("attempts_hand_check");
+    expect(srv.tables.attempts).toHaveLength(1);
+    expect(srv.tables.attempts[0]).toMatchObject({ mode: "postSpot", hand: 1325 });
+  });
+
   test("e-mail code login, then the practice records are uploaded; a wrong code is rejected", async ({ page }) => {
     const srv = await fakeSupabase(page);
     // one practice answer first, so there is something to upload

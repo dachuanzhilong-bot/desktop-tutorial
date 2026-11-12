@@ -7,8 +7,10 @@ import { appendIcmLog, readIcmLog } from "../storage/icmLog";
 import type { IcmLogEntry } from "../storage/icmLog";
 import { loadState, syncOnce, SettingsIo } from "../sync/engine";
 import { AuthError, SupabaseAuth, SupabaseBackend } from "../sync/supabase";
+import { attemptToRow } from "../sync/types";
 import type { AttemptRow, BookmarkRow, IcmLogRow, RangeRow, SettingsRow, SrsRow, SyncBackend } from "../sync/types";
 import { updateSrs } from "../practice/srs";
+import { migrationChecks, rejectBatch, schemaChecks, violations } from "./fixtures/schemaChecks";
 
 const attempt = (ts: number, nodeId = 5, hand = 10, extra: Partial<Attempt> = {}): Attempt => ({
   ts,
@@ -34,7 +36,10 @@ const attempt = (ts: number, nodeId = 5, hand = 10, extra: Partial<Attempt> = {}
 const bookmark = (o: Partial<Bookmark> = {}): Bookmark => ({ id: "bm1", created: 1_700_000_000_000, ts: 1_700_000_000_000, title: "BTN open", note: "", href: "/study/#d=100&n=3", ...o });
 const icmEntry = (o: Partial<IcmLogEntry> = {}): IcmLogEntry => ({ ts: 1_700_000_000_000, players: 3, pos: "BTN", stack: 8, facing: null, hand: 10, chosen: 1, grade: "best", evLoss: 0, score: 100, ...o });
 
-/** in-memory server with the same semantics the real tables have (unique keys, ignore/merge duplicates) */
+/** the `check` constraints of supabase/schema.sql, read from the file (see fixtures/schemaChecks.ts) */
+const ATTEMPT_CHECKS = schemaChecks("attempts");
+
+/** in-memory server with the same semantics the real tables have (unique keys, ignore/merge duplicates, check constraints) */
 class FakeBackend implements SyncBackend {
   attempts: (AttemptRow & { user: string })[] = [];
   srs = new Map<string, SrsRow>();
@@ -45,6 +50,9 @@ class FakeBackend implements SyncBackend {
   pushes = 0;
   async pushAttempts(rows: AttemptRow[]) {
     this.pushes++;
+    // like the REST backend: a batch with a row that breaks a constraint is refused whole, with a 400
+    const refused = rejectBatch("attempts", ATTEMPT_CHECKS, rows as unknown as Record<string, unknown>[]);
+    if (refused) throw new Error(`attempts 400: ${JSON.stringify(refused)}`);
     for (const r of rows) if (!this.attempts.some((x) => x.client_id === r.client_id && x.ts === r.ts && x.node_id === r.node_id && x.hand === r.hand)) this.attempts.push({ ...r, user: "u" });
   }
   async pullAttempts(since: string) {
@@ -260,6 +268,47 @@ describe("sync engine", () => {
     expect(await readBookmarks(a.repo)).toContainEqual(expect.objectContaining({ id: "late", title: "Late bookmark" }));
   });
 
+  it("post-flop answers (mode postSpot, hand 1325) are pushed by one device and pulled by another", async () => {
+    const server = new FakeBackend();
+    const a = device();
+    const b = device();
+    // a post-flop answer stores the combo number (0..1325) in `hand`; the last combo is the edge of the range
+    const post = (ts: number, hand: number, extra: Partial<Attempt> = {}) =>
+      attempt(ts, 40, hand, { mode: "postSpot", solution: "post:srp-btn-bb/3", seat: 5, spot: "postFlop", ...extra });
+    await a.repo.addAttempt(post(1_700_000_000_000, 1325));
+    await a.repo.addAttempt(post(1_700_000_001_000, 169, { mode: "post", spot: "postTurn", grade: "mistake", evLoss: 1.2, score: 40 })); // the first number a pre-flop class never uses
+    await a.repo.addAttempt(attempt(1_700_000_002_000, 5, 168)); // a pre-flop answer in the same batch
+
+    expect((await syncOnce(a.repo, server, "u", a.io)).pushedAttempts).toBe(3);
+    expect(server.attempts.map((r) => r.hand).sort((x, y) => x - y)).toEqual([168, 169, 1325]);
+
+    expect((await syncOnce(b.repo, server, "u", b.io)).pulledAttempts).toBe(3);
+    const got = await b.repo.allAttempts();
+    expect(got).toHaveLength(3);
+    expect(got).toContainEqual(expect.objectContaining({ mode: "postSpot", hand: 1325, solution: "post:srp-btn-bb/3", spot: "postFlop", seat: 5, remote: true }));
+    expect(got).toContainEqual(expect.objectContaining({ mode: "post", hand: 169, spot: "postTurn", grade: "mistake", evLoss: 1.2 }));
+  });
+
+  it("the fake server refuses what the schema refuses: a row outside a constraint fails the whole batch", async () => {
+    const server = new FakeBackend();
+    const a = device();
+    await a.repo.addAttempt(attempt(1_700_000_000_000, 5, 10));
+    await a.repo.addAttempt(attempt(1_700_000_001_000, 6, 1326, { mode: "postSpot" })); // one past the last combo
+    await expect(syncOnce(a.repo, server, "u", a.io)).rejects.toThrow(/attempts 400.*attempts_hand_check/);
+    expect(server.attempts).toHaveLength(0); // nothing of the batch was stored
+
+    // every other column the schema limits is enforced too
+    const row = { ...(await a.repo.allAttempts())[0] };
+    const bad = (extra: Partial<Attempt>) => server.pushAttempts([attemptToRow({ ...row, ...extra }, "c")]);
+    await expect(bad({ seat: 6 })).rejects.toThrow(/attempts_seat_check/);
+    await expect(bad({ mode: "bogus" as Attempt["mode"] })).rejects.toThrow(/attempts_mode_check/);
+    await expect(bad({ grade: "ok" as Attempt["grade"] })).rejects.toThrow(/attempts_grade_check/);
+    await expect(bad({ score: 101 })).rejects.toThrow(/attempts_score_check/);
+    await expect(bad({ evLoss: -0.01 })).rejects.toThrow(/attempts_ev_loss_check/);
+    await expect(bad({ hand: -1 })).rejects.toThrow(/attempts_hand_check/);
+    await expect(bad({})).resolves.toBeUndefined();
+  });
+
   it("a failing server leaves the cursors alone so the next round retries", async () => {
     const server = new FakeBackend();
     const a = device();
@@ -289,6 +338,7 @@ function fakeServer() {
   const reqs: Req[] = [];
   const tables: Record<string, Row[]> = { attempts: [], srs_items: [], range_presets: [], icm_drill_log: [], study_bookmarks: [], user_settings: [] };
   const uniq: Record<string, string[]> = { attempts: ["user_id", "client_id", "ts", "node_id", "hand"], srs_items: ["user_id", "key"], range_presets: ["user_id", "id"], icm_drill_log: ["user_id", "ts", "hand", "chosen"], study_bookmarks: ["user_id", "id"], user_settings: ["user_id"] };
+  const checks: Record<string, ReturnType<typeof schemaChecks>> = { attempts: ATTEMPT_CHECKS };
   let auth: Row | null = null;
   const json = (status: number, body: unknown) => new Response(body === null ? "" : JSON.stringify(body), { status, headers: { "content-type": "application/json" } });
   const fetchFn = (async (input: RequestInfo | URL, init: RequestInit = {}) => {
@@ -312,6 +362,8 @@ function fakeServer() {
     if ((init.method ?? "GET") === "POST") {
       const conflict = (url.searchParams.get("on_conflict") ?? "").split(",");
       expect(conflict).toEqual(uniq[table]);
+      const refused = checks[table] ? rejectBatch(table, checks[table], body as Row[]) : null;
+      if (refused) return json(400, refused);
       for (const r of body as Row[]) {
         const i = rows.findIndex((x) => conflict.every((c) => x[c] === r[c]));
         if (i < 0) rows.push({ id: rows.length + 1, ...r });
@@ -415,9 +467,64 @@ describe("Supabase over fetch", () => {
     expect(srv.tables.attempts).toHaveLength(1203);
   });
 
+  it("post-flop answers go through the REST backend; a batch that breaks a constraint gets a 400 and stores nothing", async () => {
+    const srv = fakeServer();
+    const auth = new SupabaseAuth(CFG, srv.fetchFn, memStore());
+    const session = await auth.verifyCode("me@example.com", "123456");
+    const backend = new SupabaseBackend(CFG, session, srv.fetchFn);
+
+    const a = device();
+    await a.repo.addAttempt(attempt(1_700_000_000_000, 40, 1325, { mode: "postSpot", solution: "post:srp-btn-bb/3", spot: "postFlop", seat: 5 }));
+    expect((await syncOnce(a.repo, backend, session.userId, a.io)).pushedAttempts).toBe(1);
+    expect(srv.tables.attempts).toHaveLength(1);
+    expect(srv.tables.attempts[0]).toMatchObject({ user_id: "user-1", mode: "postSpot", hand: 1325 });
+
+    const b = device();
+    expect((await syncOnce(b.repo, backend, session.userId, b.io)).pulledAttempts).toBe(1);
+    expect(await b.repo.allAttempts()).toContainEqual(expect.objectContaining({ mode: "postSpot", hand: 1325, remote: true }));
+
+    // the same server, with a row the schema does not allow: 400, nothing of the batch stored, the error says which constraint
+    await a.repo.addAttempt(attempt(1_700_000_001_000, 40, 1326, { mode: "postSpot" }));
+    await expect(syncOnce(a.repo, backend, session.userId, a.io)).rejects.toThrow(/attempts 400.*attempts_hand_check/);
+    expect(srv.tables.attempts).toHaveLength(1);
+  });
+
   it("a rejected token is reported as an auth error", async () => {
     const srv = fakeServer();
     const backend = new SupabaseBackend(CFG, { accessToken: "garbage", refreshToken: "", expiresAt: 0, userId: "u", email: "e" }, srv.fetchFn);
     await expect(backend.pullSettings()).rejects.toThrow(AuthError);
+  });
+});
+
+// ------------------------------------------------------------------ the constraints the fakes enforce come from supabase/schema.sql
+
+describe("supabase/schema.sql check constraints", () => {
+  const byColumn = (table: string) => Object.fromEntries(schemaChecks(table).map((c) => [c.column, c.rule]));
+
+  it("attempts: the hand column holds a pre-flop class or a post-flop combo (0..1325), and the other columns keep their limits", () => {
+    expect(byColumn("attempts")).toEqual({
+      mode: "mode in ('spot','hand','post','postSpot')",
+      hand: "hand between 0 and 1325",
+      seat: "seat between 0 and 5",
+      grade: "grade in ('best','correct','inaccurate','mistake','blunder')",
+      ev_loss: "ev_loss >= 0",
+      score: "score between 0 and 100",
+    });
+    expect(violations(ATTEMPT_CHECKS, { mode: "postSpot", hand: 1325, seat: 0, grade: "best", ev_loss: 0, score: 100 })).toEqual([]);
+    expect(violations(ATTEMPT_CHECKS, { mode: "postSpot", hand: 1326, seat: 0, grade: "best", ev_loss: 0, score: 100 })).toEqual(["attempts_hand_check: hand between 0 and 1325"]);
+  });
+
+  it("the fix for a database made from an older copy of the file leaves the same limit as the create statement", () => {
+    const created = schemaChecks("attempts").find((c) => c.column === "hand")!;
+    const altered = migrationChecks("attempts");
+    expect(altered).toHaveLength(1);
+    expect(altered[0].name).toBe(created.name);
+    expect(altered[0].rule).toBe(created.rule);
+  });
+
+  it("the other tables are still read (a constraint the reader does not understand must not pass silently)", () => {
+    expect(byColumn("icm_drill_log")).toMatchObject({ hand: "hand between 0 and 168", chosen: "chosen in (0,1)", players: "players between 2 and 9" });
+    expect(() => schemaChecks("no_such_table")).toThrow(/not in the schema/);
+    expect(() => schemaChecks("t", "create table if not exists public.t (\n  a int check (a % 2 = 0)\n);")).toThrow(/unsupported check/);
   });
 });

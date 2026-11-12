@@ -11,7 +11,7 @@ create table if not exists public.attempts (
   mode         text not null check (mode in ('spot','hand','post','postSpot')),
   solution     text not null,
   node_id      int  not null,
-  hand         smallint not null check (hand between 0 and 168),
+  hand         smallint not null check (hand between 0 and 1325),   -- pre-flop: hand class 0..168; post-flop: combo 0..1325
   seat         smallint not null check (seat between 0 and 5),
   spot         text not null,
   chosen       smallint not null,
@@ -24,6 +24,11 @@ create table if not exists public.attempts (
   unique (user_id, client_id, ts, node_id, hand)
 );
 create index if not exists attempts_user_ts on public.attempts (user_id, ts);
+
+-- Databases created from an older copy of this file limited `hand` to the 169 pre-flop classes, which rejects every
+-- post-flop answer (a combo number up to 1325). Widen it; safe to run again, and a no-op on a fresh database.
+alter table public.attempts drop constraint if exists attempts_hand_check;
+alter table public.attempts add constraint attempts_hand_check check (hand between 0 and 1325);
 
 create table if not exists public.srs_items (
   user_id    uuid not null references auth.users(id) on delete cascade,
