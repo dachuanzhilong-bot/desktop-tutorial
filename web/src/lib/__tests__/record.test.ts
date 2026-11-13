@@ -26,6 +26,8 @@ import { solutionBuild } from "../solution/loader";
 import { SEATS, spotType } from "../solution/tree";
 import type { Manifest, SpotType } from "../solution/types";
 import { MemoryRepo } from "../storage/memory";
+import { buildStats, loadStats, STATS_CACHE_KEY } from "../storage/statsCache";
+import type { StatsCache } from "../storage/statsCache";
 import type { Attempt, Repo } from "../storage/types";
 import { loadManifest, walk } from "./helpers";
 
@@ -305,6 +307,21 @@ describe("recordAnswer: the in-memory index, the writes and their order", () => 
     expect(calls).toEqual(["addAttempt", "putSrs"]);
     expect(await inner.allAttempts()).toHaveLength(1);
     expect(await inner.allSrs()).toEqual([item]);
+  });
+
+  it("the stats totals take each record in (REFACTOR_PLAN step 2-7); a totals write that fails does not fail the answer", async () => {
+    const repo = new MemoryRepo();
+    const ix = new SrsIndex();
+    await recordAnswer(repo, preInput(ix, m, BUILD, "spot", raw()));
+    await recordAnswer(repo, postInput(ix, SCENARIO, flop, "spot", raw({ nodeId: TURN, hand: 3, grade: "mistake", evLoss: 0.4, score: 50, now: NOW + 1 })));
+    expect(await repo.getMeta(STATS_CACHE_KEY)).toEqual(buildStats(await repo.allAttempts()));
+    expect(await repo.getMeta<StatsCache>(STATS_CACHE_KEY)).toMatchObject({ n: 2, lastId: 2 });
+
+    const failing = Object.assign(Object.create(repo) as MemoryRepo, { setMeta: () => Promise.reject(new Error("quota")) });
+    await expect(recordAnswer(failing, preInput(ix, m, BUILD, "hand", raw({ now: NOW + 2 })))).resolves.toBeDefined();
+    expect(await repo.countAttempts()).toBe(3);
+    // the next read catches up
+    expect((await loadStats(repo)).n).toBe(3);
   });
 
   it("a failed write rejects the promise; the index still has the answer and the other write is still made", async () => {

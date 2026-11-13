@@ -59,8 +59,8 @@ export async function syncOnce(repo: Repo, backend: SyncBackend, user: string, i
   const iso = (ms: number) => new Date(ms).toISOString();
 
   // ---- attempts: push
-  const local = await repo.allAttempts();
-  const fresh = local.filter((a) => !a.remote && (a.id ?? 0) > state.pushedAttemptId);
+  // only the records saved after the last one uploaded are read (REFACTOR_PLAN step 2-7)
+  const fresh = (await repo.attemptsAfterId(state.pushedAttemptId)).filter((a) => !a.remote);
   if (fresh.length) {
     await backend.pushAttempts(fresh.map((a) => attemptToRow(a, state.clientId)));
     state.pushedAttemptId = Math.max(state.pushedAttemptId, ...fresh.map((a) => a.id ?? 0));
@@ -69,11 +69,15 @@ export async function syncOnce(repo: Repo, backend: SyncBackend, user: string, i
   // ---- attempts: pull
   const rows = await backend.pullAttempts(iso(state.pullAttemptTs));
   if (rows.length) {
-    const have = new Set(local.map(attemptKey));
-    for (const r of rows) {
-      // a row another device made before position keys cannot be read: it stays on the server and is not taken
-      const a = rowToAttempt(r);
-      if (!a) continue;
+    // a row another device made before position keys cannot be read: it stays on the server and is not taken
+    const incoming = rows.map(rowToAttempt).filter((a): a is NonNullable<typeof a> => a !== null);
+    // a copy of a row is a local record with the same time (attemptKey starts with it): only records from the
+    // oldest incoming time on can be one, and they are a range of the `ts` index (a row whose time cannot be read
+    // is not in the index: then every record is read, as before)
+    const since = incoming.reduce((m, a) => Math.min(m, a.ts), Infinity);
+    const candidates = !incoming.length ? [] : Number.isFinite(since) ? await repo.attemptsSince(since) : await repo.allAttempts();
+    const have = new Set(candidates.map(attemptKey));
+    for (const a of incoming) {
       const k = attemptKey(a);
       if (have.has(k)) continue;
       have.add(k);

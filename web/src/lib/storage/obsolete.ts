@@ -7,6 +7,7 @@
  * Everything here takes `unknown`: the values come from a database, a file or a server, not from this code.
  */
 import { BOOKMARK_DELETIONS_KEY, BOOKMARKS_KEY } from "./bookmarks";
+import { isDerivedMetaKey } from "./statsCache";
 import type { Attempt, ExportBlob, StoredHand } from "./types";
 import type { SrsItem } from "../practice/srs";
 
@@ -65,7 +66,8 @@ export function currentPart(b: ExportBlob): { blob: ExportBlob; report: ImportRe
   const srs = list(b.srs).filter(isCurrentSrs);
   const hands = list(b.hands).filter(isCurrentHand);
   const dropped = list(b.attempts).length - attempts.length + (list(b.srs).length - srs.length) + (list(b.hands).length - hands.length);
-  const meta = Object.fromEntries(Object.entries(fields(b.meta) ?? {}).filter(([k]) => !k.startsWith("sync.state.") && !k.startsWith("practiceSet:")));
+  // the stats totals are made from this device's own records: a copy in a file would not match them (statsCache.ts)
+  const meta = Object.fromEntries(Object.entries(fields(b.meta) ?? {}).filter(([k]) => !k.startsWith("sync.state.") && !k.startsWith("practiceSet:") && !isDerivedMetaKey(k)));
   return { blob: { ...b, attempts, srs, meta, hands }, report: { dropped } };
 }
 

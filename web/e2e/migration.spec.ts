@@ -185,8 +185,11 @@ test("upgrading a v3 database deletes the records without a position key and kee
   expect(after.attempts.map((a) => a.id)).toEqual([2, 4]);
   expect(byKey(after.srs, "key")).toEqual(byKey(NEW_SRS, "key"));
   expect(byKey(after.hands, "id")).toEqual(byKey(NEW_HANDS, "id"));
-  // … and of `meta` the saved positions, their tombstones, the sync states and the prepared question lists
-  expect(after.meta).toEqual(KEPT_META);
+  // … and of `meta` the saved positions, their tombstones, the sync states and the prepared question lists. The stats
+  // screen then adds its totals (`stats.daily.v1`, REFACTOR_PLAN step 2-7), made from the records that are left.
+  const { "stats.daily.v1": totals, ...meta } = after.meta;
+  expect(meta).toEqual(KEPT_META);
+  expect(totals).toMatchObject({ v: 1, n: 2, lastId: 4 });
   for (const k of Object.keys(DROPPED_META)) expect(k in after.meta).toBe(false);
   // untouched: saved ranges, saved solves (with their data) and the settings
   expect(after.ranges).toEqual(RANGES);
@@ -237,10 +240,14 @@ test("upgrading a v2 database (no hands store yet) deletes its old records and k
   await page.goto("/stats/");
   await expect(page.getByRole("heading", { name: "成績" })).toBeVisible();
   await expect.poll(async () => (await dump(page)).version).toBe(4);
+  await expect.poll(async () => "stats.daily.v1" in (await dump(page)).meta).toBe(true);
   const after = await dump(page);
   expect(after.stores).toEqual(["attempts", "hands", "meta", "ranges", "solves", "srs"]);
   expect([after.attempts, after.srs, after.hands]).toEqual([[], [], []]);
-  expect(after.meta).toEqual(KEPT_META);
+  // the stats screen adds its totals (REFACTOR_PLAN step 2-7): of no records
+  const { "stats.daily.v1": totals, ...meta } = after.meta;
+  expect(meta).toEqual(KEPT_META);
+  expect(totals).toMatchObject({ v: 1, n: 0, lastId: 0 });
   expect(after.ranges).toEqual(RANGES);
   expect(after.solves).toHaveLength(1);
 });

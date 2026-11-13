@@ -2,6 +2,7 @@ import { mergeMeta } from "./metaMerge";
 import { attemptKey, currentPart, isCurrentAttempt, isCurrentHand, isCurrentSrs, isObsoleteMetaKey } from "./obsolete";
 import type { SrsItem } from "../practice/srs";
 import { MemoryRepo } from "./memory";
+import { isDerivedMetaKey } from "./statsCache";
 import type { Attempt, ExportBlob, Repo, SavedRange, SavedSolve, StoredHand } from "./types";
 
 const DB_NAME = "tessera";
@@ -79,6 +80,15 @@ export class IdbRepo implements Repo {
   async allAttempts() {
     return wrap((await this.store("attempts")).getAll()) as Promise<Attempt[]>;
   }
+  async attemptsSince(ts: number) {
+    return wrap((await this.store("attempts")).index("ts").getAll(IDBKeyRange.lowerBound(ts))) as Promise<Attempt[]>;
+  }
+  async attemptsAfterId(id: number) {
+    return wrap((await this.store("attempts")).getAll(IDBKeyRange.lowerBound(id, true))) as Promise<Attempt[]>;
+  }
+  async countAttempts() {
+    return wrap((await this.store("attempts")).count());
+  }
   async allSrs() {
     return wrap((await this.store("srs")).getAll()) as Promise<SrsItem[]>;
   }
@@ -95,7 +105,7 @@ export class IdbRepo implements Repo {
     const meta: Record<string, unknown> = {};
     const s = await this.store("meta");
     const keys = (await wrap(s.getAllKeys())) as string[];
-    for (const k of keys) meta[k] = await this.getMeta(k);
+    for (const k of keys) if (!isDerivedMetaKey(k)) meta[k] = await this.getMeta(k);
     return { app: "tessera", version: 1, exportedAt: Date.now(), attempts: await this.allAttempts(), srs: await this.allSrs(), meta, ranges: await this.listRanges(), hands: await this.listHands() };
   }
   async importAll(file: ExportBlob) {
