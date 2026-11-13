@@ -39,3 +39,7 @@ path = "src/bin/gen_postflop.rs"
 [[bin]]
 name = "export_equity"
 path = "src/bin/export_equity.rs"
+
+[[bin]]
+name = "measure_exploit"
+path = "src/bin/measure_exploit.rs"
