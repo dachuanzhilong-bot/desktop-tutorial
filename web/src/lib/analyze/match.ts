@@ -28,10 +28,10 @@ export function effectiveStack(hand: NormHand): number {
 const SIZE_TOLERANCE = 1.35;
 
 export interface DecisionInfo {
-  /** node id when the hand was analysed. With `pos` it is only informative: readers look the node up again from `pos`. */
+  /** node id when the hand was analysed. Only informative: readers look the node up again from `pos`. */
   nodeId: number;
-  /** position key of the decision (docs/03 "局面キー"); absent in hands analysed before position keys */
-  pos?: string;
+  /** position key of the decision (docs/03 "局面キー") */
+  pos: string;
   seat: number;
   spot: SpotType;
   handClass: number;
@@ -64,9 +64,9 @@ export interface FlopLink {
 
 export interface HandAnalysis {
   id: string;
-  /** id of the solution the node ids refer to (absent in hands analysed before depths existed: 100bb) */
-  solution?: string;
-  /** build ID of the solution data the hand was graded against (absent in older analyses) */
+  /** id of the solution the decisions' position keys belong to */
+  solution: string;
+  /** build ID of the solution data the hand was graded against */
   build?: string;
   status: "ok" | "partial" | "skipped";
   reason?: string;

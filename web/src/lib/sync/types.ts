@@ -1,6 +1,7 @@
 import type { Grade } from "../practice/grading";
 import type { SrsItem } from "../practice/srs";
 import type { Attempt, SavedRange } from "../storage/types";
+import { attemptKey } from "../storage/obsolete";
 import { sanitizeBookmarks } from "../storage/bookmarks";
 import type { Bookmark, BookmarkDeletion } from "../storage/bookmarks";
 import { sanitizeIcmLog } from "../storage/icmLog";
@@ -24,7 +25,7 @@ export interface AttemptRow {
   score: number;
   ms: number | null;
   flags: number;
-  /** position key and build ID (null for records made before they existed; absent in rows of an older server copy) */
+  /** position key and build ID. A row without `pos` (null, or absent in an older server copy) was made before position keys: it is not pulled. */
   pos?: string | null;
   build?: string | null;
 }
@@ -33,7 +34,7 @@ export interface SrsRow {
   key: string;
   node_id: number;
   hand: number;
-  /** solution, position key and build ID of items made with a position key (null / absent for older ones) */
+  /** solution, position key and build ID. A row without `solution` / `pos` was made before position keys: it is not pulled. */
   solution?: string | null;
   pos?: string | null;
   build?: string | null;
@@ -144,12 +145,14 @@ export function attemptToRow(a: Attempt, clientId: string): AttemptRow {
     ms: Number.isFinite(a.ms) ? Math.round(a.ms) : null,
     flags: (a.rng ? 1 : 0) | (a.timeout ? 2 : 0) | (a.hint ? 4 : 0),
     // always present (null when unknown): every row of one upload must have the same columns
-    pos: a.pos ?? null,
+    pos: a.pos,
     build: a.build ?? null,
   };
 }
 
-export function rowToAttempt(r: AttemptRow): Attempt {
+/** the record of a row; null for a row made before position keys (no `pos`), which cannot be read any more */
+export function rowToAttempt(r: AttemptRow): Attempt | null {
+  if (typeof r.pos !== "string" || !r.pos) return null;
   return {
     ts: Date.parse(r.ts),
     sessionId: r.session_id,
@@ -169,12 +172,12 @@ export function rowToAttempt(r: AttemptRow): Attempt {
     timeout: (r.flags & 2) !== 0,
     hint: (r.flags & 4) !== 0,
     remote: true,
-    ...(typeof r.pos === "string" ? { pos: r.pos } : {}),
+    pos: r.pos,
     ...(typeof r.build === "string" ? { build: r.build } : {}),
   };
 }
 
-export const attemptKey = (a: { ts: number; nodeId: number; hand: number }) => `${a.ts}:${a.nodeId}:${a.hand}`;
+export { attemptKey };
 
 export const srsToRow = (s: SrsItem): SrsRow => ({
   key: s.key,
@@ -187,11 +190,13 @@ export const srsToRow = (s: SrsItem): SrsRow => ({
   last_grade: s.lastGrade,
   updated: iso(s.updated),
   // always present (null when unknown): every row of one upload must have the same columns
-  solution: s.solution ?? null,
-  pos: s.pos ?? null,
+  solution: s.solution,
+  pos: s.pos,
   build: s.build ?? null,
 });
-export const rowToSrs = (r: SrsRow): SrsItem => ({
+/** the item of a row; null for a row made before position keys (no `solution` / `pos`) */
+export const rowToSrs = (r: SrsRow): SrsItem | null =>
+  typeof r.solution !== "string" || !r.solution || typeof r.pos !== "string" || !r.pos ? null : {
   key: r.key,
   nodeId: r.node_id,
   hand: r.hand,
@@ -201,10 +206,10 @@ export const rowToSrs = (r: SrsRow): SrsItem => ({
   lapses: r.lapses,
   lastGrade: r.last_grade,
   updated: Date.parse(r.updated),
-  ...(typeof r.solution === "string" ? { solution: r.solution } : {}),
-  ...(typeof r.pos === "string" ? { pos: r.pos } : {}),
+  solution: r.solution,
+  pos: r.pos,
   ...(typeof r.build === "string" ? { build: r.build } : {}),
-});
+};
 
 export const rangeToRow = (r: SavedRange): RangeRow => ({ id: r.id, name: r.name, range_text: r.text, ts: iso(r.ts) });
 export const rowToRange = (r: RangeRow): SavedRange => ({ id: r.id, name: r.name, text: r.range_text, ts: Date.parse(r.ts) });

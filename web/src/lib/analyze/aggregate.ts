@@ -1,4 +1,5 @@
 import type { Grade } from "../practice/grading";
+import type { ReviewItem } from "../practice/review";
 import type { SpotType } from "../solution/types";
 import type { DecisionInfo } from "./match";
 import type { StoredHand } from "../storage/types";
@@ -66,7 +67,7 @@ export function weakSpots(list: StoredHand[], limit = 6): WeakSpot[] {
     .slice(0, limit);
 }
 
-export const solutionOf = (h: StoredHand) => h.analysis.solution ?? "cash6max-100bb";
+export const solutionOf = (h: StoredHand) => h.analysis.solution;
 
 /** the solution (stack depth) in which the player made the most mistakes — a practice set uses one solution */
 export function mistakeSolution(list: StoredHand[], seat?: number, spot?: SpotType): string | null {
@@ -84,9 +85,9 @@ export function mistakeSolution(list: StoredHand[], seat?: number, spot?: SpotTy
 
 /**
  * Hands the player got wrong, worst first, as practice questions (each (position, hand) once, all from one solution).
- * A question carries the decision's position key when the analysis has one; the practice screen looks the node up from it.
+ * A question carries the decision's position key; the practice screen looks the node up from it.
  */
-export function practiceItems(list: StoredHand[], limit = 30, seat?: number, spot?: SpotType, solution?: string): { nodeId: number; hand: number; pos?: string }[] {
+export function practiceItems(list: StoredHand[], limit = 30, seat?: number, spot?: SpotType, solution?: string): ReviewItem[] {
   const all: DecisionInfo[] = [];
   const sol = solution ?? mistakeSolution(list, seat, spot);
   for (const h of list)
@@ -99,12 +100,12 @@ export function practiceItems(list: StoredHand[], limit = 30, seat?: number, spo
     }
   all.sort((a, b) => b.evLoss - a.evLoss);
   const seen = new Set<string>();
-  const out: { nodeId: number; hand: number; pos?: string }[] = [];
+  const out: ReviewItem[] = [];
   for (const d of all) {
-    const k = `${d.pos ?? d.nodeId}:${d.handClass}`;
+    const k = `${d.pos}:${d.handClass}`;
     if (seen.has(k)) continue;
     seen.add(k);
-    out.push(d.pos === undefined ? { nodeId: d.nodeId, hand: d.handClass } : { nodeId: d.nodeId, hand: d.handClass, pos: d.pos });
+    out.push({ pos: d.pos, hand: d.handClass });
     if (out.length >= limit) break;
   }
   return out;

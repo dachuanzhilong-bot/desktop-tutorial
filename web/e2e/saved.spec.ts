@@ -49,9 +49,9 @@ test.describe("saved positions", () => {
           };
         }),
       [
-        { id: "old", created: 100, ts: 100, title: "BTN 100bb", note: "Remember the turn bluff catch", href: "/study/#d=100&n=1" },
-        { id: "middle", created: 200, ts: 200, title: "CO 60bb", note: "Open tighter", href: "/study/#d=60&n=2" },
-        { id: "new", created: 300, ts: 300, title: "HJ open", note: "100bb review", href: "/study/#d=100&n=3" },
+        { id: "old", created: 100, ts: 100, title: "BTN 100bb", note: "Remember the turn bluff catch", href: "/study/#d=100&p=F" },
+        { id: "middle", created: 200, ts: 200, title: "CO 60bb", note: "Open tighter", href: "/study/#d=60&p=F-F" },
+        { id: "new", created: 300, ts: 300, title: "HJ open", note: "100bb review", href: "/study/#d=100&p=F-F-F" },
       ],
     );
     await page.reload();
@@ -114,8 +114,11 @@ test.describe("saved positions", () => {
     await expect(page.getByTestId("saved-item").nth(1).getByTestId("saved-note")).toHaveValue("UTGのオープンに降りる側を覚える");
 
     // open the pre-flop one: same depth, node and hand
+    // the saved address holds the position key (UTG folded: "F"), which Study looks up in the solution it loads
+    await expect(page.getByTestId("saved-item").nth(1).getByTestId("saved-open")).toHaveAttribute("href", /\/study\/#d=100&p=F&h=14$/);
     await page.getByTestId("saved-item").nth(1).getByTestId("saved-open").click();
-    await expect(page).toHaveURL(/\/study\/#d=100&n=\d+&h=14/);
+    await expect(page).toHaveURL(/\/study\/#d=100&p=F&h=14$/);
+    await expect(page.getByTestId("study-pot")).toContainText("HJ");
     await expect(page.getByTestId("hand-panel")).toContainText("KK");
     await expect(page.getByTestId("save-position")).toHaveAttribute("aria-pressed", "true");
 
@@ -143,6 +146,6 @@ test.describe("saved positions", () => {
     const text = await (await import("node:fs/promises")).readFile((await download.path())!, "utf8");
     const blob = JSON.parse(text);
     expect(blob.meta["study.bookmarks"]).toHaveLength(1);
-    expect(blob.meta["study.bookmarks"][0].href).toMatch(/^\/study\/#d=100&n=0/);
+    expect(blob.meta["study.bookmarks"][0].href).toBe("/study/#d=100&p=root"); // the position key, no node number
   });
 });

@@ -11,7 +11,7 @@ import { buildQuestion, judge, PendingStep, playOutOpponents, Question, shortcut
 import { candidateNodes, pickHand, pickNode } from "@/lib/practice/sampler";
 import { Result, sessionStats } from "@/lib/practice/session";
 import { answerSrs, preflopRef, withPosition } from "@/lib/practice/position";
-import { srsKey, SrsIndex } from "@/lib/practice/srs";
+import { SrsIndex } from "@/lib/practice/srs";
 import { useSettings } from "@/lib/settings";
 import { sessionIdOf } from "@/lib/util/hooks";
 import type { SolutionStore } from "@/lib/solution/loader";
@@ -105,9 +105,9 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
     for (let tries = 0; tries < 12; tries++) {
       const nodeId = pickNode(m, nodes, config.filter, rnd);
       const sol = await store.node(nodeId);
-      // spaced repetition by position: the item of (solution, position key, hand); an older item by its old key
+      // spaced repetition by position: the item of (solution, position key, hand)
       const pos = preflopRef(m, store.build, nodeId).pos;
-      const hand = pickHand(sol, nodeId, config.filter, rnd, (h) => srs.current.find(m.id, pos, h, srsKey(m.id, nodeId, h)), Date.now());
+      const hand = pickHand(sol, config.filter, rnd, (h) => srs.current.find(m.id, pos, h), Date.now());
       if (sol.weight[hand] < 0.02 || !matchesFilter(hand, config.filter.hands)) continue;
       const q = buildQuestion(m, nodeId, sol, hand, rnd, config.rng);
       setRound({ heroSeat: m.nodes[nodeId].actor, hand, cards: q.cards, queue: stepsTo(m, nodeId), startState: initialState(m), q, endedWith: null });
@@ -238,7 +238,7 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
       const now = Date.now();
       // the position key and the build ID: what the record is found by after the data is generated again
       const ref = preflopRef(m, store.build, q.nodeId);
-      const attempt = withPosition<Attempt>({
+      const attempt = withPosition<Omit<Attempt, "pos" | "build">>({
         ts: now,
         sessionId: sessionIdOf(sessionId, "s"),
         mode: config.mode,
@@ -257,7 +257,7 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
         timeout,
         hint: hintUsed.current,
       }, ref);
-      const item = answerSrs(srs.current, ref, srsKey(m.id, q.nodeId, q.hand), q.nodeId, q.hand, j.grade, now);
+      const item = answerSrs(srs.current, ref, q.nodeId, q.hand, j.grade, now);
       const repo = getRepo();
       repo.addAttempt(attempt).catch(() => {});
       repo.putSrs(item).catch(() => {});

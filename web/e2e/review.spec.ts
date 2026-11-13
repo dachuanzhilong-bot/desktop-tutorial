@@ -29,17 +29,20 @@ async function seedSrs(page: Page, rows: object[]) {
 }
 
 const now = Date.now();
-const srs = (key: string, nodeId: number, hand: number, due: number) => ({ key, nodeId, hand, box: 1, due, seen: 2, lapses: 1, lastGrade: "mistake", updated: now - 10_000 });
+/** an item of the root decision (UTG) of a pre-flop solution, or of a post-flop position */
+const srs = (solution: string, pos: string, hand: number, due: number) => ({ key: `k:${solution}:${pos}:${hand}`, solution, pos, nodeId: 0, hand, box: 1, due, seen: 2, lapses: 1, lastGrade: "mistake", updated: now - 10_000 });
+const S100 = "cash6max-100bb";
+const S40 = "cash6max-40bb";
 
 test.describe("review queue", () => {
   test("shows what is due on the home screen and starts the round with one tap", async ({ page }) => {
     await page.goto("/");
     await expect(page.getByTestId("review-card")).toHaveCount(0); // nothing due: no card
     await seedSrs(page, [
-      srs("0:0", 0, 0, now - 60_000), // UTG with AA, 100bb
-      srs("0:14", 0, 14, now - 30_000), // UTG with KK
-      srs("0:1", 0, 1, now + 3_600_000), // not due yet
-      srs("p:srp-btn-bb/0:1:100", 1, 100, now - 1000), // post-flop: not part of this review
+      srs(S100, "root", 0, now - 60_000), // UTG with AA, 100bb
+      srs(S100, "root", 14, now - 30_000), // UTG with KK
+      srs(S100, "root", 1, now + 3_600_000), // not due yet
+      srs("post:srp-btn-bb", "QsJd6s@root", 100, now - 1000), // post-flop: not part of this review
     ]);
     await page.goto("/");
     await expect(page.getByTestId("review-count")).toContainText("2問");
@@ -50,7 +53,7 @@ test.describe("review queue", () => {
   });
 
   test("a round at another stack depth switches to that depth", async ({ page }) => {
-    await seedSrs(page, [srs("cash6max-40bb:0:0", 0, 0, now - 1000), srs("cash6max-40bb:0:1", 0, 1, now - 2000), srs("0:0", 0, 0, now - 3000)]);
+    await seedSrs(page, [srs(S40, "root", 0, now - 1000), srs(S40, "root", 1, now - 2000), srs(S100, "root", 0, now - 3000)]);
     await page.goto("/practice/");
     const card = page.getByTestId("review-card");
     await expect(card).toBeVisible();

@@ -8,7 +8,9 @@ import { PostflopViewer } from "@/components/postflop/PostflopViewer";
 import { decodeFlop, PfFlop } from "@/lib/postflop/decode";
 import { loadFlop, PF_INDEX } from "@/lib/postflop/loader";
 import { fmtBB } from "@/lib/solution/tree";
-import { postflopLink } from "@/lib/study/links";
+import { parsePostflopHash, postflopHash, postflopLink, postflopTarget, postflopTargetFlop } from "@/lib/study/links";
+import { flopRootPos, postflopPos } from "@/lib/practice/position";
+import { parseBoard } from "@/lib/postflop/combos";
 import { useSettings } from "@/lib/settings";
 import { getRepo } from "@/lib/storage/idb";
 import type { SavedSolve } from "@/lib/storage/types";
@@ -74,18 +76,22 @@ function PostflopStudy() {
   const flop = loaded?.key === flopKey ? loaded.flop : null;
   const [nodeId, setNodeId] = useState(0);
   const [solveId, setSolveId] = useState<string | null | undefined>(undefined);
+  /** the line of a deep link (the part of `p=` after the flop): looked up once its flop has loaded; null = nothing to look up */
+  const [wantLine, setWantLine] = useState<string | null>(null);
 
   useEffect(() => {
-    const p = new URLSearchParams(location.hash.replace(/^#/, ""));
-    const sid = p.get("solve");
-    // the deep link (#solve=… or #s=…&f=…&n=…) is only known in the browser, after hydration
+    const want = parsePostflopHash(location.hash);
+    // the deep link (#solve=… or #s=…&p=<flop>@<line>, lib/study/links.ts) is only known in the browser, after hydration
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of the URL hash
-    setSolveId(sid);
-    if (sid) return;
-    const s = p.get("s");
-    if (s && PF_INDEX.scenarios.some((x) => x.id === s)) setScenario(s);
-    if (p.get("f")) setFlopIdx(Math.min(Number(p.get("f")) || 0, PF_INDEX.flops.length - 1));
-    if (p.get("n")) setNodeId(Number(p.get("n")) || 0);
+    setSolveId(want.solve);
+    if (want.solve) return;
+    if (want.scenario && PF_INDEX.scenarios.some((x) => x.id === want.scenario)) setScenario(want.scenario);
+    // the flop is found by its board, the node by its line once the flop is here; what today's data does not have opens the root
+    const target = postflopTargetFlop(PF_INDEX.flops, want);
+    if (!target) return;
+    setFlopIdx(target.flopIndex);
+    setWantLine(target.line);
+    if (target.number !== null) setNodeId(target.number);
   }, []);
 
   const haveFlop = loaded?.key === flopKey;
@@ -93,29 +99,43 @@ function PostflopStudy() {
     if (!scenario || haveFlop) return;
     let alive = true;
     loadFlop(scenario, flopIdx)
-      .then((f) => alive && startTransition(() => setLoaded({ key: flopKey, flop: f })))
+      .then(
+        (f) =>
+          alive &&
+          startTransition(() => {
+            setLoaded({ key: flopKey, flop: f });
+            if (wantLine !== null) setNodeId(postflopTarget(f, wantLine));
+            setWantLine(null);
+          }),
+      )
       .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
     return () => {
       alive = false;
     };
-  }, [scenario, flopIdx, flopKey, haveFlop]);
+  }, [scenario, flopIdx, flopKey, haveFlop, wantLine]);
 
   // deep link in the URL once the user moves; the default view writes nothing right after load (Next mirrors
   // history.replaceState into its router state, which could cancel a navigation the user has already started)
+  // the position being shown, as `<flop>@<line>`: what the address bar and a saved position hold (never the flop's
+  // index or the node number). The line needs the loaded flop; the root of a flop is known from the index alone, so
+  // choosing a flop puts it into the address at once (a write that came later, when the file has loaded, could
+  // cancel a navigation the user has started in between). null while a deep link's line is still to be looked up.
+  const board = index.flops[flopIdx];
+  const pos = flop ? (flop.nodes[nodeId] ? postflopPos(flop, nodeId) : null) : nodeId === 0 && wantLine === null && board ? flopRootPos(parseBoard(board)) : null;
   const firstView = useRef(true);
   useEffect(() => {
     // a saved solve (#solve=…) keeps its address
-    if (!scenario || /(^|[#&])solve=/.test(location.hash)) return;
+    if (!scenario || pos === null || /(^|[#&])solve=/.test(location.hash)) return;
     const first = firstView.current;
     firstView.current = false;
-    const want = `#s=${scenario}&f=${flopIdx}&n=${nodeId}`;
+    const want = postflopHash(scenario, pos);
     if (location.hash === want || (first && !location.hash)) return;
     try {
       history.replaceState(null, "", `${location.pathname}${want}`);
     } catch {
       /* ignore */
     }
-  }, [scenario, flopIdx, nodeId]);
+  }, [scenario, pos]);
 
   const sc = index?.scenarios.find((s) => s.id === scenario);
 
@@ -219,7 +239,7 @@ function PostflopStudy() {
           <Link href={`/practice/#mode=postSpot&scenario=${scenario}&flop=${flopIdx}`} data-testid="practice-this-flop" className="inline-flex min-h-tap items-center rounded-full border border-accent px-4 text-sm font-bold text-accent-text">
             {t("pf.practice")}
           </Link>
-          <SaveButton href={postflopLink(scenario, flopIdx, nodeId)} title={`${sc.title} · ${index.flops[flopIdx]}`} />
+          {pos !== null && <SaveButton href={postflopLink(scenario, pos)} title={`${sc.title} · ${index.flops[flopIdx]}`} />}
           <span>
           {sc.oop} {t("pf.oop")} {sc.oopPct.toFixed(0)}% · {sc.ip} {t("pf.ip")} {sc.ipPct.toFixed(0)}% · {t("pf.pot", { pot: fmtBB(sc.pot), stack: fmtBB(sc.stack) })}
           </span>

@@ -3,7 +3,7 @@ import { dailySeries, dayKey, heatmap, studyStreak, summarize, todayCount, weakS
 import type { Attempt } from "../storage/types";
 import { MemoryRepo } from "../storage/memory";
 
-const base: Attempt = { ts: 0, sessionId: "s", mode: "spot", solution: "x", nodeId: 0, hand: 0, seat: 0, spot: "rfi", chosen: 0, best: 0, grade: "best", evLoss: 0, score: 100, ms: 1000, rng: false, timeout: false, hint: false };
+const base: Attempt = { ts: 0, sessionId: "s", mode: "spot", solution: "x", nodeId: 0, pos: "root", hand: 0, seat: 0, spot: "rfi", chosen: 0, best: 0, grade: "best", evLoss: 0, score: 100, ms: 1000, rng: false, timeout: false, hint: false };
 const DAY = 86_400_000;
 const noon = new Date(2026, 5, 15, 12, 0, 0).getTime();
 const at = (daysAgo: number, over: Partial<Attempt> = {}): Attempt => ({ ...base, ts: noon - daysAgo * DAY, ...over });

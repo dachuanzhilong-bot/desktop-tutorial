@@ -400,9 +400,9 @@ function HandCard({ h, onChange }: { h: StoredHand; onChange: () => void }) {
   const router = useRouter();
   const m = useManifestOf(solutionOf(h));
   const a = h.analysis;
-  // the worst decision's node in today's data: looked up from its position key (an older analysis has the node id only);
-  // null until the manifest is there, and when today's data does not have the position
-  const worstNode = a.worst && (a.worst.pos === undefined ? a.worst.nodeId : m ? currentPreflopNode(m, a.worst) : null);
+  // the worst decision gets a Study link when today's data has its position: looked up from its position key;
+  // no link until the manifest is there
+  const worstPos = a.worst && m && currentPreflopNode(m, a.worst) !== null ? a.worst.pos : null;
   const [c1, c2] = h.hand.heroCards;
   const net = h.hand.heroNet;
   const openSolve = () => {
@@ -438,8 +438,8 @@ function HandCard({ h, onChange }: { h: StoredHand; onChange: () => void }) {
       </ul>
 
       <div className="flex flex-wrap items-center gap-2 pt-1">
-        {worstNode !== null && (
-          <Link href={preflopLink(depthOf(a.solution), worstNode)} className="min-h-tap rounded-control border border-line px-3 py-2 text-sm font-semibold">
+        {worstPos !== null && (
+          <Link href={preflopLink(depthOf(a.solution), worstPos)} className="min-h-tap rounded-control border border-line px-3 py-2 text-sm font-semibold">
             {t("analyze.openStudy")}
           </Link>
         )}
@@ -468,7 +468,7 @@ function DecisionRow({ d, m }: { d: DecisionInfo; m: Manifest | null }) {
   const { t } = useSettings();
   const tt = t as (k: Key) => string;
   if (!m) return <li className="rounded-control bg-surface-2 p-2 text-sm text-muted">…</li>;
-  // the decision's node in today's data, by its position key (an older analysis: the stored node id)
+  // the decision's node in today's data, by its position key
   const nodeId = currentPreflopNode(m, d);
   // today's data does not have this decision: the grade and the loss still count, the action names cannot be shown
   if (nodeId === null || !m.nodes[nodeId] || m.nodes[nodeId].actions.length !== d.stats.length)

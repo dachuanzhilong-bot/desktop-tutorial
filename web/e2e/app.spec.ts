@@ -99,6 +99,21 @@ test.describe("study", () => {
   });
 
   test("deep link restores the node", async ({ page }) => {
+    // by the position key: UTG folds, HJ to act
+    await page.goto("/study/#d=100&p=F");
+    await expect(page.getByTestId("study-pot")).toContainText("HJ");
+    // moving on writes the key of the new position into the address, never a node number
+    await page.getByTestId("next-0").click();
+    await expect(page.getByTestId("study-pot")).toContainText("CO");
+    await expect(page).toHaveURL(/\/study\/#d=100&p=F-F$/);
+    // a position the solution does not have opens the root instead of failing
+    await page.goto("/study/#d=100&p=F-F-R999");
+    await page.reload();
+    await expect(page.getByTestId("study-pot")).toContainText("UTG");
+    await expect(page.locator(".cell")).toHaveCount(169);
+  });
+
+  test("an address written before position keys (a node number) is still read", async ({ page }) => {
     await page.goto("/study/#n=1");
     await expect(page.getByTestId("study-pot")).toContainText("HJ");
   });

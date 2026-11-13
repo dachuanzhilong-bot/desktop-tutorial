@@ -5,19 +5,15 @@ import { isGood } from "./grading";
 export const BOX_INTERVAL_MIN = [0, 10, 60 * 24, 60 * 24 * 3, 60 * 24 * 7, 60 * 24 * 21];
 
 export interface SrsItem {
-  /**
-   * Primary key. Items made since REFACTOR_PLAN step 1-3: `k:<solution>:<pos>:<hand>` (posSrsKey, no node id).
-   * Older items: `<node>:<hand>` (100bb), `<solution>:<node>:<hand>` (other depths), `p:<scenario>/<flop index>:<node>:<combo>`
-   * (post-flop); they keep their key and have no `pos`. Never parse a `k:` key: read `solution`, `pos` and `hand`.
-   */
+  /** Primary key: `k:<solution>:<pos>:<hand>` (posSrsKey; no node id). Never parse it: read `solution`, `pos` and `hand`. */
   key: string;
-  /** node id when the item was last answered. With `pos` it is only informative: the id is looked up again from `pos`. */
+  /** node id when the item was last answered. Only informative: the id is looked up again from `pos`. */
   nodeId: number;
   hand: number;
-  /** position key (docs/03 "局面キー"): pre-flop the action line, post-flop `<flop>@<line>`. Absent in older items. */
-  pos?: string;
-  /** what `pos` is a position of: `cash6max-<depth>bb` or `post:<scenario>` (no flop index). Set together with `pos`. */
-  solution?: string;
+  /** position key (docs/03 "局面キー"): pre-flop the action line, post-flop `<flop>@<line>` */
+  pos: string;
+  /** what `pos` is a position of: `cash6max-<depth>bb` or `post:<scenario>` (no flop index) */
+  solution: string;
   /** build ID of the solution data the item was last answered against */
   build?: string;
   box: number;
@@ -35,19 +31,16 @@ export interface SrsPosition {
   build?: string;
 }
 
-/** primary key of an item made with a position key: no node id, no flop index */
+/** primary key of an item: no node id, no flop index */
 export const posSrsKey = (solution: string, pos: string, hand: number) => `k:${solution}:${pos}:${hand}`;
 
 /**
- * The item after one more answer. A new item made with `at` gets the `k:` key and carries `solution` / `pos` / `build`.
- * An existing item keeps its key; one that already has a `pos` gets the current node id and build, an older one
- * (no `pos`) is updated as it always was.
+ * The item of (position `at`, hand) after one more answer. A new item gets the `k:` key; an existing one keeps its
+ * key and position and gets the node id the position has now and the build it was answered against.
  */
-export function updateSrs(prev: SrsItem | undefined, nodeId: number, hand: number, grade: Grade, now: number, keyOverride?: string, at?: SrsPosition): SrsItem {
-  const where = at ? { solution: at.solution, pos: at.pos, ...(at.build ? { build: at.build } : {}) } : null;
-  const key = keyOverride ?? (at ? posSrsKey(at.solution, at.pos, hand) : `${nodeId}:${hand}`);
-  let base: SrsItem = prev ?? { key, nodeId, hand, ...where, box: 0, due: now, seen: 0, lapses: 0, lastGrade: grade, updated: now };
-  if (prev && where && prev.pos !== undefined) base = { ...prev, nodeId, ...where };
+export function updateSrs(prev: SrsItem | undefined, at: SrsPosition, nodeId: number, hand: number, grade: Grade, now: number): SrsItem {
+  const where = { solution: at.solution, pos: at.pos, ...(at.build ? { build: at.build } : {}) };
+  const base: SrsItem = prev ? { ...prev, nodeId, ...where } : { key: posSrsKey(at.solution, at.pos, hand), nodeId, hand, ...where, box: 0, due: now, seen: 0, lapses: 0, lastGrade: grade, updated: now };
   let box = base.box;
   let lapses = base.lapses;
   if (isGood(grade)) box = Math.min(BOX_INTERVAL_MIN.length - 1, box + 1);
@@ -80,31 +73,15 @@ export function mixedness(freqs: ArrayLike<number>): number {
   return Math.min(1, (1 - top) * 2);
 }
 
-/**
- * Key of a (decision, hand) in the spaced-repetition store. The 100bb solution keeps the original
- * `<node>:<hand>` keys (existing records stay valid); other depths are prefixed with their solution id,
- * because node ids of different solutions mean different decisions.
- */
-export const srsKey = (solution: string | undefined, nodeId: number, hand: number) => (!solution || solution === "cash6max-100bb" ? `${nodeId}:${hand}` : `${solution}:${nodeId}:${hand}`);
-
-
-/**
- * The spaced-repetition items of this device, looked up by (solution, position key, hand). Items made before
- * position keys existed have no `pos`: only those are found by their old key string.
- */
+/** the spaced-repetition items of this device, looked up by (solution, position key, hand) */
 export class SrsIndex {
   private byPos = new Map<string, Map<string, Map<number, SrsItem>>>();
-  private legacy = new Map<string, SrsItem>();
 
   constructor(items: Iterable<SrsItem> = []) {
     for (const it of items) this.put(it);
   }
 
   put(it: SrsItem): void {
-    if (it.pos === undefined || it.solution === undefined) {
-      this.legacy.set(it.key, it);
-      return;
-    }
     let positions = this.byPos.get(it.solution);
     if (!positions) this.byPos.set(it.solution, (positions = new Map()));
     let hands = positions.get(it.pos);
@@ -112,8 +89,8 @@ export class SrsIndex {
     hands.set(it.hand, it);
   }
 
-  /** the item of a hand at a position; `legacyKey` = the key an item of this decision had before position keys */
-  find(solution: string, pos: string, hand: number, legacyKey?: string): SrsItem | undefined {
-    return this.byPos.get(solution)?.get(pos)?.get(hand) ?? (legacyKey === undefined ? undefined : this.legacy.get(legacyKey));
+  /** the item of a hand at a position */
+  find(solution: string, pos: string, hand: number): SrsItem | undefined {
+    return this.byPos.get(solution)?.get(pos)?.get(hand);
   }
 }

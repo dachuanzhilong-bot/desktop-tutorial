@@ -8,7 +8,7 @@ const bookmark = (id: string, created: number, title: string, note = ""): Bookma
   ts: created,
   title,
   note,
-  href: "/study/#d=100&n=1",
+  href: "/study/#d=100&p=F",
 });
 
 describe("saved position search and sort", () => {

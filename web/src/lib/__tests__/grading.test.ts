@@ -63,20 +63,21 @@ describe("RNG mode", () => {
 
 describe("spaced repetition", () => {
   const t0 = 1_700_000_000_000;
+  const AT = { solution: "cash6max-100bb", pos: "F-F-R2.5" };
   it("promotes on good answers and resets on misses", () => {
-    let it = updateSrs(undefined, 3, 10, "best", t0);
+    let it = updateSrs(undefined, AT, 3, 10, "best", t0);
     expect(it.box).toBe(1);
     expect(it.due).toBe(t0 + BOX_INTERVAL_MIN[1] * 60_000);
-    it = updateSrs(it, 3, 10, "correct", t0 + 1);
+    it = updateSrs(it, AT, 3, 10, "correct", t0 + 1);
     expect(it.box).toBe(2);
-    it = updateSrs(it, 3, 10, "mistake", t0 + 2);
+    it = updateSrs(it, AT, 3, 10, "mistake", t0 + 2);
     expect(it.box).toBe(0);
     expect(it.lapses).toBe(1);
     expect(it.due).toBe(t0 + 2);
   });
   it("prioritises mistakes and mixed hands, deprioritises mastered ones", () => {
-    const miss = updateSrs(undefined, 1, 1, "blunder", t0);
-    const mastered = { ...updateSrs(updateSrs(undefined, 1, 2, "best", t0), 1, 2, "best", t0), due: t0 + 1e9 };
+    const miss = updateSrs(undefined, AT, 1, 1, "blunder", t0);
+    const mastered = { ...updateSrs(updateSrs(undefined, AT, 1, 2, "best", t0), AT, 1, 2, "best", t0), due: t0 + 1e9 };
     const w = (item: SrsItem | undefined, mixed = 0) => priorityWeight({ item, now: t0 + 10, mixedness: mixed, mixedBoost: true });
     expect(w(miss)).toBeGreaterThan(w(undefined));
     expect(w(undefined, 1)).toBeGreaterThan(w(undefined, 0));

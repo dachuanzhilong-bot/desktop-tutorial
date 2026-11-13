@@ -46,7 +46,7 @@ export async function loadState(repo: Repo, user: string): Promise<SyncState> {
 
 /**
  * One local-first sync round. Safe to repeat and to run from several devices:
- *  - attempts are append-only; duplicates are recognised by (ts, node, hand) and rows pulled from the server are marked
+ *  - attempts are append-only; duplicates are recognised by (ts, position key, hand) and rows pulled from the server are marked
  *    `remote` so they are never uploaded again;
  *  - spaced-repetition items, ranges and bookmarks: the newer `updated` / `ts` wins per item (last writer wins);
  *  - ICM answers are append-only; bookmarks carry deletion tombstones so old copies cannot bring them back;
@@ -71,7 +71,9 @@ export async function syncOnce(repo: Repo, backend: SyncBackend, user: string, i
   if (rows.length) {
     const have = new Set(local.map(attemptKey));
     for (const r of rows) {
+      // a row another device made before position keys cannot be read: it stays on the server and is not taken
       const a = rowToAttempt(r);
+      if (!a) continue;
       const k = attemptKey(a);
       if (have.has(k)) continue;
       have.add(k);
@@ -95,7 +97,7 @@ export async function syncOnce(repo: Repo, backend: SyncBackend, user: string, i
     for (const r of srsRows) {
       const mine = byKey.get(r.key);
       const theirs = rowToSrs(r);
-      if (!mine || mine.updated < theirs.updated) {
+      if (theirs && (!mine || mine.updated < theirs.updated)) {
         await repo.putSrs(theirs);
         report.pulledSrs++;
       }

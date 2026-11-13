@@ -50,7 +50,7 @@ function parseHash(): Preset {
 /** waits until the solution of the question list is loaded (switching the stack depth if needed), then starts it */
 function SetStarter({ store, pending, onStart }: { store: SolutionStore; pending: PracticeSet; onStart: () => void }) {
   useEffect(() => {
-    if (store.manifest.id === (pending.solution ?? "cash6max-100bb")) onStart();
+    if (store.manifest.id === pending.solution) onStart();
   }, [store, pending, onStart]);
   return <div className="h-40 animate-pulse rounded-card bg-surface" aria-busy="true" />;
 }
@@ -118,7 +118,7 @@ export default function PracticePage() {
             store={store}
             pending={pending}
             onStart={() => {
-              // questions with a position key get the node that position has in the loaded data; the others keep their node id
+              // each question gets the node its position key has in the loaded data
               const fixed = resolveItems(store.manifest, pending.items);
               // nothing left to ask (today's data has none of the positions): back to the setup screen
               if (fixed.length) setConfig({ type: "pre", config: { mode: "spot", filter: { ...DEFAULT_FILTER }, rng: false, timer: 0, fixed, title: pending.title } });
