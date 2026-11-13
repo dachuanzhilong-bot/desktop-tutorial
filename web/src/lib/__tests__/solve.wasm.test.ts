@@ -24,7 +24,7 @@ describe("WASM solver through the real worker", () => {
     const early = await call({ type: "run", handle: created.handle, iterations: 10, chunk: 10 });
     const done = await call({ type: "run", handle: created.handle, iterations: 400, chunk: 50, restartAt: 200, checkEvery: 100 });
     expect(done.progress.length).toBeGreaterThanOrEqual(8);
-    expect(done.progress.at(-1).done).toBe(400);
+    expect(done.progress.at(-1)!.done).toBe(400);
     expect(done.exploit).toBeGreaterThanOrEqual(0);
     expect(done.exploit).toBeLessThan(early.exploit);
     expect(done.exploit).toBeLessThan(2); // % of pot

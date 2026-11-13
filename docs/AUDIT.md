@@ -45,7 +45,7 @@
 | Analyze | GGPoker | 🧪 | 🧪 | 書式の知識から作った合成サンプルのみ（GGの差分: 全員分の Dealt to、Cash Drop、SHOWDOWN も追加） |
 | Analyze | 壊れた/未知の形式で落ちない・理由を表示 | 🟡 | ✅ | ファズ1,500件で例外0、理由は日本語（`analyze.robust.test.ts`, `lib/analyze/reasons.ts`）。ハンドの無いファイルは名前を表示 |
 | Analyze | 重い処理で画面を固めない | 🟡 | ✅ | 12msごとに分割・進捗バー・中止・200件ずつ保存。5,000ハンドで確認（e2e） |
-| Solve | 計算（Worker/WASM）・進捗・Exploitability・残り時間・キャンセル・ノードロック・保存 | ✅ | ✅ | `app/solve/page.tsx`, `public/solver-worker.js` |
+| Solve | 計算（Worker/WASM）・進捗・Exploitability・残り時間・キャンセル・ノードロック・保存 | ✅ | ✅ | `app/solve/page.tsx`, `src/workers/solver.worker.ts` |
 | Solve | フロップからの精度 | 🟡 | 🟡 | ブラウザ内は概算（§6） |
 | Range Builder | 塗る・頻度ブラシ・一括入力・PIO形式・比較・保存 | ✅ | ✅ | `app/builder/page.tsx` |
 | Range Builder | 取り消し・やり直し | ❌ | ✅ | `lib/ranges/editor.ts`（1回のドラッグ＝1手、100手まで）、ボタン＋Ctrl/⌘+Z・Shift+Z・Ctrl+Y |

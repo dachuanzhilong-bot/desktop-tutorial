@@ -8,8 +8,8 @@ Phase 4 の設計と実装メモ。
 solver/src/ffi.rs            C ABI (tsr_*) と Session（木＋ソルバー＋最後の書き出し）
 solver/src/postflop.rs       ノードロック (lock_node/unlock_node)、export_with_map
 web/public/wasm/tessera_solver.wasm   wasm32-unknown-unknown（依存なし, 約130KB）
-web/public/solver-worker.js  Web Worker（WASMをメインスレッドの外で実行）
-web/src/lib/solve/           SolverClient(Promise API)・設定のf32配列化・下書き保存
+web/src/workers/solver.worker.ts  Web Worker（WASMをメインスレッドの外で実行。Next がハッシュ付きで bundle する）
+web/src/lib/solve/           protocol(メッセージ型)・host(Worker側の処理)・SolverClient(Promise API)・設定のf32配列化・下書き保存・画面の状態(form/run の reducer)
 web/src/lib/ranges/          レンジのテキスト形式・比較スコア・プリフロップ解からのプリセット
 web/src/app/solve/           Solve画面     web/src/app/builder/   Range Builder
 web/src/components/postflop/PostflopViewer.tsx   Study(ポストフロップ)と共通の結果ビュー
@@ -35,9 +35,12 @@ wasm-bindgen を使わない（crate取得が不要）。JSがWASMメモリにf3
 
 書き出しは Study が読む **TSP1 そのまま**なので、`decodeFlop` と `PostflopViewer` を共通で使える。
 
-## Worker プロトコル（`public/solver-worker.js`）
+## Worker プロトコル（`lib/solve/protocol.ts`）
 
-`{req, type, ...}` を送ると、同じ `req` で `…done`/`error` が1回返る。`run` は途中で `progress {done,total,exploit}` を送る。
+`{req, type, ...}` を送ると、同じ `req` で `REPLY[type]`（`ready`・`created`・`run-done`・…）か `error` が1回返る。`run` は途中で `progress {done,total,exploit}` を送る。型は `protocol.ts` だけに書き、Worker（`src/workers/solver.worker.ts` → `lib/solve/host.ts`）と `SolverClient`・`IcmClient`（共通の `SolverRpc`）の両方がそれを import する。クライアントは `REPLY` と違う種類の返事を受け取らない。
+
+- 読み込み: `new Worker(new URL("../../workers/solver.worker.ts", import.meta.url))`（`flop.worker.ts` と同じ）。Worker は `/_next/static/chunks/` に置かれるので、`.wasm` は自分の場所からではなく `withBase("/wasm/tessera_solver.wasm")`（ビルド時の basePath）で取る。
+- オフライン: bundle された Worker のファイルはどのページの HTML にも出てこないので、`scripts/prepare-static-export.mjs` の `workerFiles()` が書き出しから見つけて `sw.js` の `PRECACHE` に入れる（見つからなければビルドが落ちる）。
 
 - `run`: `chunk` 反復ごとにイベントループへ戻る（`cancel` を受け付け、UIが固まらない）。`restartAt`（その反復で平均を取り直す）、`target`（exploitabilityがこれを下回ったら早期終了）、`checkEvery`（exploitabilityを測る間隔。測定は反復より重いので間引く）。
 - 結果の `bytes`/`map` は Transferable で渡す（コピーなし）。

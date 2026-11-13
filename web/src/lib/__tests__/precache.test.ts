@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { expect, test } from "vitest";
-import { embedPrecacheList, precacheList } from "../../../scripts/prepare-static-export.mjs";
+import { embedPrecacheList, precacheList, workerFiles } from "../../../scripts/prepare-static-export.mjs";
 
 const SW = 'const BUILD = "dev";\n// filled in by the build\nconst PRECACHE = [];\nconst PAGES = PRECACHE.map((u) => BASE + u);\n';
 
@@ -84,6 +84,36 @@ test("refuses a worker without the line to fill in, and a folder that is not an 
   } finally {
     await rm(root, { recursive: true, force: true });
     await rm(empty, { recursive: true, force: true });
+  }
+});
+
+// a page chunk that starts a bundled worker, as Turbopack writes it (src/workers/*.worker.ts)
+const STARTS_WORKER = 'e.v(e.r(10914).f("static/chunks/turbopack-worker-abc.js",["static/chunks/w1.js","static/chunks/turbopack-rt.js"]))';
+const WORKER = ["/_next/static/chunks/turbopack-rt.js", "/_next/static/chunks/turbopack-worker-abc.js", "/_next/static/chunks/w1.js"];
+
+test("the files of the bundled workers are precached: no page's HTML names them", async () => {
+  const root = await site();
+  try {
+    for (const f of ["turbopack-worker-abc.js", "w1.js", "turbopack-rt.js"]) await writeFile(join(root, "_next/static/chunks", f), f);
+    // two pages start the same worker: it is listed once
+    await writeFile(join(root, "_next/static/chunks/page-a.js"), `x;${STARTS_WORKER};y`);
+    await writeFile(join(root, "_next/static/chunks/page-b.js"), STARTS_WORKER);
+    expect((await workerFiles(root)).sort()).toEqual(WORKER);
+    const list = await precacheList(root);
+    for (const f of WORKER) expect(list).toContain(f);
+    expect(list).not.toContain("/_next/static/chunks/app-abc.js");
+  } finally {
+    await rm(root, { recursive: true, force: true });
+  }
+});
+
+test("a worker that loads a chunk missing from the export fails the build", async () => {
+  const root = await site();
+  try {
+    await writeFile(join(root, "_next/static/chunks/page-a.js"), STARTS_WORKER);
+    await expect(precacheList(root)).rejects.toThrow(/turbopack-worker-abc\.js/);
+  } finally {
+    await rm(root, { recursive: true, force: true });
   }
 });
 

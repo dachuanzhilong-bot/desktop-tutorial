@@ -19,7 +19,7 @@ solver/ (Rust, 依存なし)                    web/ (Next.js 16 静的書き出
        ▼                                       src/app/         16 ルート（1 ルート = 1 page.tsx）
   out/*.bin ──(web/scripts/pack-solutions.mjs)──▶ web/public/solutions, postflop（gzip 静的ファイル）
        │
-       └─ wasm32 ビルド ──▶ web/public/wasm/tessera_solver.wasm ──▶ public/solver-worker.js（Solve / ICM）
+       └─ wasm32 ビルド ──▶ web/public/wasm/tessera_solver.wasm ──▶ src/workers/solver.worker.ts（Solve / ICM）
 ```
 
 - サーバー処理は無い。全部クライアントで動き、Service Worker（`web/public/sw.js`）でオフライン対応。

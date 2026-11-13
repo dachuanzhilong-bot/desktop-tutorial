@@ -98,6 +98,27 @@ test("every page of the export opens offline after the first visit, with no page
   await context.setOffline(false);
 });
 
+test("Solve runs offline without having been opened online: the bundled solver worker is precached", async ({ page, context }) => {
+  await firstVisit(page);
+  // the worker's files are in the app cache from the install step, not from a visit to /solve/
+  const precached = await page.evaluate(async () => {
+    const core = (await caches.keys()).find((k) => k.startsWith("tessera-core-"));
+    return core ? (await (await caches.open(core)).keys()).map((r) => new URL(r.url).pathname) : [];
+  });
+  expect(precached.some((p) => /^\/_next\/static\/chunks\/turbopack-worker-[^/]+\.js$/.test(p)), precached.join("\n")).toBe(true);
+  await context.setOffline(true);
+  await page.goto("/solve/");
+  await page.getByRole("button", { name: "クリア" }).click();
+  for (const c of ["Ks", "7d", "2c", "9h", "3s"]) await page.getByTestId(`pick-${c}`).click();
+  await page.getByTestId("range-oop-text").fill("QQ,JJ,AQs");
+  await page.getByTestId("range-ip-text").fill("AA,KK,77,A5s");
+  await page.getByTestId("acc-draft").click();
+  await page.getByTestId("solve-run").click();
+  await expect(page.getByTestId("solve-result")).toBeVisible({ timeout: 45_000 });
+  await expect(page.getByTestId("solve-error")).toHaveCount(0);
+  await context.setOffline(false);
+});
+
 test("a flop opened once still opens offline after the app is updated; only data of an older build is dropped", async ({ page, context }) => {
   await firstVisit(page);
   await page.goto("/study/postflop/");
