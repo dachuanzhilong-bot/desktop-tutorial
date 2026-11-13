@@ -52,7 +52,7 @@ test("a first visit, every kind of data and both workers work under a sub-path, 
     .poll(
       async () =>
         page.evaluate(async () => {
-          const name = (await caches.keys()).find((k) => k.startsWith("tessera-data-"));
+          const name = (await caches.keys()).find((k) => k === "tessera-data");
           return name ? (await (await caches.open(name)).keys()).length : 0;
         }),
       { timeout: 30_000 },

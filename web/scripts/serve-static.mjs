@@ -1,6 +1,7 @@
 // Tiny static file server for the exported app (out/) – used by Playwright and for local previews.
 //   node scripts/serve-static.mjs [port] [dir]
 //   BASE_PATH=/desktop-tutorial node scripts/serve-static.mjs …   serves the export under a sub-path, like a GitHub Pages project site
+//   E2E_HOOKS=1 node scripts/serve-static.mjs …   for the e2e tests only (see swVariant below)
 import { createServer } from "node:http";
 import { existsSync, readFileSync, statSync } from "node:fs";
 import { gzipSync } from "node:zlib";
@@ -27,6 +28,19 @@ const TYPES = {
 // what a real static host compresses
 const COMPRESS = new Set([".html", ".js", ".css", ".json", ".webmanifest", ".svg", ".txt", ".wasm", ".bin"]);
 const gz = new Map();
+const hooks = process.env.E2E_HOOKS === "1";
+
+/**
+ * e2e only: a browser that sends the cookie tessera-e2e-sw=<name> gets a "newer deploy" of sw.js, its VERSION and
+ * BUILD ending in -<name>. Playwright cannot intercept a service worker's own update check, so this is how a test
+ * makes the browser find and install a really different worker (e2e/offline.spec.ts). The cookie belongs to one
+ * browser context, so tests running in parallel are not affected.
+ */
+function swVariant(req) {
+  if (!hooks) return "";
+  const m = /(?:^|;\s*)tessera-e2e-sw=([A-Za-z0-9]+)/.exec(String(req.headers.cookie ?? ""));
+  return m ? m[1] : "";
+}
 
 createServer((req, res) => {
   const url = new URL(req.url ?? "/", "http://x");
@@ -58,9 +72,11 @@ createServer((req, res) => {
   if (file.endsWith("sw.js")) headers["cache-control"] = "no-cache";
   else if (p.startsWith("/_next/static/")) headers["cache-control"] = "public, max-age=31536000, immutable";
   let body = readFileSync(file);
+  const variant = file.endsWith("sw.js") ? swVariant(req) : "";
+  if (variant) body = Buffer.from(String(body).replace(/const (VERSION|BUILD) = "([^"]*)";/g, (_, name, value) => `const ${name} = "${value}-${variant}";`));
   if (COMPRESS.has(extname(file)) && /\bgzip\b/.test(String(req.headers["accept-encoding"] ?? ""))) {
     // cache per file *and* modification time: the export is rebuilt while this server may keep running
-    const key = `${file}:${statSync(file).mtimeMs}`;
+    const key = `${file}:${statSync(file).mtimeMs}:${variant}`;
     let z = gz.get(key);
     if (!z) gz.set(key, (z = gzipSync(body)));
     body = z;
