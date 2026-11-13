@@ -34,7 +34,7 @@ test("a first visit, every kind of data and both workers work under a sub-path, 
   await expect(page.getByTestId("pf-actor")).toContainText("BB", { timeout: 20_000 });
   await expect(page.locator(".cell")).toHaveCount(169);
 
-  // the WebAssembly solver in solver-worker.js (it finds the .wasm next to itself)
+  // the WebAssembly solver in the bundled solver worker (it finds the .wasm under the base path)
   await page.goto(url("/icm/"));
   await page.getByTestId("icm-quick-bubble").click();
   await page.getByTestId("icm-acc-fast").click();

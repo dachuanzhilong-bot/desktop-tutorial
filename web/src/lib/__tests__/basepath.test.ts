@@ -31,7 +31,7 @@ describe("hosting under a sub-path", () => {
     expect(hits).toEqual([]);
   });
 
-  it("the solver worker loads its .wasm from next to itself, at the root and under a sub-path", async () => {
+  it("the solver worker loads its .wasm under the base path, at the root and under a sub-path", async () => {
     for (const base of ["", "/desktop-tutorial"]) {
       const fetched: string[] = [];
       const call = startWorker(base, fetched);
@@ -40,12 +40,13 @@ describe("hosting under a sub-path", () => {
     }
   });
 
-  it("the service worker and the solver worker take their base from where they are served", () => {
+  it("the service worker takes its base from where it is served, the bundled solver worker from the build", () => {
     const pub = join(__dirname, "..", "..", "..", "public");
     const sw = readFileSync(join(pub, "sw.js"), "utf8");
-    const worker = readFileSync(join(pub, "solver-worker.js"), "utf8");
+    // bundled under /_next/static: its own address says nothing about the base, the build's base path does
+    const worker = readFileSync(join(__dirname, "..", "..", "workers", "solver.worker.ts"), "utf8");
     expect(sw).toContain("self.registration.scope");
-    expect(worker).toContain("self.location.pathname");
+    expect(worker).toContain("withBase(SOLVER_WASM)");
     // no fetch/cache call in either file names a root-relative file without the base
     expect(sw.match(/(fetch|\.add|\.put|\.match)\(\s*["'`]\//g) ?? []).toEqual([]);
     expect(worker.match(/fetch\(\s*["'`]\//g) ?? []).toEqual([]);

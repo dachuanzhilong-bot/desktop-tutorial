@@ -6,23 +6,25 @@
  *  - tessera-data: the solution data, the WebAssembly solver and its data. No version in the name: it survives app
  *    updates, so the flops opened once stay available offline.
  *
- *  - precache: every page of the export (PRECACHE, written by scripts/prepare-static-export.mjs) and the solution files
- *    listed in /solutions/index.json (written by scripts/pack-solutions.mjs)
+ *  - precache: every page of the export and the bundled Web Workers (PRECACHE, written by
+ *    scripts/prepare-static-export.mjs) and the solution files listed in /solutions/index.json (written by
+ *    scripts/pack-solutions.mjs)
  *  - solution files are fetched and cached as <file>?b=<build> (the build ID of index.json, scripts/build-id.mjs): the
  *    content of such an address never changes, so they are cache-first. Activation drops the entries whose build the
  *    current index.json files no longer list (an older generation of the data).
  *  - /solutions/index.json, /postflop/index.json: network-first, so an online start knows the current builds
- *  - /_next/static, /icons: cache-first; /wasm, /data, /solver-worker.js (no build in their address): stale-while-revalidate
+ *  - /_next/static, /icons: cache-first; /wasm, /data (no build in their address): stale-while-revalidate
  *  - navigations: network-first with a short timeout, falling back to the cache, then to the home page
  */
 // the app may live under a sub-path (GitHub Pages project site): the scope of this worker is that path
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, "");
-const VERSION = "v11";
+const VERSION = "v12";
 // written into the built copy of this file by scripts/stamp-sw.mjs: every build gets its own worker, so a new deploy is noticed
 const BUILD = "dev";
 const CORE = `tessera-core-${VERSION}-${BUILD}`;
 const DATA = "tessera-data";
-// written into the built copy of this file by scripts/prepare-static-export.mjs: every page of out/, the manifest and the icons
+// written into the built copy of this file by scripts/prepare-static-export.mjs: every page of out/, the files of the
+// bundled workers (the solver, the flop decoder: no page's HTML names them), the manifest and the icons
 const PRECACHE = [];
 const PAGES = PRECACHE.map((u) => BASE + u);
 const INDEXES = ["/solutions/index.json", "/postflop/index.json"];
@@ -68,8 +70,8 @@ self.addEventListener("install", (event) => {
         // postflop flops are large: only the index is precached, each flop is cached the first time it is opened
         // (as <n>.bin.gz?b=<build>, the address lib/postflop/loader.ts asks for)
         await data.add(BASE + "/postflop/index.json").catch(() => {}); // small; fetched again so the list of flops is current
-        // the Solve screen runs the WebAssembly solver in a worker: keep both offline
-        await Promise.all(["/wasm/tessera_solver.wasm", "/solver-worker.js", "/data/equity169.bin"].map(addNew));
+        // Solve and ICM run the WebAssembly solver in a worker (in PRECACHE): keep the module and its data offline
+        await Promise.all(["/wasm/tessera_solver.wasm", "/data/equity169.bin"].map(addNew));
       } catch (_) {
         /* offline install: data will be cached on first use */
       }
@@ -120,16 +122,26 @@ self.addEventListener("activate", (event) => {
       // fetched again on use, and the install step above has already put the solution files into DATA
       const keep = new Set([CORE, DATA]);
       for (const k of await caches.keys()) if (k.startsWith("tessera-") && !keep.has(k)) await caches.delete(k);
+      // the hand-written solver worker of earlier versions (now bundled under /_next/static, in CORE)
+      await (await caches.open(DATA)).delete(BASE + "/solver-worker.js");
       await dropOldData();
       await self.clients.claim();
     })(),
   );
 });
 
+/**
+ * A worker's script from the cache, as a response of its own: the worker then keeps the address it was started with.
+ * A cached response carries the cached address, and the Cache API drops the #fragment, where Next's bundled-worker
+ * entry (turbopack-worker-*.js) reads its configuration ("#params=…"); without it the worker stops at once.
+ */
+const forWorker = (req, res) =>
+  req.destination === "worker" || req.destination === "sharedworker" ? new Response(res.body, { status: res.status, statusText: res.statusText, headers: res.headers }) : res;
+
 async function cacheFirst(req, cacheName) {
   const cache = await caches.open(cacheName);
   const hit = await cache.match(req);
-  if (hit) return hit;
+  if (hit) return forWorker(req, hit);
   const res = await fetch(req);
   if (res.ok) cache.put(req, res.clone());
   return res;
@@ -173,7 +185,7 @@ self.addEventListener("fetch", (event) => {
   } else if ((path.startsWith("/solutions/") || path.startsWith("/postflop/")) && url.searchParams.has("b")) {
     // the build ID is part of the address: what is cached under it is never stale
     event.respondWith(cacheFirst(req, DATA));
-  } else if (path.startsWith("/solutions/") || path.startsWith("/postflop/") || path.startsWith("/wasm/") || path.startsWith("/data/") || path === "/solver-worker.js") {
+  } else if (path.startsWith("/solutions/") || path.startsWith("/postflop/") || path.startsWith("/wasm/") || path.startsWith("/data/")) {
     event.respondWith(staleWhileRevalidate(req, DATA));
   } else if (req.mode === "navigate" || req.headers.get("accept")?.includes("text/html") || path.endsWith(".webmanifest")) {
     event.respondWith(networkFirst(req, CORE));

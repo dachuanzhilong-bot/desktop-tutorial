@@ -106,7 +106,7 @@ docs/      設計書（画面遷移・データモデル・解データ形式・
 solver/    Rust製ソルバー（エンジン / プリフロップ木 / ポストフロップ(1,326コンボ・3ストリート) / 検証用ゲーム / 生成CLI）
 web/       Next.js 16 (App Router, 静的書き出し) + TypeScript + Tailwind 4 + Framer Motion
   public/solutions/   プリフロップ解 (gzip)    public/postflop/   ポストフロップ解 (gzip)    public/sw.js   Service Worker
-  public/wasm/        ブラウザ内ソルバー(.wasm)  public/solver-worker.js   計算用Worker
+  public/wasm/        ブラウザ内ソルバー(.wasm)  src/workers/solver.worker.ts   計算用Worker
   src/lib/            解のデコード・ツリー再生・採点・SRS・保存・集計・i18n
   e2e/                Playwright (機能 / PWA / axe)
 ```
