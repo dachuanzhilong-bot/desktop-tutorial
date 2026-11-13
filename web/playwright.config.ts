@@ -12,7 +12,7 @@ export default defineConfig({
   timeout: 45_000,
   expect: { timeout: 10_000 },
   use: { baseURL: "http://localhost:3100", trace: "off", screenshot: "off" },
-  webServer: { command: "node scripts/serve-static.mjs 3100", url: "http://localhost:3100/study/", reuseExistingServer: true, timeout: 30_000 },
+  webServer: { command: "node scripts/serve-static.mjs 3100", env: { E2E_HOOKS: "1" }, url: "http://localhost:3100/study/", reuseExistingServer: true, timeout: 30_000 },
   projects: [
     { name: "mobile", use: { ...devices["Pixel 7"] } },
     { name: "desktop", use: { viewport: { width: 1180, height: 820 } } },

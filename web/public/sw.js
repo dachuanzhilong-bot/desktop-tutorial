@@ -1,20 +1,42 @@
 /* Tessera service worker – offline-first for the app shell and the solution data.
  *
- *  - precache: pages + solution files listed in /solutions/index.json (written by scripts/pack-solutions.mjs)
- *  - solution files are fetched and cached as <file>?b=<build> (the build ID of index.json, scripts/build-id.mjs):
- *    the cache matches the whole URL, so the files of one build are never served for another
- *  - /_next/static, /icons: cache-first; /solutions, /postflop, /wasm, /solver-worker.js: stale-while-revalidate
+ *  Two caches:
+ *  - tessera-core-<VERSION>-<BUILD>: the app itself (pages, /_next/static, icons, manifest). BUILD is stamped by every
+ *    build, so a new deploy gets a new cache and the old app is dropped as a whole.
+ *  - tessera-data: the solution data, the WebAssembly solver and its data. No version in the name: it survives app
+ *    updates, so the flops opened once stay available offline.
+ *
+ *  - precache: every page of the export (PRECACHE, written by scripts/prepare-static-export.mjs) and the solution files
+ *    listed in /solutions/index.json (written by scripts/pack-solutions.mjs)
+ *  - solution files are fetched and cached as <file>?b=<build> (the build ID of index.json, scripts/build-id.mjs): the
+ *    content of such an address never changes, so they are cache-first. Activation drops the entries whose build the
+ *    current index.json files no longer list (an older generation of the data).
+ *  - /solutions/index.json, /postflop/index.json: network-first, so an online start knows the current builds
+ *  - /_next/static, /icons: cache-first; /wasm, /data, /solver-worker.js (no build in their address): stale-while-revalidate
  *  - navigations: network-first with a short timeout, falling back to the cache, then to the home page
- *  Bump VERSION to drop old caches (the solution data); BUILD is stamped by the build and renews the app shell cache.
  */
 // the app may live under a sub-path (GitHub Pages project site): the scope of this worker is that path
 const BASE = new URL(self.registration.scope).pathname.replace(/\/$/, "");
-const VERSION = "v10";
+const VERSION = "v11";
 // written into the built copy of this file by scripts/stamp-sw.mjs: every build gets its own worker, so a new deploy is noticed
 const BUILD = "dev";
 const CORE = `tessera-core-${VERSION}-${BUILD}`;
-const DATA = `tessera-data-${VERSION}`;
-const PAGES = ["/", "/study/", "/study/postflop/", "/study/report/", "/study/saved/", "/learn/", "/solve/", "/builder/", "/icm/", "/equity/", "/odds/", "/practice/", "/stats/", "/analyze/", "/settings/", "/glossary/", "/roadmap/", "/manifest.webmanifest", "/icons/icon.svg", "/icons/icon-192.png"].map((u) => BASE + u);
+const DATA = "tessera-data";
+// written into the built copy of this file by scripts/prepare-static-export.mjs: every page of out/, the manifest and the icons
+const PRECACHE = [];
+const PAGES = PRECACHE.map((u) => BASE + u);
+const INDEXES = ["/solutions/index.json", "/postflop/index.json"];
+
+/** fetch with a time limit: a slow network is treated like no network */
+async function fetchWithin(req, ms, init = {}) {
+  const ctl = new AbortController();
+  const timer = setTimeout(() => ctl.abort(), ms);
+  try {
+    return await fetch(req, { ...init, signal: ctl.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
 
 self.addEventListener("install", (event) => {
   event.waitUntil(
@@ -36,7 +58,7 @@ self.addEventListener("install", (event) => {
         const res = await fetch(BASE + "/solutions/index.json", { cache: "no-store" });
         const idx = await res.json();
         const data = await caches.open(DATA);
-        // files already in the cache are not fetched again: the data only changes with VERSION, and is refreshed on use
+        // files already in the cache are not fetched again: an address with ?b=<build> always has the same content
         const addNew = async (u) => {
           if (!(await data.match(BASE + u))) await data.add(BASE + u).catch(() => {});
         };
@@ -45,7 +67,7 @@ self.addEventListener("install", (event) => {
         await data.put(BASE + "/solutions/index.json", new Response(JSON.stringify(idx), { headers: { "content-type": "application/json" } }));
         // postflop flops are large: only the index is precached, each flop is cached the first time it is opened
         // (as <n>.bin.gz?b=<build>, the address lib/postflop/loader.ts asks for)
-        await data.add(BASE + "/postflop/index.json").catch(() => {});  // small; fetched again so the list of flops is current
+        await data.add(BASE + "/postflop/index.json").catch(() => {}); // small; fetched again so the list of flops is current
         // the Solve screen runs the WebAssembly solver in a worker: keep both offline
         await Promise.all(["/wasm/tessera_solver.wasm", "/solver-worker.js", "/data/equity169.bin"].map(addNew));
       } catch (_) {
@@ -56,11 +78,49 @@ self.addEventListener("install", (event) => {
   );
 });
 
+/**
+ * The build IDs the current index files know, read from the network; null when either cannot be fetched or read
+ * (offline): then nothing is dropped, an offline start must not break the cache.
+ */
+async function currentBuilds() {
+  try {
+    const [pre, post] = await Promise.all(
+      INDEXES.map(async (u) => {
+        const res = await fetchWithin(BASE + u, 5000, { cache: "no-store" });
+        if (!res.ok) throw new Error(`${u} ${res.status}`);
+        return res.json();
+      }),
+    );
+    const builds = new Set([...pre.solutions.map((s) => s.build), ...Object.values(post.build)]);
+    if (builds.has(undefined) || builds.size === 0) return null;
+    return builds;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** drop the solution files of an older generation of the data: entries whose ?b=<build> is not current */
+async function dropOldData() {
+  const builds = await currentBuilds();
+  if (!builds) return;
+  const data = await caches.open(DATA);
+  for (const req of await data.keys()) {
+    const url = new URL(req.url);
+    if (!url.pathname.startsWith(BASE + "/")) continue; // another app on the same origin
+    const path = url.pathname.slice(BASE.length);
+    const build = url.searchParams.get("b");
+    if ((path.startsWith("/solutions/") || path.startsWith("/postflop/")) && build !== null && !builds.has(build)) await data.delete(req);
+  }
+}
+
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     (async () => {
+      // older app caches, and the versioned data caches of earlier workers (tessera-data-v10 …): what they held is
+      // fetched again on use, and the install step above has already put the solution files into DATA
       const keep = new Set([CORE, DATA]);
-      for (const k of await caches.keys()) if (!keep.has(k)) await caches.delete(k);
+      for (const k of await caches.keys()) if (k.startsWith("tessera-") && !keep.has(k)) await caches.delete(k);
+      await dropOldData();
       await self.clients.claim();
     })(),
   );
@@ -87,13 +147,10 @@ async function staleWhileRevalidate(req, cacheName) {
   return hit || (await net) || Response.error();
 }
 
-async function networkFirst(req) {
-  const cache = await caches.open(CORE);
+async function networkFirst(req, cacheName) {
+  const cache = await caches.open(cacheName);
   try {
-    const ctl = new AbortController();
-    const timer = setTimeout(() => ctl.abort(), 3500);
-    const res = await fetch(req, { signal: ctl.signal });
-    clearTimeout(timer);
+    const res = await fetchWithin(req, 3500);
     if (res.ok) cache.put(req, res.clone());
     return res;
   } catch (_) {
@@ -111,11 +168,16 @@ self.addEventListener("fetch", (event) => {
   const path = url.pathname.slice(BASE.length) || "/";
   if (path.startsWith("/_next/static/") || path.startsWith("/icons/")) {
     event.respondWith(cacheFirst(req, CORE));
+  } else if (INDEXES.includes(path)) {
+    event.respondWith(networkFirst(req, DATA));
+  } else if ((path.startsWith("/solutions/") || path.startsWith("/postflop/")) && url.searchParams.has("b")) {
+    // the build ID is part of the address: what is cached under it is never stale
+    event.respondWith(cacheFirst(req, DATA));
   } else if (path.startsWith("/solutions/") || path.startsWith("/postflop/") || path.startsWith("/wasm/") || path.startsWith("/data/") || path === "/solver-worker.js") {
     event.respondWith(staleWhileRevalidate(req, DATA));
   } else if (req.mode === "navigate" || req.headers.get("accept")?.includes("text/html") || path.endsWith(".webmanifest")) {
-    event.respondWith(networkFirst(req));
+    event.respondWith(networkFirst(req, CORE));
   } else if (url.search.includes("_rsc")) {
-    event.respondWith(networkFirst(req));
+    event.respondWith(networkFirst(req, CORE));
   }
 });

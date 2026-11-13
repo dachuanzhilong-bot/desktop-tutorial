@@ -228,7 +228,7 @@ test.describe("pwa", () => {
       .poll(
         async () =>
           page.evaluate(async () => {
-            const name = (await caches.keys()).find((k) => k.startsWith("tessera-data-"));
+            const name = (await caches.keys()).find((k) => k === "tessera-data");
             return name ? (await (await caches.open(name)).keys()).length : 0;
           }),
         { timeout: 20_000 },
@@ -237,7 +237,7 @@ test.describe("pwa", () => {
     await page.reload(); // now controlled by the SW
     // every solution file is cached under the address the app asks for: with its build ID (?b=…)
     const cached = await page.evaluate(async () => {
-      const name = (await caches.keys()).find((k) => k.startsWith("tessera-data-"));
+      const name = (await caches.keys()).find((k) => k === "tessera-data");
       return name ? (await (await caches.open(name)).keys()).map((r) => r.url) : [];
     });
     const data = cached.filter((u) => /\/(solutions|postflop)\/.*\.gz/.test(u));
