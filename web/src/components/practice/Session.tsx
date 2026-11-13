@@ -196,7 +196,6 @@ export function Session({ store, repo, config, onExit, onPostflop }: { store: So
             a={{ ...answer, endText: answer.endKey && t(answer.endKey) }}
             actions={actions}
             pane={pane}
-            state={answer.before}
             onNext={ses.next}
             onTogglePane={ses.togglePane}
             nextLabel={link ? t("practice.toFlop") : config.mode === "hand" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")}

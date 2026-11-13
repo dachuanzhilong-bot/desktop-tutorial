@@ -89,15 +89,21 @@ export interface Question {
   nodeId: number;
   hand: number;
   cards: [Card, Card];
+  /** the range chart of the decision (post-flop: the hand classes aggregated from the combos) */
   sol: NodeSolution;
+  /** this hand: each action's frequency and EV (bb) — what the answer is graded on and the frequency bars show */
   stats: ActionStat[];
+  /** this hand's weight in the range (0..1) */
+  weight: number;
+  /** this hand's equity against the opponent's range (0..1) */
+  equity: number;
+  /** pre-flop: the equity realization the model assumed for this hand; null when the solution has none (post-flop) */
+  eqr: number | null;
   /** rng mode: roll in [0,1) and the action it prescribes */
   roll: number | null;
   rngAction: number | null;
   /** call price vs pot for the explanation (null when no chips are needed) */
   potOdds: { call: number; pot: number; need: number } | null;
-  /** postflop: one-hand solution used for the frequency bars (the chart `sol` is the class aggregate) */
-  bars?: { sol: NodeSolution; h: number };
 }
 
 /** action order used to lay frequencies along a roll: raises first, then call, then fold */
@@ -121,7 +127,7 @@ export function buildQuestion(m: Manifest, nodeId: number, sol: NodeSolution, ha
   const st = stateAt(m, nodeId);
   const toCall = st.cur - st.inv[m.nodes[nodeId].actor];
   const potOdds = toCall > 1e-9 ? { call: toCall, pot: st.pot + toCall, need: toCall / (st.pot + toCall) } : null;
-  return { nodeId, hand, cards: randomCombo(hand, rnd), sol, stats, roll, rngAction, potOdds };
+  return { nodeId, hand, cards: randomCombo(hand, rnd), sol, stats, weight: sol.weight[hand], equity: sol.equity[hand], eqr: sol.eqr ? sol.eqr[hand] : null, roll, rngAction, potOdds };
 }
 
 export interface Judgement extends GradeResult {

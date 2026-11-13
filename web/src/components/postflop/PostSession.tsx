@@ -246,7 +246,7 @@ export function PostSession({ config, repo, onExit }: { config: PostConfig; repo
       if (j.grade === "best" || j.grade === "correct") haptic.good();
       else haptic.bad();
       setResults((r) => [...r, { grade: j.grade, score, evLoss: j.evLoss }]);
-      setAnswer({ j, score, ms, timeout, hint: hintUsed.current, before: undefined as never, endText: config.kind === "through" ? endText : null, nextNode: edge.code >= 0 ? edge.code : null, chosenEdge: i });
+      setAnswer({ j, score, ms, timeout, hint: hintUsed.current, endText: config.kind === "through" ? endText : null, nextNode: edge.code >= 0 ? edge.code : null, chosenEdge: i });
       setPane("result");
       setPhase("answered");
       // persist (local-first): the screen does not wait for the writes; the index of spaced repetition is updated at once.
@@ -455,7 +455,7 @@ export function PostSession({ config, repo, onExit }: { config: PostConfig; repo
           </>
         )}
         {answered && round?.q && answer && (
-          <ResultPanel q={round.q} a={answer as AnswerInfo} actions={actions} pane={pane} state={undefined as never} onNext={next} onTogglePane={() => setPane((p) => (p === "result" ? "explain" : "result"))} nextLabel={config.kind === "through" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")} approx={t("pf.approx")} terms={["ev", "evLoss", "equity", "range", "spr"]} />
+          <ResultPanel q={round.q} a={answer as AnswerInfo} actions={actions} pane={pane} onNext={next} onTogglePane={() => setPane((p) => (p === "result" ? "explain" : "result"))} nextLabel={config.kind === "through" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")} approx={t("pf.approx")} terms={["ev", "evLoss", "equity", "range", "spr"]} />
         )}
         {phase === "handEnd" && round && (
           <div className="rounded-sheet border border-line bg-surface p-4 text-center shadow-xl" data-testid="hand-end">

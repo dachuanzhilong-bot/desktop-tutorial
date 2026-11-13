@@ -1,6 +1,6 @@
 "use client";
 import { motion } from "framer-motion";
-import { FreqBars } from "@/components/HandPanel";
+import { StatBars } from "@/components/HandPanel";
 import { GridAction, RangeGrid } from "@/components/RangeGrid";
 import { Term } from "@/components/Term";
 import { ApproxNote } from "@/components/ApproxNote";
@@ -9,7 +9,6 @@ import type { Grade } from "@/lib/practice/grading";
 import { useSettings } from "@/lib/settings";
 import { fmtBB } from "@/lib/solution/tree";
 import { ActionKind } from "@/lib/solution/types";
-import type { PublicState } from "@/lib/solution/types";
 import type { Key } from "@/lib/i18n/ja";
 
 export const GRADE_GLYPH: Record<Grade, string> = { best: "★", correct: "✓", inaccurate: "△", mistake: "!", blunder: "✕" };
@@ -32,13 +31,11 @@ export interface AnswerInfo {
   ms: number;
   timeout: boolean;
   hint: boolean;
-  before: PublicState;
   endText: string | null;
 }
 
-function ExplainLines({ q, a, actions, state, terms }: { q: Question; a: AnswerInfo; actions: GridAction[]; state: PublicState; terms: string[] }) {
+function ExplainLines({ q, a, actions, terms }: { q: Question; a: AnswerInfo; actions: GridAction[]; terms: string[] }) {
   const { t } = useSettings();
-  void state;
   const meta = q.stats;
   const callIdx = actions.findIndex((x) => x.kind === ActionKind.Call);
   return (
@@ -52,13 +49,13 @@ function ExplainLines({ q, a, actions, state, terms }: { q: Question; a: AnswerI
           loss: a.j.evLoss.toFixed(2),
         })}
       </li>
-      {q.sol.eqr && !q.bars && callIdx >= 0 && (
+      {q.eqr !== null && callIdx >= 0 && (
         <li>
-          <Term id="eqr">EQR</Term>: {t("explain.eqr", { eqr: q.sol.eqr[q.hand].toFixed(2) })}
+          <Term id="eqr">EQR</Term>: {t("explain.eqr", { eqr: q.eqr.toFixed(2) })}
         </li>
       )}
       {q.roll !== null && q.rngAction !== null && <li>{t("explain.rng", { roll: Math.floor(q.roll * 100) + 1, action: actions[q.rngAction].label })}</li>}
-      <li>{t("explain.range", { w: Math.round((q.bars ? q.bars.sol.weight[q.bars.h] : q.sol.weight[q.hand]) * 100) })}</li>
+      <li>{t("explain.range", { w: Math.round(q.weight * 100) })}</li>
       {terms.length > 0 && (
         <li className="flex flex-wrap items-baseline gap-x-3 gap-y-1" data-testid="explain-terms">
           <span className="text-muted">{t("explain.terms")}</span>
@@ -73,7 +70,7 @@ function ExplainLines({ q, a, actions, state, terms }: { q: Question; a: AnswerI
 
 function PotOdds({ q }: { q: Question }) {
   const { t } = useSettings();
-  return <li data-pot-odds>{q.potOdds ? t("explain.potOdds", { call: fmtBB(q.potOdds.call), pot: fmtBB(q.potOdds.pot), need: Math.round(q.potOdds.need * 100), eq: Math.round((q.bars ? q.bars.sol.equity[q.bars.h] : q.sol.equity[q.hand]) * 100) }) : t("explain.noCall")}</li>;
+  return <li data-pot-odds>{q.potOdds ? t("explain.potOdds", { call: fmtBB(q.potOdds.call), pot: fmtBB(q.potOdds.pot), need: Math.round(q.potOdds.need * 100), eq: Math.round(q.equity * 100) }) : t("explain.noCall")}</li>;
 }
 
 function Mixed({ q, actions }: { q: Question; actions: GridAction[] }) {
@@ -94,7 +91,6 @@ export function ResultPanel({
   a,
   actions,
   pane,
-  state,
   onNext,
   onTogglePane,
   nextLabel,
@@ -105,7 +101,6 @@ export function ResultPanel({
   a: AnswerInfo;
   actions: GridAction[];
   pane: "result" | "explain";
-  state: PublicState;
   onNext: () => void;
   onTogglePane: () => void;
   nextLabel: string;
@@ -170,7 +165,8 @@ export function ResultPanel({
                 </>
               )}
             </p>
-            <FreqBars sol={(q.bars ?? { sol: q.sol, h: q.hand }).sol} h={(q.bars ?? { sol: q.sol, h: q.hand }).h} actions={actions} best={j.bestIndex} />
+            {/* in the solution's single precision, as the bars always showed it (the identity on pre-flop numbers, which are read from Float32Arrays) */}
+            <StatBars stats={q.stats.map((s) => ({ freq: Math.fround(s.freq), ev: Math.fround(s.ev) }))} actions={actions} best={j.bestIndex} />
           </div>
           <div role="img" aria-label={t("practice.rangePos")} inert>
             <div>
@@ -180,7 +176,7 @@ export function ResultPanel({
         </div>
       ) : (
         <div className="mt-3 space-y-3">
-          <ExplainLines q={q} a={a} actions={actions} state={state} terms={terms} />
+          <ExplainLines q={q} a={a} actions={actions} terms={terms} />
           {approx && <ApproxNote>{approx}</ApproxNote>}
           <div className="mx-auto w-56" role="img" aria-label={t("practice.rangePos")} inert>
             <RangeGrid sol={q.sol} actions={actions} mode="strategy" selected={null} marker={q.hand} showNumbers={false} bare ariaLabel={t("practice.rangePos")} />
