@@ -67,27 +67,3 @@ describe("board texture", () => {
     expect(textureOf(parseBoard("Td 9d 8d"))).toMatchObject({ suit: "monotone", connect: "wet", high: "T" });
   });
 });
-
-import { postflopLink } from "../postflop/link";
-import { initialState } from "../solution/tree";
-import type { PublicState } from "../solution/types";
-
-describe("continuing a preflop hand on the flop", () => {
-  const base = initialState({ blinds: [0.5, 1] });
-  const st = (over: Partial<PublicState>): PublicState => ({ ...base, ...over });
-  const ids = ["srp-btn-bb", "3bp-btn-bb"];
-  it("recognises a single raised pot BTN vs BB and maps the seats", () => {
-    const s = st({ inv: [0, 0, 0, 2.5, 0.5, 2.5], folded: [true, true, true, false, true, false], level: 1, pot: 5.5 });
-    const asBB = postflopLink(s, 5, 14, ids, false, 0);
-    expect(asBB).toMatchObject({ kind: "through", scenario: "srp-btn-bb", hero: 0, heroClass: 14 });
-    expect(postflopLink(s, 3, 14, ids, true, 10)).toMatchObject({ hero: 1, rng: true, timer: 10 });
-  });
-  it("recognises the 3-bet pot and refuses what is not solved", () => {
-    const s = st({ inv: [0, 0, 0, 11, 0.5, 11], folded: [true, true, true, false, true, false], level: 2, pot: 22.5 });
-    expect(postflopLink(s, 5, 0, ids, false, 0)?.scenario).toBe("3bp-btn-bb");
-    expect(postflopLink(s, 5, 0, ["srp-btn-bb"], false, 0)).toBeNull();
-    // a 4-way pot or a different size is not covered
-    expect(postflopLink(st({ inv: [2.5, 0, 0, 2.5, 0.5, 2.5], folded: [false, true, true, false, true, false], level: 1 }), 3, 0, ids, false, 0)).toBeNull();
-    expect(postflopLink(st({ inv: [0, 0, 0, 3, 0.5, 3], folded: [true, true, true, false, true, false], level: 1 }), 3, 0, ids, false, 0)).toBeNull();
-  });
-});

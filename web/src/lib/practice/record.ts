@@ -4,7 +4,7 @@
  * post-flop (components/postflop/PostSession.tsx) both call it.
  *
  * What it writes is exactly what the two screens wrote before (record.test.ts compares them field by field):
- *   pre-flop   solution `cash6max-<depth>bb`, `pos` the action line, `build` SolutionStore.build,
+ *   pre-flop   solution the manifest's id (lib/solution/catalog.ts), `pos` the action line, `build` SolutionStore.build,
  *              seat = the actor of the node, spot = spotType(manifest, node)
  *   post-flop  solution `post:<scenario>`, `pos` `<flop>@<line>`, `build` the flop file's,
  *              seat = the seat of the scenario's player who acts (OOP / IP), spot = postFlop / postTurn / postRiver

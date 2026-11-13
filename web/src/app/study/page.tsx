@@ -16,7 +16,7 @@ import { preload } from "react-dom";
 import { ApproxNote } from "@/components/ApproxNote";
 import type { SolutionStore } from "@/lib/solution/loader";
 import { useNodeSolution, useSolutionStore } from "@/lib/solution/context";
-import { DEPTHS } from "@/lib/solution/loader";
+import { DEFAULT_SOLUTION, DEPTHS } from "@/lib/solution/loader";
 import { actionLabel, fmtBB, history, lineText, spotType, stateAt } from "@/lib/solution/tree";
 import { ActionKind, Terminal } from "@/lib/solution/types";
 import type { Key } from "@/lib/i18n/ja";
@@ -411,8 +411,8 @@ function MiniRange({ title, range, combos, tone }: { title: string; range: Array
 export default function StudyPage() {
   const { t } = useSettings();
   // the default (100bb) solution starts downloading from the static HTML; other depths load when chosen
-  preload(withBase("/solutions/cash6max-100bb/manifest.json.gz"), { as: "fetch", crossOrigin: "anonymous" });
-  preload(withBase("/solutions/cash6max-100bb/chunk-0.bin.gz"), { as: "fetch", crossOrigin: "anonymous" });
+  preload(withBase(`/solutions/${DEFAULT_SOLUTION}/manifest.json.gz`), { as: "fetch", crossOrigin: "anonymous" });
+  preload(withBase(`/solutions/${DEFAULT_SOLUTION}/chunk-0.bin.gz`), { as: "fetch", crossOrigin: "anonymous" });
   return (
     <div className="space-y-4">
       <header>

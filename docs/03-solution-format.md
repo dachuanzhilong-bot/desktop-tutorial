@@ -21,7 +21,7 @@
 - ポストフロップ: シナリオ × フロップのファイル 1 つごとに 1 つ。`/postflop/index.json` の `build["<scenario>/<flopIndex>"]`（`stats` と同じキー）。
 - ローダーと Service Worker は、解のファイルを `?b=<build>` 付きの URL で取得・キャッシュする。キャッシュは URL 全体で照合されるので、別の世代のファイルが混ざらない。`index.json` 自体にはクエリを付けない。
 - Service Worker（`web/public/sw.js`）は解データを版なしの `tessera-data` に入れ、アプリ本体（`tessera-core-<VERSION>-<BUILD>`、デプロイごとに替わる）とは分ける。`?b=` 付きの URL は中身が変わらないので cache-first、2 つの `index.json` は network-first。新しい SW の activate 時に、ネットワークから取った `index.json` に無い `build` のエントリだけを消す（取れなければ何も消さない）。アプリを更新しても、開いたフロップはオフラインで開ける（`e2e/offline.spec.ts`）。
-- 2 つの `index.json` はアプリのビルドに取り込まれる（`lib/solution/loader.ts` の `solutionBuild`、`lib/postflop/loader.ts` の `PF_INDEX`）。`data.validate.test.ts` が「`build` が実ファイルのハッシュと一致する」を検査する。
+- 2 つの `index.json` はアプリのビルドに取り込まれる（`lib/solution/catalog.ts` の `SOLUTIONS`、`lib/postflop/loader.ts` の `PF_INDEX`）。`data.validate.test.ts` が「`build` が実ファイルのハッシュと一致する」を検査する。
 
 ## manifest.json
 
@@ -75,6 +75,21 @@ record:
 最初に非フォールドの行動をした人で分ける: `root`（全員フォールドの先頭ライン）、`utg-open`、…、`sb-limp`。
 例: UTGオープンへのHJの判断を見るには `utg-open` だけで足りる。
 
+### 解の一覧（カタログ。`/solutions/index.json`）
+
+`solutions[]` の各項目（REFACTOR_PLAN 2-4。`npm run solutions:pack` がマニフェストから書く）:
+
+| 項目 | 中身 |
+|------|------|
+| `id` | 解のディレクトリ名。記録の `solution` にもこの値が入る（意味を変えない） |
+| `files` | 梱包したファイル（Service Worker の事前キャッシュ用） |
+| `game` | `"cash"`（プリフロップソルバーはキャッシュゲームだけを作る。マニフェストには項目が無い） |
+| `players` | 席の数（`manifest.players` の長さ） |
+| `stack` | 有効スタック（bb、`manifest.stack`） |
+| `build` | ビルド ID（上記。各項目の最後に書く） |
+
+アプリの深度の一覧（`DEPTHS`）・解の ID（`solutionId`）・深度（`depthOf`）・「プリフロップの解か」は、すべて `lib/solution/catalog.ts` がこの一覧から作る。解の ID の文字列をほかで組み立てたり、正規表現で深度を取り出したりしない。今は 1 深度に 1 つの解（`data` のテストが検査する）。
+
 ## ポストフロップ: `TSP1` v2（1フロップ=1ファイル）
 
 ```
@@ -102,6 +117,19 @@ node × nNodes (DFS順):
 - コンボ番号は `a<b` の順に 0..1325（`a=rank*4+suit`）。ボードと重なるコンボはレンジに入らない。
 - EV(action) = `best − loss`。ハンド単位で「その手でこのノードに来た条件付き」の期待値（初期ポットの取り分を含む）。
 - 1フロップ(全ライン)で約0.15〜0.3MB(gzip)、3シナリオ×21フロップで計14.3MB。PWAでは `index.json` のみ事前キャッシュし、各フロップは開いたときにキャッシュする。
+
+### シナリオの接続条件（`scenarios[].pre`）
+
+各シナリオは、どのプリフロップのラインの続きかを `pre` に持つ（REFACTOR_PLAN 2-4。`gen_postflop` が `SCENARIOS` とプリフロップ解の金額から書く）。
+
+```json
+"pre": { "stack": 100, "oopSeat": "BB", "ipSeat": "BTN", "oopPath": "F-F-F-R2.5-F-C", "ipPath": "F-F-F-R2.5" }
+```
+
+- `stack`: 続き元のプリフロップ解の深度（bb）。この深度の解でだけ接続する（同じ 2.5bb オープンでも 40bb の解からは、100bb 前提のこのシナリオには入らない）。
+- `oopSeat` / `ipSeat`: 席の名前（マニフェストの `players`）。
+- `oopPath` / `ipPath`: そのプレイヤーの**最後のプリフロップのアクションまで**のライン。書式は下の「局面キー」と同じトークン列（`F`・`X`・`C`・`R<to>`・`A<to>` を `-` でつなぐ）。片方がもう片方の頭の部分になる（後に動いた人のラインが全体）。
+- 通しプレイ（`lib/postflop/link.ts`）は、プリフロップのハンドがヘッズアップのフロップで終わったとき、残った 2 人の席と、各自の「最後のアクションまでのライン」がこの 2 本と一致するシナリオへ続ける。投入額は直書きしない。プリフロップのサイズを変えたら、`pre` を作り直せば接続も追従する（作り直さなければ接続が切れるだけで、誤ったシナリオには入らない）。
 
 ## 局面キー（ノード番号に依存しない局面の名前）
 

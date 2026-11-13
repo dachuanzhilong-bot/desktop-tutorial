@@ -10,7 +10,7 @@ export interface Attempt {
   ts: number;
   sessionId: string;
   mode: "spot" | "hand" | "post" | "postSpot";
-  /** `cash6max-<depth>bb`; post-flop `post:<scenario>` (no flop index: the flop is in `pos`) */
+  /** pre-flop: the solution id (lib/solution/catalog.ts, one per stack depth); post-flop `post:<scenario>` (no flop index: the flop is in `pos`) */
   solution: string;
   /** node number when the answer was given. Only informative (it is what the sync table stores): readers look the node up again from `pos`. */
   nodeId: number;

@@ -1,3 +1,4 @@
+import { depthOf, isPreflopSolution } from "../solution/catalog";
 import type { Manifest } from "../solution/types";
 import { currentPreflopNode } from "./position";
 import { isDue } from "./srs";
@@ -26,10 +27,8 @@ export interface ReviewQueue {
 /** questions in one review round */
 export const REVIEW_ROUND = 20;
 
-const PREFLOP_SOLUTION = /^cash6max-\d+bb$/;
-
-/** a spaced-repetition item of a pre-flop decision (post-flop items are not reviewed here) */
-const isPreflopReview = (it: SrsItem) => PREFLOP_SOLUTION.test(it.solution) && it.hand >= 0 && it.hand < 169;
+/** a spaced-repetition item of a pre-flop decision of a shipped depth (post-flop items are not reviewed here) */
+const isPreflopReview = (it: SrsItem) => isPreflopSolution(it.solution) && it.hand >= 0 && it.hand < 169;
 
 /**
  * The questions of a prepared list in manifest `m`: each item gets the node id its position has now; one whose
@@ -44,8 +43,6 @@ export function resolveItems(m: Manifest, items: readonly ReviewItem[]): { nodeI
   return out;
 }
 
-const depthOfSolution = (id: string) => Number(/(\d+)bb$/.exec(id)?.[1] ?? 0);
-
 /** what is due now: per depth, the longest overdue and the most often missed first, at most REVIEW_ROUND to a round */
 export function dueReview(all: SrsItem[], now: number, round = REVIEW_ROUND): ReviewQueue {
   const bySolution = new Map<string, SrsItem[]>();
@@ -59,7 +56,7 @@ export function dueReview(all: SrsItem[], now: number, round = REVIEW_ROUND): Re
     const sorted = [...list].sort((a, b) => a.due - b.due || b.lapses - a.lapses);
     return { solution, due: list.length, items: sorted.slice(0, round).map((it): ReviewItem => ({ pos: it.pos, hand: it.hand })) };
   });
-  groups.sort((a, b) => b.due - a.due || depthOfSolution(a.solution) - depthOfSolution(b.solution));
+  groups.sort((a, b) => b.due - a.due || depthOf(a.solution) - depthOf(b.solution));
   return { total: groups.reduce((s, g) => s + g.due, 0), groups };
 }
 

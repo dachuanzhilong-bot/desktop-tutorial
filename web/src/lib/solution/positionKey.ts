@@ -45,6 +45,30 @@ function actionToken(a: ActionMeta, actor: number, before: PublicState): string 
   }
 }
 
+/** one action of a preflop line: who took it, its key token and the table after it */
+export interface LineStep {
+  actor: number;
+  token: string;
+  after: PublicState;
+}
+
+/**
+ * The actions from the root through action `actionIndex` of node `nodeId`, also one that ends the preflop betting
+ * (which has no key of its own). [] when the node or the action does not exist.
+ */
+export function preflopLine(m: Manifest, nodeId: number, actionIndex: number): LineStep[] {
+  const node = m.nodes[nodeId];
+  const action = node?.actions[actionIndex];
+  if (!action) return [];
+  const line: LineStep[] = history(m, nodeId).map((s) => ({ actor: s.actor, token: actionToken(s.action, s.actor, s.before), after: s.after }));
+  const before = line.length ? line[line.length - 1].after : initialState(m);
+  line.push({ actor: node.actor, token: actionToken(action, node.actor, before), after: applyAction(before, node.actor, action) });
+  return line;
+}
+
+/** the first `length` actions of a line, written as a key ("F-F-R2.5"; the format of preflopKey) */
+export const lineKey = (line: readonly LineStep[], length = line.length): string => line.slice(0, length).map((s) => s.token).join("-");
+
 /** key of node `nodeId`: the actions from the root to it. Throws nothing for ids of the manifest. */
 export function preflopKey(m: Manifest, nodeId: number): string {
   const steps = history(m, nodeId);

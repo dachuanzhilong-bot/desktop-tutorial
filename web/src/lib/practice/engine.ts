@@ -13,6 +13,8 @@ export interface NodeSource {
 }
 
 export interface PendingStep {
+  /** the node the action is taken at */
+  node: number;
   actor: number;
   actionIndex: number;
   action: ActionMeta;
@@ -59,7 +61,7 @@ export async function playOutOpponents(src: NodeSource, start: number, hero: num
     const ai = sampleAction(sol, h, rnd);
     const action = meta.actions[ai];
     const after = applyAction(state, meta.actor, action);
-    steps.push({ actor: meta.actor, actionIndex: ai, action, before: state, after });
+    steps.push({ node, actor: meta.actor, actionIndex: ai, action, before: state, after });
     state = after;
     if (action.child < 0) return { steps, heroNode: null, ended: action.child === -2 ? -2 : action.term, state };
     node = action.child;
@@ -79,7 +81,7 @@ export function stepsTo(m: Manifest, nodeId: number): PendingStep[] {
     const ai = m.nodes[path[i + 1]].parentAction;
     const action = meta.actions[ai];
     const after = applyAction(s, meta.actor, action);
-    out.push({ actor: meta.actor, actionIndex: ai, action, before: s, after });
+    out.push({ node: path[i], actor: meta.actor, actionIndex: ai, action, before: s, after });
     s = after;
   }
   return out;

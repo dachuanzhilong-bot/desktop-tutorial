@@ -1,40 +1,12 @@
 import { decodeChunk, gunzip, parseManifest } from "./decode";
 import { withBase } from "../util/base";
 import type { Manifest, NodeSolution } from "./types";
-import indexJson from "../../../public/solutions/index.json";
+import { DEFAULT_SOLUTION, solutionBuild } from "./catalog";
 
-/** effective stack depths (bb) a preflop solution exists for */
-export const DEPTHS = [20, 40, 60, 100, 200] as const;
-export type Depth = (typeof DEPTHS)[number];
-export const DEFAULT_DEPTH: Depth = 100;
-export const solutionId = (depth: number) => `cash6max-${depth}bb`;
-export const DEFAULT_SOLUTION = solutionId(DEFAULT_DEPTH);
+// the solution list (depths, ids, build IDs) lives in the catalog, made from public/solutions/index.json
+export { DEFAULT_DEPTH, DEFAULT_SOLUTION, DEPTHS, depthOf, nearestDepth, solutionBuild, solutionId } from "./catalog";
+export type { Depth } from "./catalog";
 
-/** the depth whose solution is closest to an effective stack (compared on a log scale: 70bb is nearer 60 than 100) */
-export function nearestDepth(stack: number): Depth {
-  let best: Depth = DEPTHS[0];
-  let d = Infinity;
-  for (const x of DEPTHS) {
-    const e = Math.abs(Math.log(Math.max(stack, 1) / x));
-    if (e < d) {
-      d = e;
-      best = x;
-    }
-  }
-  return best;
-}
-
-/** depth encoded in a solution id such as "cash6max-40bb" (100 when unknown) */
-export const depthOf = (id: string | undefined): number => Number(/-(\d+)bb$/.exec(id ?? "")?.[1]) || DEFAULT_DEPTH;
-
-/**
- * Build IDs of the packed solutions (scripts/build-id.mjs): the first 12 hex digits of the SHA-256 of a solution's
- * files. Like the postflop index, public/solutions/index.json is part of the build, not fetched: the app and the
- * data it asks for always belong together.
- */
-const BUILDS = new Map<string, string>(indexJson.solutions.map((s) => [s.id, s.build]));
-/** the build ID of a preflop solution ("" when the index does not know it) */
-export const solutionBuild = (id: string): string => BUILDS.get(id) ?? "";
 /**
  * A data file's URL with its build ID as ?b=<build>. The service worker caches by the whole URL, so a file of one
  * build is never served for another (a new manifest never meets an old chunk).
