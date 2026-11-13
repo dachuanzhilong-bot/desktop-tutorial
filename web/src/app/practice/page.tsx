@@ -94,6 +94,7 @@ export default function PracticePage() {
           <Session
             key={run}
             store={store}
+            repo={getRepo()}
             config={config.config}
             onPostflop={store.manifest.stack === 100 ? (c) => {
               setConfig({ type: "post", config: c });
@@ -108,6 +109,7 @@ export default function PracticePage() {
           <PostSession
             key={run}
             config={config.config}
+            repo={getRepo()}
             onExit={() => {
               setConfig(null);
               setRun((r) => r + 1);

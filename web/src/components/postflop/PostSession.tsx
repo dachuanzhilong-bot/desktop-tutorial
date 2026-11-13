@@ -16,15 +16,14 @@ import { loadFlop, loadIndex, PfIndex } from "@/lib/postflop/loader";
 import { contextAt, labelEdge } from "@/lib/postflop/replay";
 import { judge, Question } from "@/lib/practice/engine";
 import { Result, sessionStats } from "@/lib/practice/session";
-import { answerSrs, postflopRef, withPosition } from "@/lib/practice/position";
+import { postflopRef } from "@/lib/practice/position";
+import { recordAnswer } from "@/lib/practice/record";
 import { SrsIndex } from "@/lib/practice/srs";
 import { useSettings } from "@/lib/settings";
 import { sessionIdOf } from "@/lib/util/hooks";
 import { ActionKind } from "@/lib/solution/types";
-import { fmtBB, SEATS } from "@/lib/solution/tree";
-import type { SpotType } from "@/lib/solution/types";
-import { getRepo } from "@/lib/storage/idb";
-import type { Attempt } from "@/lib/storage/types";
+import { fmtBB } from "@/lib/solution/tree";
+import type { Repo } from "@/lib/storage/types";
 import { haptic } from "@/lib/util/haptics";
 import { cryptoRandom, weightedPick } from "@/lib/util/rng";
 
@@ -57,9 +56,8 @@ interface Round {
 type Phase = "loading" | "animating" | "asking" | "answered" | "handEnd" | "summary" | "empty";
 const STEP_MS = 560;
 const KIND = [ActionKind.Fold, ActionKind.Call, ActionKind.Raise, ActionKind.AllIn];
-const STREET_SPOT: SpotType[] = ["postFlop", "postTurn", "postRiver"];
 
-export function PostSession({ config, onExit }: { config: PostConfig; onExit: () => void }) {
+export function PostSession({ config, repo, onExit }: { config: PostConfig; repo: Repo; onExit: () => void }) {
   const { t } = useSettings();
   const reduce = useReducedMotion();
   const edgeText = useEdgeText();
@@ -78,14 +76,14 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
   const sessionId = useRef("");
 
   useEffect(() => {
-    getRepo()
+    repo
       .allSrs()
       .then((all) => (srs.current = new SrsIndex(all)))
       .catch(() => {});
     loadIndex()
       .then(setIndex)
       .catch(() => setPhase("empty"));
-  }, []);
+  }, [repo]);
 
   const sc = index?.scenarios.find((s) => s.id === config.scenario);
   const seatNames: [string, string] = sc ? [sc.oop, sc.ip] : ["OOP", "IP"];
@@ -251,20 +249,17 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
       setAnswer({ j, score, ms, timeout, hint: hintUsed.current, before: undefined as never, endText: config.kind === "through" ? endText : null, nextNode: edge.code >= 0 ? edge.code : null, chosenEdge: i });
       setPane("result");
       setPhase("answered");
-      const now = Date.now();
-      const seatName = node.actor === 0 ? sc.oop : sc.ip;
-      // the flop's board, the line and the build ID: what the record is found by after the data is generated again
-      // (the flop's index and the node id are not: `solution` has no index, `nodeId` is only informative)
-      const ref = postflopRef(config.scenario, round.flop, q.nodeId);
-      const attempt = withPosition<Omit<Attempt, "pos" | "build">>({
-        ts: now,
-        sessionId: sessionIdOf(sessionId, "p"),
+      // persist (local-first): the screen does not wait for the writes; the index of spaced repetition is updated at once.
+      // The record is found by the flop's board, the line and the build ID (lib/practice/record.ts), not by the flop's index.
+      recordAnswer(repo, {
+        game: "postflop",
         mode: config.kind === "spot" ? "postSpot" : "post",
-        solution: ref.solution,
+        scenario: sc,
+        flop: round.flop,
+        srs: srs.current,
+        sessionId: sessionIdOf(sessionId, "p"),
         nodeId: q.nodeId,
         hand: round.combo,
-        seat: Math.max(0, SEATS.indexOf(seatName as (typeof SEATS)[number])),
-        spot: STREET_SPOT[node.street],
         chosen: i,
         best: j.bestIndex,
         grade: j.grade,
@@ -274,13 +269,10 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
         rng: q.roll !== null,
         timeout,
         hint: hintUsed.current,
-      }, ref);
-      const item = answerSrs(srs.current, ref, q.nodeId, round.combo, j.grade, now);
-      const repo = getRepo();
-      repo.addAttempt(attempt).catch(() => {});
-      repo.putSrs(item).catch(() => {});
+        now: Date.now(),
+      }).catch(() => {});
     },
-    [phase, round, sc, config, t],
+    [phase, round, sc, config, t, repo],
   );
 
   useEffect(() => {
