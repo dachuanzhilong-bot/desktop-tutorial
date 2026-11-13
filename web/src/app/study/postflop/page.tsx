@@ -9,7 +9,8 @@ import { decodeFlop, PfFlop } from "@/lib/postflop/decode";
 import { loadFlop, PF_INDEX } from "@/lib/postflop/loader";
 import { fmtBB } from "@/lib/solution/tree";
 import { parsePostflopHash, postflopHash, postflopLink, postflopTarget, postflopTargetFlop } from "@/lib/study/links";
-import { postflopPos } from "@/lib/practice/position";
+import { flopRootPos, postflopPos } from "@/lib/practice/position";
+import { parseBoard } from "@/lib/postflop/combos";
 import { useSettings } from "@/lib/settings";
 import { getRepo } from "@/lib/storage/idb";
 import type { SavedSolve } from "@/lib/storage/types";
@@ -75,8 +76,8 @@ function PostflopStudy() {
   const flop = loaded?.key === flopKey ? loaded.flop : null;
   const [nodeId, setNodeId] = useState(0);
   const [solveId, setSolveId] = useState<string | null | undefined>(undefined);
-  /** the line of a deep link (the part of `p=` after the flop): looked up once its flop has loaded */
-  const wantLine = useRef<string | null>(null);
+  /** the line of a deep link (the part of `p=` after the flop): looked up once its flop has loaded; null = nothing to look up */
+  const [wantLine, setWantLine] = useState<string | null>(null);
 
   useEffect(() => {
     const want = parsePostflopHash(location.hash);
@@ -89,7 +90,7 @@ function PostflopStudy() {
     const target = postflopTargetFlop(PF_INDEX.flops, want);
     if (!target) return;
     setFlopIdx(target.flopIndex);
-    wantLine.current = target.line;
+    setWantLine(target.line);
     if (target.number !== null) setNodeId(target.number);
   }, []);
 
@@ -103,22 +104,24 @@ function PostflopStudy() {
           alive &&
           startTransition(() => {
             setLoaded({ key: flopKey, flop: f });
-            const line = wantLine.current;
-            wantLine.current = null;
-            if (line !== null) setNodeId(postflopTarget(f, line));
+            if (wantLine !== null) setNodeId(postflopTarget(f, wantLine));
+            setWantLine(null);
           }),
       )
       .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
     return () => {
       alive = false;
     };
-  }, [scenario, flopIdx, flopKey, haveFlop]);
+  }, [scenario, flopIdx, flopKey, haveFlop, wantLine]);
 
   // deep link in the URL once the user moves; the default view writes nothing right after load (Next mirrors
   // history.replaceState into its router state, which could cancel a navigation the user has already started)
   // the position being shown, as `<flop>@<line>`: what the address bar and a saved position hold (never the flop's
-  // index or the node number). Known once the flop has loaded.
-  const pos = flop && flop.nodes[nodeId] ? postflopPos(flop, nodeId) : null;
+  // index or the node number). The line needs the loaded flop; the root of a flop is known from the index alone, so
+  // choosing a flop puts it into the address at once (a write that came later, when the file has loaded, could
+  // cancel a navigation the user has started in between). null while a deep link's line is still to be looked up.
+  const board = index.flops[flopIdx];
+  const pos = flop ? (flop.nodes[nodeId] ? postflopPos(flop, nodeId) : null) : nodeId === 0 && wantLine === null && board ? flopRootPos(parseBoard(board)) : null;
   const firstView = useRef(true);
   useEffect(() => {
     // a saved solve (#solve=…) keeps its address

@@ -56,17 +56,21 @@ test.describe("postflop study", () => {
   });
 
   test("deep link restores scenario, flop and node", async ({ page }) => {
-    // the flop by its board (flop 2 = "Qs Jd 6s", cards in any order), the node by its line: BB checks, BTN to act
-    await page.goto("/study/postflop/#s=srp-btn-bb&p=QsJd6s@X");
+    // each address is opened from another page: the screen reads its address once, when it loads
+    const open = async (hash: string) => {
+      await page.goto("/study/saved/");
+      await page.goto(`/study/postflop/${hash}`);
+    };
+    // the flop by its board (flop 2 = "Qs Jd 6s"), the node by its line: BB checks, BTN to act
+    await open("#s=srp-btn-bb&p=QsJd6s@X");
     await expect(page.getByTestId("flop-2")).toHaveAttribute("aria-selected", "true");
     await expect(page.getByTestId("pf-actor")).toContainText("BTN", { timeout: 20_000 });
-    // a flop or a line today's data does not have opens a root instead of failing
-    await page.goto("/study/postflop/#s=srp-btn-bb&p=QsJd6s@X-B999");
-    await page.reload();
+    // a line today's data does not have opens the root of its flop instead of failing …
+    await open("#s=srp-btn-bb&p=QsJd6s@X-B999");
     await expect(page.getByTestId("flop-2")).toHaveAttribute("aria-selected", "true");
     await expect(page.getByTestId("pf-actor")).toContainText("BB", { timeout: 20_000 });
-    await page.goto("/study/postflop/#s=srp-btn-bb&p=AsAhAd@root");
-    await page.reload();
+    // … and a flop it does not have opens the first flop
+    await open("#s=srp-btn-bb&p=AsAhAd@root");
     await expect(page.getByTestId("flop-0")).toHaveAttribute("aria-selected", "true");
     await expect(page.getByTestId("pf-actor")).toContainText("BB", { timeout: 20_000 });
   });

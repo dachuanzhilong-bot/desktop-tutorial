@@ -102,7 +102,7 @@ export function PostSession({ config, onExit }: { config: PostConfig; onExit: ()
         if (!nodes.length) continue;
         const nodeId = pickSpotNode(flop, nodes, 0.5, rnd);
         const node = flop.nodes[nodeId];
-        // spaced repetition by position: the item of (scenario, flop + line, combo); an older item by its old key
+        // spaced repetition by position: the item of (scenario, flop + line, combo)
         const ref = postflopRef(config.scenario, flop, nodeId);
         const combo = pickCombo(node, rnd, (c) => srs.current.find(ref.solution, ref.pos, c), Date.now());
         const q = buildPostQuestion(flop, nodeId, combo, rnd, config.rng);
