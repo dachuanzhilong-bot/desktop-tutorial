@@ -7,6 +7,7 @@
 - ルート直下（`https://example.com/`）とサブパス（`https://<owner>.github.io/<repo>/`）の両方で、同じ書き出しが動く。
   - サブパスのビルドは `NEXT_PUBLIC_BASE_PATH=/<repo>` を付けるだけ（`next.config.ts`）。手書きのURL（`fetch`・Worker・manifest・Service Worker）は `lib/util/base.ts` の `withBase()` を通す。Service Worker と Solve の Worker は、自分が配信されている場所からパスを決めるので、ビルド時の設定は要らない。
   - `npm run build` は Next の書き出し後に、画面遷移のプリフェッチ用RSC payloadを静的ホストが解決できるURLにも複製する。これにより書き換え機能の無いホストでも `.txt` のプリフェッチが404にならない。
+  - 同じ手順で、Service Worker が最初に入るときに保存するページの一覧（`out/` の全ページ・manifest・アイコン）を `out/sw.js` に書き込む（`scripts/prepare-static-export.mjs`）。ページを足しても `sw.js` を手で直す必要はない。
   - `npm run e2e:subpath`: サブパスでビルド → そのパス配下だけで配信（外は404）→ ブラウザで、初回の説明・各種データ・ポストフロップの Worker・WebAssembly の Worker・Service Worker の範囲・オフライン動作を通しで確認（CIでも実行）。`lib/__tests__/basepath.test.ts` は、手書きの「/」始まりのURLが入り込んだらテストで落とす。
 - 「ホーム画面に追加」カード（`components/InstallCard.tsx`、`lib/util/install.ts`）: Android / Chrome は端末が出す `beforeinstallprompt` を保持してボタン1回でインストール画面を開く。iPhone の Safari には手順を表示（iOS に API は無い）。インストール済み・iOS 以外のブラウザ・「あとで」の後は出さない。判定は単体テスト、表示と1タップの流れ（Chrome のイベントは模擬）は Playwright、スマホ幅の見た目は画像で確認。**実機で、実際にインストールできることは未確認**。
 - 確認していないこと: 実際のホスティングサービス上での動作（このセッションからは公開できないため）、実機のブラウザ。

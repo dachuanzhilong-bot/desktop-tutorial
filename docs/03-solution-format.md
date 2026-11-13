@@ -20,6 +20,7 @@
 - プリフロップ: 1 つの解（`<id>/` の全ファイルをファイル名の昇順に連結）ごとに 1 つ。`/solutions/index.json` の `solutions[].build`。
 - ポストフロップ: シナリオ × フロップのファイル 1 つごとに 1 つ。`/postflop/index.json` の `build["<scenario>/<flopIndex>"]`（`stats` と同じキー）。
 - ローダーと Service Worker は、解のファイルを `?b=<build>` 付きの URL で取得・キャッシュする。キャッシュは URL 全体で照合されるので、別の世代のファイルが混ざらない。`index.json` 自体にはクエリを付けない。
+- Service Worker（`web/public/sw.js`）は解データを版なしの `tessera-data` に入れ、アプリ本体（`tessera-core-<VERSION>-<BUILD>`、デプロイごとに替わる）とは分ける。`?b=` 付きの URL は中身が変わらないので cache-first、2 つの `index.json` は network-first。新しい SW の activate 時に、ネットワークから取った `index.json` に無い `build` のエントリだけを消す（取れなければ何も消さない）。アプリを更新しても、開いたフロップはオフラインで開ける（`e2e/offline.spec.ts`）。
 - 2 つの `index.json` はアプリのビルドに取り込まれる（`lib/solution/loader.ts` の `solutionBuild`、`lib/postflop/loader.ts` の `PF_INDEX`）。`data.validate.test.ts` が「`build` が実ファイルのハッシュと一致する」を検査する。
 
 ## manifest.json

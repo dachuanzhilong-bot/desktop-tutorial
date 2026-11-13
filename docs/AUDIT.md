@@ -40,7 +40,7 @@
 | Practice / Home | 復習キュー（期限切れのプリフロップ局面を件数表示、1タップで練習） | ❌ | ✅ | `lib/practice/review.ts`、`review.test.ts`、`e2e/review.spec.ts`（ホームと練習設定の両経路） |
 | Learn | 9レッスン＋進捗（できた印、次のレッスン） | ❌ | ✅ | `lib/learn/lessons.ts`、`lessons.test.ts`、`e2e/learn.spec.ts`。完了状態はバックアップ統合（先の時刻）に対応 |
 | Study | フロップの読み方ドリル（スート・つながり・ペア・最高位） | ❌ | ✅ | `lib/postflop/textureQuiz.ts`。正解は集計レポートと同じ分類、全21フロップ・全パターンの出題をテスト。axe（ダーク/ライト・回答前後） |
-| PWA | 更新のお知らせ、デプロイごとのService Worker更新 | 🟡（sw.jsが同じだと更新が検知されない） | ✅ | `scripts/stamp-sw.mjs`、`stampSw.test.ts`、`updateWatch.test.ts`、`e2e/update.spec.ts`。本物のSW入れ替えはPlaywrightのroute制約で自動化できず、`controllerchange` を直接送って確認 |
+| PWA | 更新のお知らせ、デプロイごとのService Worker更新 | 🟡（sw.jsが同じだと更新が検知されない） | ✅ | `scripts/stamp-sw.mjs`、`stampSw.test.ts`、`updateWatch.test.ts`、`e2e/update.spec.ts`。バナーは `controllerchange` を直接送って確認。本物のSW入れ替え（キャッシュが残ること）は `e2e/offline.spec.ts`（E2E 用サーバーが別の `sw.js` を返す） |
 | Analyze | PokerStars 取り込み・EV損失・弱点・練習セット | ✅ | ✅ | `lib/analyze/*` |
 | Analyze | GGPoker | 🧪 | 🧪 | 書式の知識から作った合成サンプルのみ（GGの差分: 全員分の Dealt to、Cash Drop、SHOWDOWN も追加） |
 | Analyze | 壊れた/未知の形式で落ちない・理由を表示 | 🟡 | ✅ | ファズ1,500件で例外0、理由は日本語（`analyze.robust.test.ts`, `lib/analyze/reasons.ts`）。ハンドの無いファイルは名前を表示 |
