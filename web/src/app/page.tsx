@@ -11,20 +11,29 @@ import { useSettings } from "@/lib/settings";
 import { useNow } from "@/lib/util/hooks";
 import { SEATS } from "@/lib/solution/tree";
 import { getRepo } from "@/lib/storage/idb";
-import { studyStreak, todayCount, weakSpots } from "@/lib/storage/stats";
+import { todayCount } from "@/lib/storage/stats";
+import { loadHome, statsStreak, statsWeakSpots } from "@/lib/storage/statsCache";
+import type { StatsCache } from "@/lib/storage/statsCache";
 import type { Attempt } from "@/lib/storage/types";
 import type { Key } from "@/lib/i18n/ja";
 
 export default function Home() {
   const { t, settings } = useSettings();
-  const [list, setList] = useState<Attempt[]>([]);
+  // today's records and the stats totals, not every record (REFACTOR_PLAN step 2-7)
+  const [recent, setRecent] = useState<Attempt[]>([]);
+  const [stats, setStats] = useState<StatsCache | null>(null);
   useEffect(() => {
-    getRepo().allAttempts().then(setList).catch(() => {});
+    loadHome(getRepo(), Date.now())
+      .then((h) => {
+        setRecent(h.recent);
+        setStats(h.stats);
+      })
+      .catch(() => {});
   }, []);
   const now = useNow();
-  const today = todayCount(list, now);
-  const streak = studyStreak(list, now);
-  const weak = useMemo(() => weakSpots(list, 3, 2), [list]);
+  const today = todayCount(recent, now);
+  const streak = stats ? statsStreak(stats, now) : 0;
+  const weak = useMemo(() => (stats ? statsWeakSpots(stats, 3, 2) : []), [stats]);
 
   return (
     <div className="space-y-5">

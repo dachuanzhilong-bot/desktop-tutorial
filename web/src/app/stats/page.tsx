@@ -11,13 +11,14 @@ import { SEATS } from "@/lib/solution/tree";
 import { ALL_SPOT_COLUMNS } from "@/lib/solution/types";
 import { getRepo } from "@/lib/storage/idb";
 import { readIcmLog, summarizeIcm } from "@/lib/storage/icmLog";
-import { handLabel, recentMistakes, resolveStudyHref } from "@/lib/storage/mistakes";
+import { handLabel, resolveStudyHref } from "@/lib/storage/mistakes";
 import type { StudySources } from "@/lib/storage/mistakes";
 import { loadFlop, PF_INDEX } from "@/lib/postflop/loader";
 import { useSolutionStore } from "@/lib/solution/context";
 import { depthOf } from "@/lib/solution/loader";
 import type { IcmLogEntry } from "@/lib/storage/icmLog";
-import { dailySeries, heatmap, studyStreak, summarize, todayCount, weakSpots } from "@/lib/storage/stats";
+import { emptyStats, loadStats, statsHeatmap, statsMistakes, statsSeries, statsStreak, statsSummary, statsToday, statsWeakSpots } from "@/lib/storage/statsCache";
+import type { StatsCache } from "@/lib/storage/statsCache";
 import type { Attempt } from "@/lib/storage/types";
 import { GRADES } from "@/lib/practice/grading";
 import { GRADE_GLYPH, gradeColor } from "@/components/practice/ResultPanel";
@@ -28,9 +29,13 @@ function lossColor(loss: number): string {
   return `color-mix(in oklab, var(--g-blunder) ${Math.round(t * 70)}%, var(--surface-2))`;
 }
 
+/** before the totals are read (only the skeleton shows then) */
+const EMPTY = emptyStats();
+
 export default function StatsPage() {
   const { t, settings } = useSettings();
-  const [list, setList] = useState<Attempt[] | null>(null);
+  // the totals kept up to date in meta (lib/storage/statsCache.ts), not every record (REFACTOR_PLAN step 2-7)
+  const [stats, setStats] = useState<StatsCache | null>(null);
   const [icmLog, setIcmLog] = useState<IcmLogEntry[]>([]);
   const [note, setNote] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -41,21 +46,22 @@ export default function StatsPage() {
       .catch(() => [])
       .then((icm) => {
         setIcmLog(icm);
-        return getRepo().allAttempts();
+        return loadStats(getRepo());
       })
-      .then(setList)
-      .catch(() => setList([]));
+      .then(setStats)
+      .catch(() => setStats(emptyStats()));
   }, []);
   useEffect(load, [load]);
 
   const now = useNow();
-  const sum = useMemo(() => summarize(list ?? []), [list]);
-  const series = useMemo(() => dailySeries(list ?? [], 30, now), [list, now]);
-  const heat = useMemo(() => heatmap(list ?? []), [list]);
-  const weak = useMemo(() => weakSpots(list ?? [], 3, 5), [list]);
-  const streak = studyStreak(list ?? [], now);
-  const today = todayCount(list ?? [], now);
-  const notebook = useMemo(() => recentMistakes(list ?? []), [list]);
+  const cur = stats ?? EMPTY;
+  const sum = useMemo(() => statsSummary(cur), [cur]);
+  const series = useMemo(() => statsSeries(cur, 30, now), [cur, now]);
+  const heat = useMemo(() => statsHeatmap(cur), [cur]);
+  const weak = useMemo(() => statsWeakSpots(cur, 3, 5), [cur]);
+  const streak = statsStreak(cur, now);
+  const today = statsToday(cur, now);
+  const notebook = useMemo(() => statsMistakes(cur), [cur]);
   // Study links of the notebook: each record's position key is looked up in today's data, which needs the manifest
   // or the flop file; until then, and when the position is not there any more, the row has no link
   const { getStore } = useSolutionStore();
@@ -80,11 +86,7 @@ export default function StatsPage() {
     };
   }, [notebook, sources]);
   const icm = useMemo(() => (icmLog.length ? summarizeIcm(icmLog) : null), [icmLog]);
-  const byGrade = useMemo(() => {
-    const c: Record<string, number> = { best: 0, correct: 0, inaccurate: 0, mistake: 0, blunder: 0 };
-    for (const a of list ?? []) c[a.grade]++;
-    return c;
-  }, [list]);
+  const byGrade = cur.grades;
 
   const exportData = async () => {
     const blob = new Blob([JSON.stringify(await getRepo().exportAll())], { type: "application/json" });
@@ -136,7 +138,7 @@ export default function StatsPage() {
       <ReviewTabs />
     </>
   );
-  if (!list)
+  if (!stats)
     return (
       <div className="space-y-5">
         {frame}

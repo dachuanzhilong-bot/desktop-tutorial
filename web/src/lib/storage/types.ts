@@ -74,7 +74,14 @@ export interface StoredHand {
 
 export interface Repo {
   addAttempt(a: Attempt): Promise<void>;
+  /** every record, in id order (the order they were saved). Reads them all: screens use the narrower reads below. */
   allAttempts(): Promise<Attempt[]>;
+  /** the records with `ts >= ts`, oldest first (equal times in id order). IndexedDB: a range of the `ts` index. */
+  attemptsSince(ts: number): Promise<Attempt[]>;
+  /** the records saved after the one with id `id` (`id` > the given one), in id order. IndexedDB: a range of the key. */
+  attemptsAfterId(id: number): Promise<Attempt[]>;
+  /** how many records there are (without reading them) */
+  countAttempts(): Promise<number>;
   allSrs(): Promise<SrsItem[]>;
   putSrs(item: SrsItem): Promise<void>;
   getMeta<T>(key: string): Promise<T | undefined>;

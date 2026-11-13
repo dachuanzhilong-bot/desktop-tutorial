@@ -10,12 +10,14 @@
  *              seat = the seat of the scenario's player who acts (OOP / IP), spot = postFlop / postTurn / postRiver
  *
  * Order: the in-memory SrsIndex is updated before this returns (synchronously: the next question must see it),
- * then the Attempt write and the SrsItem write are started, in that order, once each. The promise settles when both
- * are written; the screens do not wait for it.
+ * then the Attempt write and the SrsItem write are started, in that order, once each. After the Attempt is written,
+ * the stats totals (lib/storage/statsCache.ts) take it in. The promise settles when all of that is done; the screens
+ * do not wait for it.
  */
 import type { PfFlop } from "../postflop/decode";
 import { SEATS, spotType } from "../solution/tree";
 import type { Manifest, SpotType } from "../solution/types";
+import { loadStats } from "../storage/statsCache";
 import type { Attempt, Repo } from "../storage/types";
 import type { Grade } from "./grading";
 import { answerSrs, postflopRef, preflopRef, withPosition } from "./position";
@@ -116,6 +118,9 @@ export function recordAnswer(repo: Repo, input: AnswerInput): Promise<SrsItem> {
   const place = placeOf(input);
   const attempt = attemptOf(input, place);
   const item = answerSrs(input.srs, place.ref, input.nodeId, input.hand, input.grade, input.now);
-  const writes = [repo.addAttempt(attempt), repo.putSrs(item)];
+  // once the record is in, the stats totals take it in (REFACTOR_PLAN step 2-7). They are a derived copy: when they
+  // cannot be updated, the next read of them catches up, so that failure is not the caller's.
+  const added = repo.addAttempt(attempt).then(() => loadStats(repo).catch(() => undefined));
+  const writes = [added, repo.putSrs(item)];
   return Promise.all(writes).then(() => item);
 }

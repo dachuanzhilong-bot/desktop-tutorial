@@ -39,6 +39,31 @@ describe("stats", () => {
     expect(weak[0]).toMatchObject({ seat: 3, spot: "vs3bet", n: 4 });
     expect(todayCount(list, noon)).toBe(5);
   });
+  it("repository reads a range of times and the records after an id, like the IndexedDB ranges", async () => {
+    const r = new MemoryRepo();
+    // ids 1..6; times out of order (a backup read, a row pulled by sync), two at the same time
+    for (const d of [3, 1, 2, 5, 2, 0]) await r.addAttempt(at(d, { hand: d }));
+    const all = await r.allAttempts();
+    expect(all.map((a) => a.id)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect(await r.countAttempts()).toBe(6);
+    // ts >= the given one, oldest first, equal times in id order
+    expect((await r.attemptsSince(noon - 2 * DAY)).map((a) => a.id)).toEqual([3, 5, 2, 6]);
+    expect((await r.attemptsSince(noon - 2 * DAY + 1)).map((a) => a.id)).toEqual([2, 6]);
+    expect((await r.attemptsSince(-Infinity)).map((a) => a.id)).toEqual([4, 1, 3, 5, 2, 6]);
+    expect(await r.attemptsSince(noon + 1)).toEqual([]);
+    // id > the given one, in id order
+    expect((await r.attemptsAfterId(0)).map((a) => a.id)).toEqual([1, 2, 3, 4, 5, 6]);
+    expect((await r.attemptsAfterId(4)).map((a) => a.id)).toEqual([5, 6]);
+    expect(await r.attemptsAfterId(6)).toEqual([]);
+    expect(await r.attemptsAfterId(4)).toEqual(all.slice(4));
+    // after clear() ids go on (as IndexedDB's key generator does)
+    await r.clear();
+    expect(await r.countAttempts()).toBe(0);
+    expect(await r.attemptsSince(-Infinity)).toEqual([]);
+    await r.addAttempt(at(0));
+    expect((await r.attemptsAfterId(0)).map((a) => a.id)).toEqual([7]);
+    expect((await r.attemptsSince(noon)).map((a) => a.id)).toEqual([7]);
+  });
   it("repository stores, exports and merges imports", async () => {
     const a = new MemoryRepo();
     await a.addAttempt(at(0));

@@ -115,7 +115,7 @@ solver/ (Rust, 依存なし)                    web/ (Next.js 16 静的書き出
 
 - `solve/page.tsx`（570 行、`useState` 28 個）、`analyze/page.tsx`（516 行）、`study/page.tsx`（423 行）。
 - `public/solver-worker.js` は型もビルドも通らない手書き JS で、メッセージの型は `lib/solve/client.ts` と手で合わせている。
-- 成績・ホーム・同期が毎回 `allAttempts()` で全件を読む（`app/stats/page.tsx:40`、`app/page.tsx:20`、`sync/engine.ts:62`）。記録が数万件になると遅くなる。
+- 成績・ホーム・同期が毎回 `allAttempts()` で全件を読む（`app/stats/page.tsx:40`、`app/page.tsx:20`、`sync/engine.ts:62`）。記録が数万件になると遅くなる。（2-7 で、成績とホームは `meta["stats.daily.v1"]` の集計（`lib/storage/statsCache.ts`）と今日の分の範囲読み、同期は未送信分の範囲読みにした。全件を読むのは、集計が無いか合わないときの作り直し 1 回と、バックアップの書き出し・読み込み）
 
 ### H. 解の品質の上限（コードではなくモデルの問題）
 

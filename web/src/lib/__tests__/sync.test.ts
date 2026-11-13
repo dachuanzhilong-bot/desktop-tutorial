@@ -649,3 +649,43 @@ describe("supabase/schema.sql check constraints", () => {
     expect(() => schemaChecks("t", "create table if not exists public.t (\n  a int check (a % 2 = 0)\n);")).toThrow(/unsupported check/);
   });
 });
+
+describe("sync engine: reads only the records it needs (REFACTOR_PLAN step 2-7)", () => {
+  /** a device whose repository refuses to read every record and logs the narrow reads */
+  function narrowDevice() {
+    const d = device();
+    const reads: string[] = [];
+    const inner = d.repo;
+    const repo = Object.assign(Object.create(inner) as MemoryRepo, {
+      allAttempts: () => Promise.reject(new Error("read every record")),
+      attemptsAfterId: (id: number) => (reads.push(`after:${id}`), inner.attemptsAfterId(id)),
+      attemptsSince: (ts: number) => (reads.push(`since:${ts}`), inner.attemptsSince(ts)),
+    });
+    return { ...d, repo, inner, reads };
+  }
+
+  it("uploads the records after the last one uploaded and checks pulled rows against the records from their time on", async () => {
+    const server = new FakeBackend();
+    const a = narrowDevice();
+    const b = narrowDevice();
+    // records of a that were uploaded long ago
+    for (let i = 0; i < 5; i++) await a.inner.addAttempt(attempt(1_600_000_000_000 + i, 20 + i, 1));
+    expect((await syncOnce(a.repo, server, "u", a.io)).pushedAttempts).toBe(5);
+    await a.inner.addAttempt(attempt(1_700_000_000_000, 1, 1));
+    await b.inner.addAttempt(attempt(1_700_000_001_000, 2, 2));
+    a.reads.length = 0;
+    expect(await syncOnce(a.repo, server, "u", a.io)).toMatchObject({ pushedAttempts: 1, pulledAttempts: 0 });
+    // records 1..5 were pushed before: only those after 5 are read; the rows that come back start at the new one
+    expect(a.reads).toEqual(["after:5", `since:${1_600_000_000_004}`]);
+    expect(await syncOnce(b.repo, server, "u", b.io)).toMatchObject({ pushedAttempts: 1, pulledAttempts: 6 });
+    expect(b.reads[0]).toBe("after:0");
+    // pulling again (rows already here come back): nothing is added twice
+    a.reads.length = 0;
+    expect(await syncOnce(a.repo, server, "u", a.io)).toMatchObject({ pushedAttempts: 0, pulledAttempts: 1 });
+    expect(a.reads[0]).toBe("after:6");
+    expect(await syncOnce(b.repo, server, "u", b.io)).toMatchObject({ pushedAttempts: 0, pulledAttempts: 0 });
+    const keys = async (repo: MemoryRepo) => (await repo.allAttempts()).map((x) => `${x.ts}:${x.pos}:${x.hand}`).sort();
+    expect(await keys(a.inner)).toEqual(await keys(b.inner));
+    expect(await keys(a.inner)).toHaveLength(7);
+  });
+});
