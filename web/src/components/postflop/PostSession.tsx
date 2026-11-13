@@ -1,202 +1,61 @@
 "use client";
-import { motion, useReducedMotion } from "framer-motion";
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useReducedMotion } from "framer-motion";
+import { useEffect, useMemo, useState } from "react";
 import { ActionBar, BarAction } from "@/components/ActionBar";
-import { IconFlame, IconX } from "@/components/icons";
-import { AnswerInfo, ResultPanel } from "@/components/practice/ResultPanel";
+import { ResultPanel } from "@/components/practice/ResultPanel";
+import { SessionTopBar, TimerBar } from "@/components/practice/SessionParts";
 import { SessionSummary } from "@/components/practice/Summary";
 import { GridAction } from "@/components/RangeGrid";
 import { Skeleton } from "@/components/Skeleton";
 import { edgeTone, useEdgeText } from "@/components/postflop/edge";
 import { PostTable, PostTableMini } from "@/components/postflop/PostTable";
-import { buildPostQuestion, advance, PEnd, pathSteps, pickCombo, pickSpotNode, PStep, spotCandidates } from "@/lib/postflop/practice";
-import { COMBOS, cardOf, classOfCards } from "@/lib/postflop/combos";
-import type { PfFlop } from "@/lib/postflop/decode";
+import { COMBOS, cardOf } from "@/lib/postflop/combos";
+import { createPostflopDrill, postTableView } from "@/lib/postflop/drillAdapter";
 import { loadFlop, loadIndex, PfIndex } from "@/lib/postflop/loader";
-import { contextAt, labelEdge } from "@/lib/postflop/replay";
-import { judge, Question } from "@/lib/practice/engine";
-import { Result, sessionStats } from "@/lib/practice/session";
-import { postflopRef } from "@/lib/practice/position";
-import { recordAnswer } from "@/lib/practice/record";
-import { SrsIndex } from "@/lib/practice/srs";
+import { labelEdge } from "@/lib/postflop/replay";
+import type { PostConfig } from "@/lib/postflop/types";
+import { useDrillSession } from "@/lib/practice/useDrillSession";
 import { useSettings } from "@/lib/settings";
-import { sessionIdOf } from "@/lib/util/hooks";
 import { ActionKind } from "@/lib/solution/types";
 import { fmtBB } from "@/lib/solution/tree";
-import type { PostConfig } from "@/lib/postflop/types";
 import type { Repo } from "@/lib/storage/types";
 import { haptic } from "@/lib/util/haptics";
-import { cryptoRandom, weightedPick } from "@/lib/util/rng";
+import { cryptoRandom } from "@/lib/util/rng";
 
-
-interface Round {
-  flop: PfFlop;
-  flopIdx: number;
-  hero: 0 | 1;
-  combo: number;
-  steps: PStep[];
-  startNode: number;
-  q: Question | null;
-  ended: PEnd;
-  lastNode: number;
-}
-
-type Phase = "loading" | "animating" | "asking" | "answered" | "handEnd" | "summary" | "empty";
 const STEP_MS = 560;
 const KIND = [ActionKind.Fold, ActionKind.Call, ActionKind.Raise, ActionKind.AllIn];
 
+/** the post-flop drill: the session (lib/practice/useDrillSession.ts) runs the post-flop game (lib/postflop/drillAdapter.ts); this draws it */
 export function PostSession({ config, repo, onExit }: { config: PostConfig; repo: Repo; onExit: () => void }) {
   const { t } = useSettings();
   const reduce = useReducedMotion();
   const edgeText = useEdgeText();
-  const rnd = cryptoRandom;
+  const [drill] = useState(() => createPostflopDrill({ config, repo, rnd: cryptoRandom, index: loadIndex, flop: loadFlop }));
   const [index, setIndex] = useState<PfIndex | null>(null);
-  const [phase, setPhase] = useState<Phase>("loading");
-  const [round, setRound] = useState<Round | null>(null);
-  const [shown, setShown] = useState(0);
-  const [answer, setAnswer] = useState<(AnswerInfo & { nextNode: number | null; endText: string | null; chosenEdge: number }) | null>(null);
-  const [results, setResults] = useState<Result[]>([]);
-  const [pane, setPane] = useState<"result" | "explain">("result");
-  const [hintIdx, setHintIdx] = useState<number | null>(null);
-  const hintUsed = useRef(false);
-  const askedAt = useRef(0);
-  const srs = useRef(new SrsIndex());
-  const sessionId = useRef("");
 
   useEffect(() => {
     repo
       .allSrs()
-      .then((all) => (srs.current = new SrsIndex(all)))
+      .then((all) => drill.setSrs(all))
       .catch(() => {});
+    // the scenario's seat names; without the index the drill finds nothing ("empty")
     loadIndex()
       .then(setIndex)
-      .catch(() => setPhase("empty"));
-  }, [repo]);
+      .catch(() => {});
+  }, [repo, drill]);
 
   const sc = index?.scenarios.find((s) => s.id === config.scenario);
   const seatNames: [string, string] = sc ? [sc.oop, sc.ip] : ["OOP", "IP"];
 
-  const start = useCallback(async () => {
-    if (!index) return;
-    setPhase("loading");
-    for (let tries = 0; tries < 10; tries++) {
-      const flopIdx = config.flop ?? Math.floor(rnd() * index.flops.length);
-      const flop = await loadFlop(config.scenario, flopIdx);
-      const hero = (config.hero ?? (rnd() < 0.5 ? 0 : 1)) as 0 | 1;
-      if (config.kind === "spot") {
-        const nodes = spotCandidates(flop, { hero: config.hero === null ? null : hero, streets: config.streets });
-        if (!nodes.length) continue;
-        const nodeId = pickSpotNode(flop, nodes, 0.5, rnd);
-        const node = flop.nodes[nodeId];
-        // spaced repetition by position: the item of (scenario, flop + line, combo)
-        const ref = postflopRef(config.scenario, flop, nodeId);
-        const combo = pickCombo(node, rnd, (c) => srs.current.find(ref.solution, ref.pos, c), Date.now());
-        const q = buildPostQuestion(flop, nodeId, combo, rnd, config.rng);
-        setRound({ flop, flopIdx, hero: node.actor as 0 | 1, combo, steps: pathSteps(flop, nodeId), startNode: 0, q, ended: null, lastNode: nodeId });
-      } else {
-        // hero's hand from the range at the hero's first decision
-        const first = flop.nodes.find((n) => n.type === "decision" && n.actor === hero && n.street === 0 && n.data)!;
-        const board = flop.board;
-        const hands = first.data!.hands;
-        const w = new Float64Array(hands.length);
-        for (let j = 0; j < hands.length; j++) {
-          const c = COMBOS[hands[j]];
-          // a continued preflop hand keeps its chart class; hands that collide with the board are impossible
-          const okClass = config.heroClass === undefined || classOfCards(c.c1, c.c2) === config.heroClass;
-          w[j] = okClass && !board.includes(c.c1) && !board.includes(c.c2) ? first.data!.weight[j] : 0;
-        }
-        const jPick = w.some((x) => x > 0) ? weightedPick(w, rnd) : weightedPick(first.data!.weight, rnd);
-        const combo = hands[jPick];
-        const used = [...board, COMBOS[combo].c1, COMBOS[combo].c2];
-        const out = advance(flop, 0, hero, used, combo, rnd);
-        const q = out.heroNode !== null ? buildPostQuestion(flop, out.heroNode, combo, rnd, config.rng) : null;
-        setRound({ flop, flopIdx, hero, combo, steps: out.steps, startNode: 0, q, ended: out.ended, lastNode: out.lastNode });
-      }
-      setShown(0);
-      setAnswer(null);
-      setPane("result");
-      setPhase("animating");
-      return;
-    }
-    setPhase("empty");
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [index, config]);
-
-  useEffect(() => {
-    // the first hand starts as soon as the flop index has loaded
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- start of an async flow once its data exists
-    if (index) start();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- once per loaded index
-  }, [index]);
-
-  // animation of the opponent's moves and the dealt cards
-  useEffect(() => {
-    if (phase !== "animating" || !round) return;
-    const done = shown >= round.steps.length;
-    const id = window.setTimeout(
-      () => {
-        if (!done) return setShown((s) => s + 1);
-        // the opponents have acted: the hero's turn starts now (timer and hint reset)
-        if (round.q) {
-          askedAt.current = performance.now();
-          hintUsed.current = false;
-          setHintIdx(null);
-        }
-        setPhase(round.q ? "asking" : "handEnd");
-      },
-      done || reduce ? 0 : STEP_MS,
-    );
-    return () => window.clearTimeout(id);
-  }, [phase, shown, round, reduce]);
+  const ses = useDrillSession(drill, { timer: config.timer, stepMs: STEP_MS, reduceMotion: !!reduce, onExit });
+  const { phase, round, shown, answer, results, pane } = ses;
+  const hintIdx = ses.hint.index;
 
   // what the table shows right now
   const view = useMemo(() => {
     if (!round) return null;
-    const { flop } = round;
-    const heroNode = round.q?.nodeId ?? round.lastNode;
-    let nodeId = 0;
-    if (shown > 0) {
-      const s = round.steps[shown - 1];
-      nodeId = s.toNode >= 0 ? s.toNode : s.nodeId;
-    }
-    if (phase === "asking" || phase === "answered") nodeId = heroNode;
-    const ctx = contextAt(flop, nodeId);
-    const node = flop.nodes[nodeId];
-    const last: (string | null)[] = [null, null];
-    let streetBets: [number, number] = ctx.streetInv;
-    let foldedP: number | null = null;
-    for (let i = 0; i < Math.min(shown, round.steps.length); i++) {
-      const s = round.steps[i];
-      if (s.card !== null) {
-        last[0] = null;
-        last[1] = null;
-      } else if (s.label) {
-        last[s.actor] = edgeText(s.label);
-        if (s.label.key === "fold") foldedP = s.actor;
-      }
-    }
-    // the move that just ended the hand is not part of a node's context
-    if (shown > 0 && round.steps[shown - 1].toNode < 0 && round.steps[shown - 1].label) {
-      const s = round.steps[shown - 1];
-      const bump = streetBets.slice() as [number, number];
-      const n = flop.nodes[s.nodeId];
-      const e = n.edges[s.edgeIndex];
-      if (e.kind !== 0) bump[s.actor] = e.amount;
-      streetBets = bump;
-    }
-    if (phase === "answered" && answer && round.q) {
-      const n = flop.nodes[round.q.nodeId];
-      const e = n.edges[answer.chosenEdge];
-      last[n.actor] = edgeText(labelEdge(flop, n.id, answer.chosenEdge));
-      if (e.kind === 0) foldedP = n.actor;
-      else {
-        const bump = streetBets.slice() as [number, number];
-        bump[n.actor] = e.amount;
-        streetBets = bump;
-      }
-    }
-    const extra = streetBets[0] - ctx.streetInv[0] + (streetBets[1] - ctx.streetInv[1]);
-    return { ctx, node, last, streetBets, foldedP, pot: ctx.pot + extra, nodeId };
+    const v = postTableView(round, shown, phase, answer ? answer.j.chosen : null);
+    return { ...v, last: v.last.map((l) => (l ? edgeText(l) : null)) };
   }, [round, shown, phase, answer, edgeText]);
 
   const actions: GridAction[] = useMemo(() => {
@@ -221,117 +80,7 @@ export function PostSession({ config, repo, onExit }: { config: PostConfig; repo
     }));
   }, [round, actions, hintIdx]);
 
-  const choose = useCallback(
-    (i: number, timeout = false) => {
-      if (phase !== "asking" || !round?.q || !sc) return;
-      const q = round.q;
-      const j = judge(q, i);
-      const score = hintUsed.current ? Math.floor(j.score / 2) : j.score;
-      const node = round.flop.nodes[q.nodeId];
-      const edge = node.edges[i];
-      const ms = Math.round(performance.now() - askedAt.current);
-      const endText = edge.code === -1 ? t("pf.end.fold") : edge.code === -3 ? t("pf.end.showdown") : edge.code === -4 ? t("pf.end.allin") : edge.code === -2 ? t("pf.end.pruned") : null;
-      if (j.grade === "best" || j.grade === "correct") haptic.good();
-      else haptic.bad();
-      setResults((r) => [...r, { grade: j.grade, score, evLoss: j.evLoss }]);
-      setAnswer({ j, score, ms, timeout, hint: hintUsed.current, endText: config.kind === "through" ? endText : null, nextNode: edge.code >= 0 ? edge.code : null, chosenEdge: i });
-      setPane("result");
-      setPhase("answered");
-      // persist (local-first): the screen does not wait for the writes; the index of spaced repetition is updated at once.
-      // The record is found by the flop's board, the line and the build ID (lib/practice/record.ts), not by the flop's index.
-      recordAnswer(repo, {
-        game: "postflop",
-        mode: config.kind === "spot" ? "postSpot" : "post",
-        scenario: sc,
-        flop: round.flop,
-        srs: srs.current,
-        sessionId: sessionIdOf(sessionId, "p"),
-        nodeId: q.nodeId,
-        hand: round.combo,
-        chosen: i,
-        best: j.bestIndex,
-        grade: j.grade,
-        evLoss: j.evLoss,
-        score,
-        ms,
-        rng: q.roll !== null,
-        timeout,
-        hint: hintUsed.current,
-        now: Date.now(),
-      }).catch(() => {});
-    },
-    [phase, round, sc, config, t, repo],
-  );
-
-  useEffect(() => {
-    if (phase !== "asking" || !config.timer || !round?.q) return;
-    const id = window.setTimeout(() => {
-      const node = round.flop.nodes[round.q!.nodeId];
-      const fold = node.edges.findIndex((e) => e.kind === 0);
-      const chk = node.edges.findIndex((e) => e.kind === 1);
-      choose(fold >= 0 ? fold : chk >= 0 ? chk : 0, true);
-    }, config.timer * 1000);
-    return () => window.clearTimeout(id);
-  }, [phase, config.timer, round, choose]);
-
-  const next = useCallback(() => {
-    if (phase === "answered" && answer && round && config.kind === "through" && answer.nextNode !== null) {
-      const heroCards = [COMBOS[round.combo].c1, COMBOS[round.combo].c2];
-      // the board so far (cards already dealt) must not be redealt
-      const ctx = contextAt(round.flop, answer.nextNode);
-      const out = advance(round.flop, answer.nextNode, round.hero, [...ctx.board, ...heroCards], round.combo, rnd);
-      const q = out.heroNode !== null ? buildPostQuestion(round.flop, out.heroNode, round.combo, rnd, config.rng) : null;
-      setRound({ ...round, steps: out.steps, startNode: answer.nextNode, q, ended: out.ended, lastNode: out.lastNode });
-      setShown(0);
-      setAnswer(null);
-      setPane("result");
-      setPhase("animating");
-      return;
-    }
-    if (phase === "answered" || phase === "handEnd") start();
-  }, [phase, answer, round, config, start, rnd]);
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey) return;
-      const k = e.key.toLowerCase();
-      if (phase === "asking" && round?.q) {
-        const node = round.flop.nodes[round.q.nodeId];
-        let idx = -1;
-        if (k === "f") idx = node.edges.findIndex((x) => x.kind === 0);
-        else if (k === "c") idx = node.edges.findIndex((x) => x.kind === 1);
-        else if (k === "r") idx = node.edges.findIndex((x) => x.kind === 2);
-        else if (k === "a") idx = node.edges.findIndex((x) => x.kind === 3);
-        else if (/^[1-9]$/.test(k)) idx = Number(k) - 1 < node.edges.length ? Number(k) - 1 : -1;
-        if (idx >= 0) {
-          e.preventDefault();
-          choose(idx);
-        }
-      } else if (phase === "answered" || phase === "handEnd") {
-        if (k === "enter" || k === " " || k === "n" || k === "arrowright") {
-          e.preventDefault();
-          next();
-        } else if (k === "e" || k === "arrowleft") setPane((p) => (p === "result" ? "explain" : "result"));
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [phase, round, choose, next]);
-
-  const stats = sessionStats(results);
-  const finish = () => (results.length ? setPhase("summary") : onExit());
-
-  if (phase === "summary")
-    return (
-      <SessionSummary
-        results={results}
-        onAgain={() => {
-          setResults([]);
-          start();
-        }}
-        onExit={onExit}
-      />
-    );
+  if (phase === "summary") return <SessionSummary results={results} onAgain={ses.again} onExit={onExit} />;
   if (phase === "empty")
     return (
       <div className="space-y-4 rounded-card border border-line bg-surface p-5 text-center">
@@ -348,57 +97,33 @@ export function PostSession({ config, repo, onExit }: { config: PostConfig; repo
   const rngRoll = round?.q?.roll != null ? Math.floor(round.q.roll * 100) + 1 : null;
   const heroName = round ? seatNames[round.hero] : "";
   const heroCards = round ? ([cardOf(COMBOS[round.combo].c1), cardOf(COMBOS[round.combo].c2)] as [ReturnType<typeof cardOf>, ReturnType<typeof cardOf>]) : null;
-  const stacks: [number, number] = view && round ? [round.flop.stack - view.node.inv[0] - view.streetBets[0] + view.ctx.streetInv[0], round.flop.stack - view.node.inv[1] - view.streetBets[1] + view.ctx.streetInv[1]] : [0, 0];
 
   return (
     <div className="mx-auto flex min-h-[calc(100dvh-2rem)] max-w-md flex-col gap-3" data-phase={phase} data-testid="session">
-      <div className="flex items-center gap-2">
-        <button type="button" aria-label={t("practice.finish")} onClick={finish} data-testid="finish" className="grid h-11 w-11 place-items-center rounded-full border border-line bg-surface text-muted">
-          <IconX width={20} height={20} />
-        </button>
-        <div className="flex flex-1 items-center justify-center gap-4 text-sm font-bold" aria-live="polite">
-          <span data-testid="hands-count">
-            {t("practice.hands")} <span className="text-base">{stats.n}</span>
-          </span>
-          <span className="flex items-center gap-1 text-accent-text" data-testid="streak">
-            <IconFlame width={18} height={18} />
-            {stats.streak}
-          </span>
-          <span>
-            {t("practice.total")} <span className="text-base">{stats.totalScore}</span>
-          </span>
-        </div>
-        <span className="w-11" />
-      </div>
+      <SessionTopBar results={results} onFinish={ses.finish} />
 
-      {config.timer > 0 && asking && (
-        <div className="h-2 overflow-hidden rounded-full bg-surface-2" role="timer" aria-label={t("practice.timer")}>
-          <motion.div key={`${round?.q?.nodeId}:${round?.combo}:${results.length}`} className="h-full bg-accent" initial={{ width: "100%" }} animate={{ width: "0%" }} transition={{ duration: config.timer, ease: "linear" }} />
-        </div>
-      )}
+      {config.timer > 0 && asking && <TimerBar seconds={config.timer} restart={`${round?.q?.nodeId}:${round?.combo}:${results.length}`} />}
 
       {phase === "loading" || !round || !view ? (
         <Skeleton className="mx-auto aspect-[4/4.3] w-full max-w-md rounded-[2.8rem]" />
+      ) : answered ? (
+        <PostTableMini board={view.ctx.board} heroCards={heroCards} pot={view.pot} potLabel={potLabel} lastAction={view.last[round.hero]} hero={heroName} />
       ) : (
-        answered ? (
-          <PostTableMini board={view.ctx.board} heroCards={heroCards} pot={view.pot} potLabel={potLabel} lastAction={view.last[round.hero]} hero={heroName} />
-        ) : (
-          <div className="w-full">
-            <PostTable
-              seats={seatNames}
-              hero={round.hero}
-              board={view.ctx.board}
-              pot={view.pot}
-              streetInv={view.streetBets}
-              stacks={stacks}
-              actor={asking ? round.hero : phase === "animating" && shown < round.steps.length && round.steps[shown].actor >= 0 ? round.steps[shown].actor : null}
-              lastAction={view.last}
-              heroCards={heroCards}
-              folded={view.foldedP}
-              potLabel={potLabel}
-            />
-          </div>
-        )
+        <div className="w-full">
+          <PostTable
+            seats={seatNames}
+            hero={round.hero}
+            board={view.ctx.board}
+            pot={view.pot}
+            streetInv={view.streetBets}
+            stacks={view.stacks}
+            actor={asking ? round.hero : phase === "animating" && shown < round.steps.length && round.steps[shown].actor >= 0 ? round.steps[shown].actor : null}
+            lastAction={view.last}
+            heroCards={heroCards}
+            folded={view.foldedP}
+            potLabel={potLabel}
+          />
+        </div>
       )}
 
       <div className="mt-auto space-y-2.5 pb-1">
@@ -431,25 +156,24 @@ export function PostSession({ config, repo, onExit }: { config: PostConfig; repo
               actions={barActions}
               onChoose={(i) => {
                 haptic.tap();
-                choose(i);
+                ses.choose(i);
               }}
               onHint={(i) => {
-                hintUsed.current = true;
                 haptic.tap();
-                setHintIdx(i);
+                ses.showHint(i);
               }}
             />
             <p className="text-center text-xs text-muted">{t("practice.hint")}</p>
           </>
         )}
         {answered && round?.q && answer && (
-          <ResultPanel q={round.q} a={answer as AnswerInfo} actions={actions} pane={pane} onNext={next} onTogglePane={() => setPane((p) => (p === "result" ? "explain" : "result"))} nextLabel={config.kind === "through" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")} approx={t("pf.approx")} terms={["ev", "evLoss", "equity", "range", "spr"]} />
+          <ResultPanel q={round.q} a={{ ...answer, endText: answer.endKey && t(answer.endKey) }} actions={actions} pane={pane} onNext={ses.next} onTogglePane={ses.togglePane} nextLabel={config.kind === "through" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")} approx={t("pf.approx")} terms={["ev", "evLoss", "equity", "range", "spr"]} />
         )}
         {phase === "handEnd" && round && (
           <div className="rounded-sheet border border-line bg-surface p-4 text-center shadow-xl" data-testid="hand-end">
             <p className="mb-3 font-bold">{round.ended === "fold" ? t("pf.end.fold") : round.ended === "showdown" ? t("pf.end.showdown") : round.ended === "allin" ? t("pf.end.allin") : t("pf.end.pruned")}</p>
             {/* eslint-disable-next-line jsx-a11y/no-autofocus -- the answer buttons this replaces are gone: move focus here instead of losing it (the result is announced by a live region) */}
-            <button type="button" onClick={next} autoFocus className="min-h-cta w-full rounded-card bg-accent text-lg font-extrabold text-accent-ink">
+            <button type="button" onClick={ses.next} autoFocus className="min-h-cta w-full rounded-card bg-accent text-lg font-extrabold text-accent-ink">
               {t("practice.nextHand")}
             </button>
           </div>
