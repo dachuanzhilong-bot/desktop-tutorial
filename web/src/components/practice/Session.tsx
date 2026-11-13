@@ -10,7 +10,8 @@ import { Card, comboCount, matchesFilter, NUM_CLASSES, randomCombo } from "@/lib
 import { buildQuestion, judge, PendingStep, playOutOpponents, Question, shortcutFor, stepsTo } from "@/lib/practice/engine";
 import { candidateNodes, pickHand, pickNode } from "@/lib/practice/sampler";
 import { Result, sessionStats } from "@/lib/practice/session";
-import { answerSrs, preflopRef, withPosition } from "@/lib/practice/position";
+import { preflopRef } from "@/lib/practice/position";
+import { recordAnswer } from "@/lib/practice/record";
 import { SrsIndex } from "@/lib/practice/srs";
 import { useSettings } from "@/lib/settings";
 import { sessionIdOf } from "@/lib/util/hooks";
@@ -18,8 +19,7 @@ import type { SolutionStore } from "@/lib/solution/loader";
 import { actionLabel, applyAction, fmtBB, initialState, spotType, stateAt } from "@/lib/solution/tree";
 import { ActionKind, PublicState, Terminal } from "@/lib/solution/types";
 import type { SpotType } from "@/lib/solution/types";
-import { getRepo } from "@/lib/storage/idb";
-import type { Attempt } from "@/lib/storage/types";
+import type { Repo } from "@/lib/storage/types";
 import { cryptoRandom, shuffle, weightedPick } from "@/lib/util/rng";
 import { haptic } from "@/lib/util/haptics";
 import { AnswerInfo, ResultPanel } from "./ResultPanel";
@@ -48,7 +48,7 @@ const STEP_MS = 520;
 const SPOT_TERM: Partial<Record<SpotType, string>> = { rfi: "rfi", limp: "limp", vsOpen: "3bet", squeeze: "squeeze", vs3bet: "4bet", vsSqueeze: "squeeze", vs4bet: "4bet", vs5bet: "4bet" };
 const termsFor = (spot: SpotType) => ["ev", "evLoss", "equity", ...(SPOT_TERM[spot] ? [SPOT_TERM[spot]!] : []), "mixed"];
 
-export function Session({ store, config, onExit, onPostflop }: { store: SolutionStore; config: PracticeConfig; onExit: () => void; onPostflop?: (c: PostConfig) => void }) {
+export function Session({ store, repo, config, onExit, onPostflop }: { store: SolutionStore; repo: Repo; config: PracticeConfig; onExit: () => void; onPostflop?: (c: PostConfig) => void }) {
   const { t, settings } = useSettings();
   const reduce = useReducedMotion();
   const m = store.manifest;
@@ -72,13 +72,13 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
     loadIndex()
       .then((ix) => setPostIds(ix.scenarios.map((x) => x.id)))
       .catch(() => {});
-    getRepo()
+    repo
       .allSrs()
       .then((all) => {
         srs.current = new SrsIndex(all);
       })
       .catch(() => {});
-  }, []);
+  }, [repo]);
 
   // ---------------------------------------------------------------- rounds
   const fixedOrder = useRef<number[]>([]);
@@ -234,19 +234,16 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
       setAnswer({ j, score, ms, timeout, hint: hintUsed.current, before, endText: config.mode === "hand" ? endText : null, heroAfter, nextNode, term: action.child === -2 ? -2 : action.child < 0 ? action.term : null });
       setPane("result");
       setPhase("answered");
-      // persist (local-first)
-      const now = Date.now();
-      // the position key and the build ID: what the record is found by after the data is generated again
-      const ref = preflopRef(m, store.build, q.nodeId);
-      const attempt = withPosition<Omit<Attempt, "pos" | "build">>({
-        ts: now,
-        sessionId: sessionIdOf(sessionId, "s"),
+      // persist (local-first): the screen does not wait for the writes; the index of spaced repetition is updated at once
+      recordAnswer(repo, {
+        game: "preflop",
         mode: config.mode,
-        solution: m.id,
+        manifest: m,
+        build: store.build,
+        srs: srs.current,
+        sessionId: sessionIdOf(sessionId, "s"),
         nodeId: q.nodeId,
         hand: q.hand,
-        seat: meta.actor,
-        spot: spotType(m, q.nodeId),
         chosen: i,
         best: j.bestIndex,
         grade: j.grade,
@@ -256,13 +253,10 @@ export function Session({ store, config, onExit, onPostflop }: { store: Solution
         rng: q.roll !== null,
         timeout,
         hint: hintUsed.current,
-      }, ref);
-      const item = answerSrs(srs.current, ref, q.nodeId, q.hand, j.grade, now);
-      const repo = getRepo();
-      repo.addAttempt(attempt).catch(() => {});
-      repo.putSrs(item).catch(() => {});
+        now: Date.now(),
+      }).catch(() => {});
     },
-    [phase, round, m, store.build, config.mode, t],
+    [phase, round, m, store.build, config.mode, t, repo],
   );
 
   // time limit: auto-fold (or the first action) when the clock runs out
