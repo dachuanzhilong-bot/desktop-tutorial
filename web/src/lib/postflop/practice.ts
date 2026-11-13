@@ -1,9 +1,7 @@
-import { NUM_CLASSES } from "../poker/hands";
 import type { Card } from "../poker/hands";
 import type { Question } from "../practice/engine";
 import { mixedness, priorityWeight, SrsItem } from "../practice/srs";
 import { actionForRoll, ActionStat } from "../practice/grading";
-import type { NodeSolution } from "../solution/types";
 import { weightedPick } from "../util/rng";
 import { toClassSolution } from "./aggregate";
 import { COMBOS, NC, cardOf, classOfCards } from "./combos";
@@ -132,7 +130,7 @@ export function pickCombo(node: PfNode, rnd: () => number, itemOf: (combo: numbe
   return d.hands[weightedPick(w, rnd)];
 }
 
-/** Question object (same shape as the preflop one) for the hero's combo at a postflop node */
+/** Question object (same shape as the preflop one) for the hero's combo at a postflop node: `sol` is the chart of the classes, the rest is this combo */
 export function buildPostQuestion(flop: PfFlop, nodeId: number, combo: number, rnd: () => number, rng: boolean): Question {
   const node = flop.nodes[nodeId];
   const d = node.data!;
@@ -155,18 +153,11 @@ export function buildPostQuestion(flop: PfFlop, nodeId: number, combo: number, r
   const ctx = contextAt(flop, nodeId);
   const potOdds = ctx.toCall > 1e-9 ? { call: ctx.toCall, pot: ctx.potNow + ctx.toCall, need: ctx.toCall / (ctx.potNow + ctx.toCall) } : null;
   const dn = dense(node)!;
+  // the chart is the class aggregate; this combo's own numbers are in stats / weight / equity
   const grid = toClassSolution(nodeId, dn);
-  // synthetic one-hand solution for the frequency bars (hand index 0)
-  const barSol: NodeSolution = { id: nodeId, na, weight: new Float32Array(NUM_CLASSES), equity: new Float32Array(NUM_CLASSES), freq: new Float32Array(na * NUM_CLASSES), ev: new Float32Array(na * NUM_CLASSES), eqr: null };
-  barSol.weight[0] = d.weight[j];
-  barSol.equity[0] = d.eq[j];
-  for (let a = 0; a < na; a++) {
-    barSol.freq[a * NUM_CLASSES] = stats[a].freq;
-    barSol.ev[a * NUM_CLASSES] = stats[a].ev;
-  }
   const c = COMBOS[combo];
   const cards: [Card, Card] = [cardOf(c.c1), cardOf(c.c2)];
-  return { nodeId, hand: classOfCards(c.c1, c.c2), cards, sol: grid, stats, roll, rngAction, potOdds, bars: { sol: barSol, h: 0 } };
+  return { nodeId, hand: classOfCards(c.c1, c.c2), cards, sol: grid, stats, weight: d.weight[j], equity: d.eq[j], eqr: null, roll, rngAction, potOdds };
 }
 
 export { NC };

@@ -8,13 +8,19 @@ import { Term } from "./Term";
 
 const K = NUM_CLASSES;
 
+/** each action's frequency and EV for hand class `h` of a solution */
 export function FreqBars({ sol, h, actions, best }: { sol: NodeSolution; h: number; actions: GridAction[]; best?: number }) {
+  return <StatBars stats={actions.map((_, i) => ({ freq: sol.freq[i * K + h], ev: sol.ev[i * K + h] }))} actions={actions} best={best} />;
+}
+
+/** each action's frequency and EV (bb) of one hand, with a bar per action */
+export function StatBars({ stats, actions, best }: { stats: { freq: number; ev: number }[]; actions: GridAction[]; best?: number }) {
   const { t } = useSettings();
   return (
     <ul className="space-y-2">
       {actions.map((a, i) => {
-        const f = sol.freq[i * K + h];
-        const ev = sol.ev[i * K + h];
+        const f = stats[i].freq;
+        const ev = stats[i].ev;
         return (
           <li key={i}>
             <div className="flex items-baseline justify-between gap-2 text-sm">

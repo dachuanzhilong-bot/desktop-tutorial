@@ -1,6 +1,6 @@
-import type { PostConfig } from "@/components/postflop/PostSession";
 import { BB_SEAT, SEATS } from "../solution/tree";
 import type { PublicState } from "../solution/types";
+import type { PostConfig } from "./types";
 
 /**
  * When a preflop hand ends with a heads-up flop that the postflop solutions cover, returns the

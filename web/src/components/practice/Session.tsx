@@ -19,7 +19,7 @@ import type { Repo } from "@/lib/storage/types";
 import { cryptoRandom } from "@/lib/util/rng";
 import { haptic } from "@/lib/util/haptics";
 import { ResultPanel } from "./ResultPanel";
-import type { PostConfig } from "@/components/postflop/PostSession";
+import type { PostConfig } from "@/lib/postflop/types";
 import { loadIndex } from "@/lib/postflop/loader";
 import { postflopLink } from "@/lib/postflop/link";
 import { RngPanel, SessionTopBar, TimerBar } from "./SessionParts";
@@ -196,7 +196,6 @@ export function Session({ store, repo, config, onExit, onPostflop }: { store: So
             a={{ ...answer, endText: answer.endKey && t(answer.endKey) }}
             actions={actions}
             pane={pane}
-            state={answer.before}
             onNext={ses.next}
             onTogglePane={ses.togglePane}
             nextLabel={link ? t("practice.toFlop") : config.mode === "hand" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")}
