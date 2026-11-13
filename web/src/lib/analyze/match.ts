@@ -5,6 +5,7 @@ import { formatRange } from "../ranges/range";
 import { ActionKind } from "../solution/types";
 import type { Manifest, NodeSolution, SpotType } from "../solution/types";
 import { preflopKey } from "../solution/positionKey";
+import { postflopRank } from "../solution/seats";
 import { spotType } from "../solution/tree";
 import type { NormAction, NormHand } from "./normalize";
 
@@ -78,10 +79,6 @@ export interface HandAnalysis {
   flopLink: FlopLink | null;
 }
 
-/** acts first after the flop: SB, BB, UTG, HJ, CO, BTN */
-const POSTFLOP_ORDER = [2, 3, 4, 5, 0, 1] as const;
-export const postflopRank = (seat: number) => POSTFLOP_ORDER[seat];
-
 function actionIndex(m: Manifest, nodeId: number, act: NormAction, stack: number): { index: number; sizeNote: DecisionInfo["sizeNote"] } | null {
   const acts = m.nodes[nodeId].actions;
   const find = (kind: ActionKind) => acts.findIndex((a) => a.kind === kind);
@@ -126,7 +123,7 @@ export async function analyzeHand(src: SolutionSource, hand: NormHand): Promise<
 
   for (const act of pre) {
     // seats nobody sits on have folded
-    for (let guard = 0; guard < 6 && !hand.names[m.nodes[node].actor]; guard++) {
+    for (let guard = 0; guard < m.players.length && !hand.names[m.nodes[node].actor]; guard++) {
       const f = m.nodes[node].actions.findIndex((a) => a.kind === ActionKind.Fold);
       if (f < 0 || m.nodes[node].actions[f].child < 0) break;
       node = m.nodes[node].actions[f].child;
@@ -182,7 +179,9 @@ export async function analyzeHand(src: SolutionSource, hand: NormHand): Promise<
   // heads-up flop: reconstruct both ranges from the line, so the spot can be solved on the Solve screen
   if (!broken && ended && hand.flop && hand.flop.seats.length === 2 && hand.board.length >= 3) {
     const [a, b] = hand.flop.seats;
-    const [oop, ip] = postflopRank(a) < postflopRank(b) ? [a, b] : [b, a];
+    // who acts first after the flop (SB, BB, then seat 0 ... the button): lib/solution/seats.ts
+    const n = m.players.length;
+    const [oop, ip] = postflopRank(a, n) < postflopRank(b, n) ? [a, b] : [b, a];
     const ranges = await Promise.all(
       [oop, ip].map(async (s) => {
         const l = last.get(s);

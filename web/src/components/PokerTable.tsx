@@ -1,6 +1,7 @@
 "use client";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import type { Card } from "@/lib/poker/hands";
+import { buttonSeat, seatSpot, tableLayout } from "@/lib/solution/seats";
 import { fmtBB } from "@/lib/solution/tree";
 import type { PublicState } from "@/lib/solution/types";
 import { FlippingCard } from "./FlippingCard";
@@ -16,19 +17,17 @@ interface Props {
   /** last action text per seat (e.g. "Raise 2.5") */
   lastAction: (string | null)[];
   heroCards: [Card, Card] | null;
+  /** the button's seat; by default the one of a table of seats.length (lib/solution/seats.ts) */
   dealer?: number;
   potLabel: string;
 }
 
-/** seat k (0 = hero, going clockwise) -> position on the oval, in % */
-function seatPos(k: number) {
-  const a = (90 + k * 60) * (Math.PI / 180);
-  return { x: 50 + 41 * Math.cos(a), y: 44 + 33 * Math.sin(a) };
-}
-
-export function PokerTable({ seats, hero, state, stack, actor, lastAction, heroCards, dealer = 3, potLabel }: Props) {
+export function PokerTable({ seats, hero, state, stack, actor, lastAction, heroCards, dealer, potLabel }: Props) {
   const reduce = useReducedMotion();
   const n = seats.length;
+  // where each seat and its bet sit: from the number of seats, the hero at the bottom (lib/solution/seats.ts)
+  const layout = tableLayout(n);
+  const button = dealer ?? buttonSeat(n);
   return (
     <div className="felt relative mx-auto aspect-[4/3.5] w-full max-w-md rounded-[2.8rem]" role="group" aria-label={`Table, ${potLabel} ${fmtBB(state.pot)}bb`}>
       {/* pot */}
@@ -41,13 +40,12 @@ export function PokerTable({ seats, hero, state, stack, actor, lastAction, heroC
       </div>
 
       {Array.from({ length: n }, (_, i) => {
-        const k = (i - hero + n) % n;
-        const p = seatPos(k);
+        const p = seatSpot(layout, i, hero);
         const bet = state.inv[i];
         const folded = state.folded[i];
         const isHero = i === hero;
         // bets sit between the seat and the pot; the hero's chips go beside the hole cards
-        const toCenter = isHero ? { x: 72, y: 62 } : { x: 50 + (p.x - 50) * 0.55, y: 42 + (p.y - 42) * 0.55 };
+        const toCenter = { x: p.betX, y: p.betY };
         return (
           <div key={i}>
             {/* bet chips */}
@@ -87,7 +85,7 @@ export function PokerTable({ seats, hero, state, stack, actor, lastAction, heroC
               >
                 <div className="text-xs font-extrabold">{seats[i]}</div>
                 <div className="text-[0.68rem] font-semibold opacity-85">{fmtBB(Math.max(0, stack - bet))}</div>
-                {i === dealer && (
+                {i === button && (
                   <span aria-label="Dealer" className="absolute -right-2 -top-2 grid h-5 w-5 place-items-center rounded-full bg-white text-[0.65rem] font-extrabold text-black shadow">
                     D
                   </span>

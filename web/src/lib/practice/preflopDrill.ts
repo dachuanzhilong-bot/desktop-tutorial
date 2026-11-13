@@ -5,6 +5,7 @@
  */
 import { Card, comboCount, matchesFilter, NUM_CLASSES, randomCombo } from "../poker/hands";
 import type { Key } from "../i18n/ja";
+import { allSeats } from "../solution/seats";
 import { applyAction, initialState, stateAt } from "../solution/tree";
 import { ActionKind, Terminal } from "../solution/types";
 import type { PublicState } from "../solution/types";
@@ -104,7 +105,7 @@ export function createPreflopDrill(opts: { store: NodeSource & { build: string }
   }
 
   async function startHand(): Promise<PreflopRound | null> {
-    const seats = config.filter.seats.length ? config.filter.seats : [0, 1, 2, 3, 4, 5];
+    const seats = config.filter.seats.length ? config.filter.seats : allSeats(m.players.length);
     const w = new Float64Array(NUM_CLASSES);
     for (let h = 0; h < NUM_CLASSES; h++) w[h] = matchesFilter(h, config.filter.hands) ? comboCount(h) : 0;
     for (let tries = 0; tries < 10; tries++) {
