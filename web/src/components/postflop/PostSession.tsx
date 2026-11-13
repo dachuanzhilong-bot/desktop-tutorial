@@ -23,23 +23,11 @@ import { useSettings } from "@/lib/settings";
 import { sessionIdOf } from "@/lib/util/hooks";
 import { ActionKind } from "@/lib/solution/types";
 import { fmtBB } from "@/lib/solution/tree";
+import type { PostConfig } from "@/lib/postflop/types";
 import type { Repo } from "@/lib/storage/types";
 import { haptic } from "@/lib/util/haptics";
 import { cryptoRandom, weightedPick } from "@/lib/util/rng";
 
-export interface PostConfig {
-  kind: "spot" | "through";
-  scenario: string;
-  /** 0 = out of position, 1 = in position, null = random */
-  hero: 0 | 1 | null;
-  streets: number[];
-  rng: boolean;
-  timer: number;
-  /** restrict to one flop (index), or null for random */
-  flop: number | null;
-  /** continue a preflop hand: the hero's 169-chart class */
-  heroClass?: number;
-}
 
 interface Round {
   flop: PfFlop;

@@ -22,7 +22,7 @@ export interface PracticeSet {
   items: ReviewItem[];
 }
 
-import type { PostConfig } from "@/components/postflop/PostSession";
+import type { PostConfig } from "@/lib/postflop/types";
 
 /** what the setup screen hands over to the practice page */
 export type StartConfig = { type: "pre"; config: PracticeConfig } | { type: "post"; config: PostConfig };

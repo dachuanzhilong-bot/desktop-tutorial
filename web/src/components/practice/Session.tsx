@@ -19,7 +19,7 @@ import type { Repo } from "@/lib/storage/types";
 import { cryptoRandom } from "@/lib/util/rng";
 import { haptic } from "@/lib/util/haptics";
 import { ResultPanel } from "./ResultPanel";
-import type { PostConfig } from "@/components/postflop/PostSession";
+import type { PostConfig } from "@/lib/postflop/types";
 import { loadIndex } from "@/lib/postflop/loader";
 import { postflopLink } from "@/lib/postflop/link";
 import { RngPanel, SessionTopBar, TimerBar } from "./SessionParts";
