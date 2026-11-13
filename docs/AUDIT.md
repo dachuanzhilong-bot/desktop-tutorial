@@ -63,7 +63,7 @@
 | 保存 | 永続化（成績・設定・レンジ・Solve・履歴） | ✅ | ✅ | IndexedDB v4 |
 | 保存 | 版番号と移行 | 🟡 | ✅ | localStorage も `_v`＋段階的移行＋値の検証（`lib/storage/local.ts`、設定は版3）。IndexedDB v1/v2/v3→v4 は e2e（v4 は局面キーの無い古い記録を消し、レンジ・Solve・設定を残す: `migration.spec.ts`） |
 | 操作 | タップ領域44px以上 | 🟡（46箇所） | ✅ | `min-h-tap` などのトークン。全画面を e2e で検査（例外は理由つき §3） |
-| 操作 | キーボード（F/C/R/A・数字・Space/Enter・E） | ✅ | ✅ | `lib/practice/useDrillSession.ts`（キーの割り当ては `preflopDrill.ts` の `shortcuts`）、ポストフロップは `PostSession.tsx` |
+| 操作 | キーボード（F/C/R/A・数字・Space/Enter・E） | ✅ | ✅ | `lib/practice/useDrillSession.ts`（キーの割り当ては `preflopDrill.ts` の `shortcuts`）、ポストフロップは `lib/postflop/drillAdapter.ts` の `shortcuts` |
 | 見やすさ | 色だけで区別しない | 🟡 | ✅ | 13×13の模様を既定でオン（既存ユーザーも一度だけオンに移行） |
 | 見やすさ | WCAG AA コントラスト | ✅ | ✅ | axe（全画面×ダーク/ライト×色覚配慮）違反0 |
 | 見やすさ | 視差効果を減らす | 🟡 | ✅ | CSS と framer-motion（練習画面の `MotionConfig reducedMotion="user"`、カードは `useReducedMotion`） |
