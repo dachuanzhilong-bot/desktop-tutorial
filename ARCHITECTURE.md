@@ -55,7 +55,7 @@ solver/ (Rust, 依存なし)                    web/ (Next.js 16 静的書き出
 - 例外: `lib/postflop/link.ts` が `components/postflop/PostSession` の型を import している（層の向きが逆）。
 - 全体の状態は Context 4 つ（`SettingsProvider` → `SolutionProvider` → `SyncProvider` → `ShellProvider`）。状態管理ライブラリは無い。
 - 画面の状態は各 `page.tsx` / セッション部品の `useState` に直接ある。`solve/page.tsx` は 28 個、`Session.tsx` と `PostSession.tsx` は 9 個ずつ。
-- 保存は `getRepo()` を画面部品から直接呼ぶ（`app/`・`components/` の 14 ファイル）。「回答を記録する」処理は `Session.tsx`・`PostSession.tsx`・`IcmDrill.tsx` にそれぞれ書かれている。
+- 保存は `getRepo()` を画面部品から直接呼ぶ（`app/`・`components/` の 12 ファイル）。練習の回答の記録（`Attempt` の組み立て・間隔反復の更新・保存）は `lib/practice/record.ts` の `recordAnswer` 1 か所（REFACTOR_PLAN 2-1）で、`Session.tsx`・`PostSession.tsx` は `practice/page.tsx` から渡された `repo` を使う。ICM の記録（`IcmDrill.tsx`）は別のまま。
 
 ## 4. そのまま使える部分
 
@@ -100,7 +100,7 @@ solver/ (Rust, 依存なし)                    web/ (Next.js 16 静的書き出
 
 ### E. 練習セッションが 2 つの巨大部品に複製されている
 
-- `Session.tsx`（511 行）と `PostSession.tsx`（479 行）は同じ状態機械（loading → animating → asking → answered → handEnd → summary）、同じタイマー・ヒント・キーボード・保存を別々に持つ。行単位で 179 行が一致。
+- `Session.tsx`（511 行）と `PostSession.tsx`（479 行）は同じ状態機械（loading → animating → asking → answered → handEnd → summary）、同じタイマー・ヒント・キーボード・保存を別々に持つ。行単位で 179 行が一致。（保存は 2-1 で `recordAnswer` に寄せた。状態機械は 2-2・2-3 で寄せる）
 - ポストフロップの問題をプリフロップ用の `Question` に合わせるため、1 ハンド分だけの偽の `NodeSolution` を作っている（`lib/postflop/practice.ts` の `barSol`）。
 - 新しいドリル（ロードマップのボードテクスチャ当て等）を足すたびに 3 つ目、4 つ目の複製ができる。ICM ドリルとオッズクイズはすでに別実装。
 
