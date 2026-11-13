@@ -106,7 +106,7 @@ solver/ (Rust, 依存なし)                    web/ (Next.js 16 静的書き出
 
 ### F. ゲーム形式とシナリオが複数の場所に直書き
 
-- 6-max 前提: `solver/src/preflop.rs:135`（`inv: [f32; 6]`）、`lib/solution/tree.ts:10`（席 4・5 がブラインド）、`lib/practice/preflopDrill.ts`（2-2 で `Session.tsx` から移動）の `[0, 1, 2, 3, 4, 5]`。マニフェストには `players` があるのに使っていない。
+- 6-max 前提: `solver/src/preflop.rs:135`（`inv: [f32; 6]`）、`lib/solution/tree.ts:10`（席 4・5 がブラインド）、`lib/practice/preflopDrill.ts`（2-2 で `Session.tsx` から移動）の `[0, 1, 2, 3, 4, 5]`。マニフェストには `players` があるのに使っていない。（web 側は 2-5 で `lib/solution/seats.ts` に寄せ、席の数を `manifest.players` から取るようにした。残りは Rust 側と、6-max の席番号に写す手の履歴の正規化 `lib/analyze/normalize.ts`）
 - 深度の一覧: `lib/solution/loader.ts:6` の `DEPTHS` と `public/solutions/index.json` の二重管理。`"cash6max-"` の文字列が 6 ファイルに出る。
 - ポストフロップのシナリオ: `gen_postflop.rs:27`、`public/postflop/index.json`、`lib/postflop/link.ts:16-18`（投入額 2.5 / 11 の直書きで照合）の 3 か所。プリフロップのサイズを変えると通しプレイの接続が黙って切れる。
 - HU・9-max・他のポジション組を足すときに、ここが全部引っかかる。

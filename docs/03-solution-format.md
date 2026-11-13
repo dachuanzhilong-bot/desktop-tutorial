@@ -51,6 +51,8 @@
 
 ポット・各人の投入額・フォールド状況は、ルートからアクションを再生して**クライアントで計算**する（`web/src/lib/solution/tree.ts`）。マニフェストが小さく保てる。
 
+席の数は `players` の長さ n で決まる（REFACTOR_PLAN 2-5、`web/src/lib/solution/seats.ts`）。席番号はプリフロップの手番順で、後ろ 2 席がブラインド（SB = n-2、BB = n-1）、BTN は SB の 1 つ前（2 人のときは SB が BTN）。フロップ以降は SB から（2 人のときは BB から）。今の出荷データは 6 席だけで、記録の席番号（0 = UTG … 5 = BB）の意味は変わらない。プリフロップソルバー（`solver/src/preflop.rs`）はまだ 6 席固定。
+
 ## chunk-N.bin （リトルエンディアン）
 
 ```

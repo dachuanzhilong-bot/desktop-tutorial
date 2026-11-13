@@ -7,14 +7,16 @@ import { HAND_FILTERS, HandFilterId } from "@/lib/poker/hands";
 import { ReviewCard } from "@/components/practice/ReviewCard";
 import { useSettings } from "@/lib/settings";
 import { ApproxNote } from "@/components/ApproxNote";
+import { solutionEntry, solutionId } from "@/lib/solution/catalog";
 import { useSolutionStore } from "@/lib/solution/context";
+import { seatNames } from "@/lib/solution/seats";
+import { SEATS } from "@/lib/solution/tree";
 import { SPOT_TYPES, SpotType } from "@/lib/solution/types";
 import type { Key } from "@/lib/i18n/ja";
 import type { PfScenario } from "@/lib/postflop/loader";
 import { loadIndex } from "@/lib/postflop/loader";
 import type { PracticeSet, StartConfig } from "./types";
 
-const SEATS = ["UTG", "HJ", "CO", "BTN", "SB", "BB"];
 const TIMERS = [0, 5, 10, 20];
 
 function Chip({ on, children, onClick, testid }: { on: boolean; children: React.ReactNode; onClick: () => void; testid?: string }) {
@@ -71,6 +73,8 @@ export function Setup({
 }) {
   const { t } = useSettings();
   const { depth } = useSolutionStore();
+  // the seats of the selected solution's table (its number of players is in the catalog, no manifest needed)
+  const seats = useMemo(() => seatNames(solutionEntry(solutionId(depth))?.players ?? SEATS.length), [depth]);
   const [mode, setMode] = useState<"spot" | "hand" | "postSpot" | "post">(initialMode ?? "spot");
   const [flopFixed, setFlopFixed] = useState<number | null>(initialFlop ?? null);
   const [flopNames, setFlopNames] = useState<string[]>([]);
@@ -185,7 +189,7 @@ export function Setup({
             <Chip on={filter.seats.length === 0} onClick={() => setFilter({ ...filter, seats: [] })}>
               {t("common.any")}
             </Chip>
-            {SEATS.map((s, i) => (
+            {seats.map((s, i) => (
               <Chip key={s} on={filter.seats.includes(i)} testid={`seat-${s}`} onClick={() => setFilter({ ...filter, seats: toggle(filter.seats, i) })}>
                 {s}
               </Chip>

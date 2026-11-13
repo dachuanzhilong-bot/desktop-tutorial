@@ -1,14 +1,25 @@
 import type { Key } from "../i18n/ja";
 import { ActionKind, Terminal } from "./types";
+import { bbSeat, sbSeat, seatNames } from "./seats";
 import type { ActionMeta, Manifest, NodeMeta, PublicState, SpotType } from "./types";
 
-export const SEATS = ["UTG", "HJ", "CO", "BTN", "SB", "BB"] as const;
-export const SB_SEAT = 4;
-export const BB_SEAT = 5;
+/**
+ * The 6-seat table of the shipped solutions (lib/solution/seats.ts gives any table size). Only for places that show a
+ * stored 6-max seat number without its manifest (home, stats, post-flop records); everything that has a manifest
+ * takes the seats from manifest.players instead.
+ */
+export const SEATS = seatNames(6) as readonly string[];
+/** small / big blind seat of the 6-seat table; with a manifest use sbSeat / bbSeat(manifest.players.length) */
+export const SB_SEAT = sbSeat(SEATS.length);
+export const BB_SEAT = bbSeat(SEATS.length);
 
-export function initialState(m: Pick<Manifest, "blinds">): PublicState {
-  const inv = [0, 0, 0, 0, m.blinds[0], m.blinds[1]];
-  return { inv, folded: [false, false, false, false, false, false], pot: m.blinds[0] + m.blinds[1], cur: m.blinds[1], level: 0, lastRaiser: null, callers: [], limped: false };
+/** the table before the first action: the blinds posted by the last two seats (manifest.players gives the table size) */
+export function initialState(m: Pick<Manifest, "blinds" | "players">): PublicState {
+  const n = m.players.length;
+  const inv = new Array<number>(n).fill(0);
+  inv[sbSeat(n)] = m.blinds[0];
+  inv[bbSeat(n)] = m.blinds[1];
+  return { inv, folded: new Array<boolean>(n).fill(false), pot: m.blinds[0] + m.blinds[1], cur: m.blinds[1], level: 0, lastRaiser: null, callers: [], limped: false };
 }
 
 /** apply one action of `actor` to a public state (pure) */
@@ -84,7 +95,8 @@ export function actionLabel(a: ActionMeta, actor: number, state: PublicState, t:
     case ActionKind.Fold:
       return t("act.fold");
     case ActionKind.Call:
-      if (state.level === 0) return actor === BB_SEAT ? t("act.check") : t("act.limp");
+      // the big blind is the last seat of the table (the state has one entry per seat)
+      if (state.level === 0) return actor === bbSeat(state.inv.length) ? t("act.check") : t("act.limp");
       return t("act.call");
     case ActionKind.AllIn:
       return t("act.allin");
@@ -102,7 +114,7 @@ export function fmtBB(x: number, digits = 1): string {
 export function spotType(m: Manifest, id: number): SpotType {
   const s = stateAt(m, id);
   const node = m.nodes[id];
-  if (s.level === 0) return node.actor === BB_SEAT && s.limped ? "limp" : "rfi";
+  if (s.level === 0) return node.actor === bbSeat(m.players.length) && s.limped ? "limp" : "rfi";
   if (s.level === 1) return s.callers.length > 0 ? "squeeze" : "vsOpen";
   if (s.level === 2) {
     // was there a flat call before the 3-bet? then the 3-bet is a squeeze
