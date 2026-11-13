@@ -12,10 +12,24 @@ const src = resolve(process.argv[2] ?? "../solver/out");
 const dst = resolve("public/solutions");
 mkdirSync(dst, { recursive: true });
 
+/**
+ * What the app's catalog (lib/solution/catalog.ts) knows of a solution without opening it, taken from its manifest:
+ *   game     "cash" – the preflop solver makes cash games only (no ICM or antes); the manifest has no field for it yet
+ *   players  number of seats (manifest.players: the seat names)
+ *   stack    effective stack in bb (manifest.stack)
+ */
+function catalogEntry(manifest) {
+  if (!Array.isArray(manifest.players) || !manifest.players.length) throw new Error(`manifest ${manifest.id}: no players`);
+  if (typeof manifest.stack !== "number" || !(manifest.stack > 0)) throw new Error(`manifest ${manifest.id}: no stack`);
+  return { game: "cash", players: manifest.players.length, stack: manifest.stack };
+}
+
 const index = { version: 1, solutions: [] };
 for (const id of readdirSync(src, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name)) {
   const dir = join(src, id);
   if (!existsSync(join(dir, "manifest.json"))) continue;
+  const manifest = JSON.parse(readFileSync(join(dir, "manifest.json"), "utf8"));
+  if (manifest.id !== id) throw new Error(`${dir}: the manifest says it is ${manifest.id}`);
   const out = join(dst, id);
   mkdirSync(out, { recursive: true });
   const files = [];
@@ -25,7 +39,7 @@ for (const id of readdirSync(src, { withFileTypes: true }).filter((d) => d.isDir
     writeFileSync(join(out, name), gzipSync(raw, { level: 9 }));
     files.push(`/solutions/${id}/${name}`);
   }
-  index.solutions.push({ id, files });
+  index.solutions.push({ id, files, ...catalogEntry(manifest) });
   console.log(`packed ${id}: ${files.length} files`);
 }
 writeFileSync(join(dst, "index.json"), JSON.stringify(index));

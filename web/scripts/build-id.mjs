@@ -31,11 +31,18 @@ const sorted = (names) => [...names].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)
 /** build ID of one packed preflop solution directory */
 export const preflopBuild = (dir) => buildOf(sorted(readdirSync(dir)).map((f) => join(dir, f)));
 
-/** adds `build` to every solution of public/solutions/index.json; everything else stays as it is */
+/**
+ * adds `build` to every solution of public/solutions/index.json; everything else stays as it is.
+ * `build` is written last in each entry (after the catalog fields of pack-solutions.mjs), so stamping again
+ * writes the same bytes.
+ */
 export function stampSolutions(dir) {
   const file = join(dir, "index.json");
   const index = JSON.parse(readFileSync(file, "utf8"));
-  for (const s of index.solutions) s.build = preflopBuild(join(dir, s.id));
+  for (const s of index.solutions) {
+    delete s.build;
+    s.build = preflopBuild(join(dir, s.id));
+  }
   writeFileSync(file, JSON.stringify(index));
   return index;
 }
