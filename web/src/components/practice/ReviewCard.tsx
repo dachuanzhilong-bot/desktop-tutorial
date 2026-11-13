@@ -5,11 +5,10 @@ import { dueReview, REVIEW_SET_ID } from "@/lib/practice/review";
 import type { PracticeSet } from "@/components/practice/types";
 import type { ReviewGroup } from "@/lib/practice/review";
 import { useSettings } from "@/lib/settings";
+import { depthOf } from "@/lib/solution/catalog";
 import { getRepo } from "@/lib/storage/idb";
 import type { SrsItem } from "@/lib/practice/srs";
 import { useNow } from "@/lib/util/hooks";
-
-const depthOf = (solution: string) => Number(/(\d+)bb$/.exec(solution)?.[1] ?? 100);
 
 /**
  * "Today's review": the spaced-repetition items that are due, with a one-tap start. A round is a question list stored

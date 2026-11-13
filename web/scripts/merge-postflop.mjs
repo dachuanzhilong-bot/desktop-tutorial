@@ -21,6 +21,12 @@ for (const dir of extras.map((d) => resolve(d))) {
   for (const sc of ex.scenarios) {
     const at = idx.scenarios.findIndex((s) => s.id === sc.id);
     if (at < 0) idx.scenarios.push(sc);
+    else {
+      // `pre` (where the scenario joins the preflop solution: REFACTOR_PLAN 2-4) is kept; it must not disagree
+      const have = idx.scenarios[at];
+      if (!have.pre && sc.pre) have.pre = sc.pre;
+      else if (have.pre && sc.pre && JSON.stringify(have.pre) !== JSON.stringify(sc.pre)) throw new Error(`${sc.id}: pre differs between ${base} and ${dir}`);
+    }
   }
   Object.assign(idx.stats, ex.stats);
   for (const d of readdirSync(dir, { withFileTypes: true }).filter((x) => x.isDirectory())) {

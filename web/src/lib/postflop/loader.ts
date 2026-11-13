@@ -17,6 +17,22 @@ export interface PfScenario {
   iterations: number;
   turnCards: number;
   riverCards: number;
+  /** where the scenario joins the preflop solution (REFACTOR_PLAN 2-4; lib/postflop/link.ts) */
+  pre?: PfPreLink;
+}
+
+/**
+ * The preflop line a scenario continues (written by solver/src/bin/gen_postflop.rs). A preflop hand of the
+ * solution of depth `stack` goes on to this scenario when the two players left are `oopSeat` and `ipSeat` (seat
+ * names of the manifest) and each one's line through their last preflop action is `oopPath` / `ipPath`: action
+ * tokens joined by "-", as in the position keys of lib/solution/positionKey.ts (e.g. "F-F-F-R2.5-F-C").
+ */
+export interface PfPreLink {
+  stack: number;
+  oopSeat: string;
+  ipSeat: string;
+  oopPath: string;
+  ipPath: string;
 }
 
 export interface FlopStats {

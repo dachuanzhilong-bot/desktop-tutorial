@@ -12,7 +12,7 @@ export interface SrsItem {
   hand: number;
   /** position key (docs/03 "局面キー"): pre-flop the action line, post-flop `<flop>@<line>` */
   pos: string;
-  /** what `pos` is a position of: `cash6max-<depth>bb` or `post:<scenario>` (no flop index) */
+  /** what `pos` is a position of: a pre-flop solution id (lib/solution/catalog.ts) or `post:<scenario>` (no flop index) */
   solution: string;
   /** build ID of the solution data the item was last answered against */
   build?: string;

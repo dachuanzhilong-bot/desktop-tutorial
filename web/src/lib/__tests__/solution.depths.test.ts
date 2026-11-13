@@ -1,9 +1,10 @@
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { classByName } from "../poker/hands";
 import { ActionKind } from "../solution/types";
 import { DEPTHS, depthOf, nearestDepth, solutionId } from "../solution/loader";
+import { DEFAULT_DEPTH, DEFAULT_SOLUTION, isPreflopSolution, solutionBuild, solutionEntry, SOLUTIONS } from "../solution/catalog";
 import { loadManifestFor, loadNodeFor } from "./helpers";
 
 const have = (d: number) => existsSync(path.resolve(__dirname, `../../../public/solutions/cash6max-${d}bb/manifest.json.gz`));
@@ -24,6 +25,41 @@ describe("depth helpers", () => {
     for (const d of DEPTHS) expect(depthOf(solutionId(d))).toBe(d);
     expect(depthOf(undefined)).toBe(100);
     // (the spaced-repetition keys that treated 100bb specially are gone with the old records: REFACTOR_PLAN step 1-4)
+  });
+});
+
+describe("the solution catalog (public/solutions/index.json, REFACTOR_PLAN 2-4)", () => {
+  const index: { solutions: { id: string; game?: string; players?: number; stack?: number; build: string }[] } = JSON.parse(
+    readFileSync(path.resolve(__dirname, "../../../public/solutions/index.json"), "utf8"),
+  );
+
+  it("lists the shipped depths, shallowest first", () => {
+    expect(DEPTHS).toEqual([20, 40, 60, 100, 200]);
+    expect(SOLUTIONS.map((s) => s.id).sort()).toEqual(index.solutions.map((s) => s.id).sort());
+    expect(new Set(DEPTHS).size, "one solution per depth").toBe(DEPTHS.length);
+  });
+
+  it.each(index.solutions.map((s) => [s.id, s] as const))("%s: the catalog fields are those of its manifest", (id, s) => {
+    const m = loadManifestFor(s.stack!);
+    expect(m.id).toBe(id);
+    expect(s).toMatchObject({ game: "cash", players: m.players.length, stack: m.stack });
+    expect(solutionEntry(id)).toMatchObject({ id, game: "cash", players: m.players.length, stack: m.stack, build: s.build });
+    expect(solutionId(m.stack)).toBe(id);
+    expect(depthOf(id)).toBe(m.stack);
+    expect(solutionBuild(id)).toBe(s.build);
+    expect(isPreflopSolution(id)).toBe(true);
+  });
+
+  it("the default is the 100bb solution; ids it does not ship are not pre-flop solutions", () => {
+    expect(DEFAULT_DEPTH).toBe(100);
+    expect(solutionEntry(DEFAULT_SOLUTION)?.stack).toBe(100);
+    for (const id of ["post:srp-btn-bb", "cash6max-55bb", "", "100", undefined]) {
+      expect(isPreflopSolution(id)).toBe(false);
+      expect(depthOf(id)).toBe(DEFAULT_DEPTH);
+      expect(solutionBuild(id ?? "")).toBe("");
+    }
+    // a depth that is not shipped asks for the nearest one's solution
+    expect(solutionId(70)).toBe(solutionId(60));
   });
 });
 

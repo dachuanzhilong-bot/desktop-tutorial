@@ -3,7 +3,8 @@
  * (REFACTOR_PLAN step 1-3, docs/03 "局面キー" / "記録が持つ局面").
  *
  * A record (Attempt, SrsItem, an analysed decision, an item of a practice set) names its position by
- *   solution  `cash6max-<depth>bb` (pre-flop) or `post:<scenario>` (post-flop; no flop index)
+ *   solution  pre-flop: the solution id of the catalog (lib/solution/catalog.ts, one per stack depth);
+ *             post-flop: `post:<scenario>` (no flop index)
  *   pos       pre-flop: the action line (lib/solution/positionKey.ts), e.g. `F-F-R2.5-F-F`
  *             post-flop: `<flop>@<line>` (lib/postflop/positionKey.ts), e.g. `As7d2c@X-B1.75-C/Td`
  *   build     build ID of the data it was answered against (informative: tells which data graded it)

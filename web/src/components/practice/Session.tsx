@@ -21,6 +21,7 @@ import { haptic } from "@/lib/util/haptics";
 import { ResultPanel } from "./ResultPanel";
 import type { PostConfig } from "@/lib/postflop/types";
 import { loadIndex } from "@/lib/postflop/loader";
+import type { PfScenario } from "@/lib/postflop/loader";
 import { postflopLink } from "@/lib/postflop/link";
 import { RngPanel, SessionTopBar, TimerBar } from "./SessionParts";
 import { SessionSummary } from "./Summary";
@@ -38,11 +39,11 @@ export function Session({ store, repo, config, onExit, onPostflop }: { store: So
   const reduce = useReducedMotion();
   const m = store.manifest;
   const [drill] = useState(() => createPreflopDrill({ store, repo, config, rnd: cryptoRandom }));
-  const [postIds, setPostIds] = useState<string[]>([]);
+  const [scenarios, setScenarios] = useState<readonly PfScenario[]>([]);
 
   useEffect(() => {
     loadIndex()
-      .then((ix) => setPostIds(ix.scenarios.map((x) => x.id)))
+      .then((ix) => setScenarios(ix.scenarios))
       .catch(() => {});
     repo
       .allSrs()
@@ -53,8 +54,9 @@ export function Session({ store, repo, config, onExit, onPostflop }: { store: So
   // a heads-up flop that exists in the postflop solutions can be played on
   const flopLink = ({ phase, round, answer }: Pick<DrillState<PreflopRound, PendingStep, PreflopOutcome>, "phase" | "round" | "answer">) => {
     if (config.mode !== "hand" || !onPostflop || !round) return null;
-    if (phase === "answered" && answer && answer.term === Terminal.Flop) return postflopLink(answer.heroAfter, round.heroSeat, round.hand, postIds, config.rng, config.timer);
-    if (phase === "handEnd" && round.endedWith === Terminal.Flop && round.queue.length) return postflopLink(round.queue[round.queue.length - 1].after, round.heroSeat, round.hand, postIds, config.rng, config.timer);
+    if (phase === "answered" && answer && answer.term === Terminal.Flop && round.q) return postflopLink(m, round.q.nodeId, answer.j.chosen, round.heroSeat, round.hand, scenarios, config.rng, config.timer);
+    const last = round.queue[round.queue.length - 1];
+    if (phase === "handEnd" && round.endedWith === Terminal.Flop && last) return postflopLink(m, last.node, last.actionIndex, round.heroSeat, round.hand, scenarios, config.rng, config.timer);
     return null;
   };
   const handOff = (st: Parameters<typeof flopLink>[0]) => {

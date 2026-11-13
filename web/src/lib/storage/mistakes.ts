@@ -3,6 +3,7 @@ import { postflopLink, preflopLink } from "../study/links";
 import { cardText, COMBOS } from "../postflop/combos";
 import type { PfFlop } from "../postflop/decode";
 import { currentFlopIndex, currentPostflopNode, currentPreflopNode } from "../practice/position";
+import { solutionEntry } from "../solution/catalog";
 import type { Manifest } from "../solution/types";
 import type { Attempt } from "./types";
 
@@ -21,14 +22,9 @@ export function recentMistakes(list: Attempt[], limit = 8): Attempt[] {
   return out;
 }
 
-const preflopDepth = (solution: string): number | null => {
-  const m = /^cash6max-(\d+)bb$/.exec(solution);
-  return m ? Number(m[1]) : null;
-};
-
 /** today's solution data, as far as links need it */
 export interface StudySources {
-  /** manifest of a pre-flop solution by its id (`cash6max-100bb`); rejects when there is none */
+  /** manifest of a pre-flop solution by its id (lib/solution/catalog.ts); rejects when there is none */
   manifest(solution: string): Promise<Manifest>;
   /** the flops of the post-flop index (board texts), in today's order */
   flops: readonly string[];
@@ -44,8 +40,9 @@ export async function resolveStudyHref(a: Attempt, src: StudySources): Promise<s
   try {
     const where = currentFlopIndex(src.flops, a);
     if (where) return currentPostflopNode(await src.flop(where.scenario, where.flopIndex), a) === null ? null : postflopLink(where.scenario, a.pos);
-    const depth = preflopDepth(a.solution);
-    if (depth === null) return null;
+    // a pre-flop record of a depth that is not shipped has no link
+    const depth = solutionEntry(a.solution)?.stack;
+    if (depth === undefined) return null;
     return currentPreflopNode(await src.manifest(a.solution), a) === null ? null : preflopLink(depth, a.pos, a.hand);
   } catch {
     return null;
