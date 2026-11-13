@@ -507,6 +507,9 @@ pub struct FullBr<'a> {
     prior: [Vec<f32>; 2],
     rule: Assign,
     tables: HashMap<u64, Strength>,
+    /// deal every card (true) or only the tree's sampled cards with their weights: turn, river,
+    /// flop all-in run-outs.  All true is the measure; all false reproduces `Solver::exploitability`.
+    full: [bool; 3],
 }
 
 impl<'a> FullBr<'a> {
@@ -520,7 +523,14 @@ impl<'a> FullBr<'a> {
                 }
             }
         }
-        FullBr { tree, strat, prior: pr, rule, tables: HashMap::new() }
+        FullBr { tree, strat, prior: pr, rule, tables: HashMap::new(), full: [true; 3] }
+    }
+
+    /// Deal only the sampled cards on some streets (`[turn, river, flop all-in]`, true = every card);
+    /// used to split the full-card value into the part of each street.
+    pub fn with_full(mut self, full: [bool; 3]) -> Self {
+        self.full = full;
+        self
     }
 
     fn table(&mut self, board5: &[u8]) -> &Strength {
@@ -585,6 +595,32 @@ impl<'a> FullBr<'a> {
                 }
                 res
             }
+            PKind::AllIn { tables, weight } if board.len() == 3 && !self.full[2] => {
+                // the tree's own sample of flop run-outs (the flop is never remapped)
+                let mut res = Res::zero();
+                let mut share = vec![0f32; NC];
+                let mut mass = vec![0f32; NC];
+                let bm = mask_of(board);
+                for &ti in tables {
+                    let st = &tree.tables[ti as usize];
+                    let fresh = st.mask & !bm;
+                    for p in 0..2 {
+                        let mut r = rs[1 - p].to_vec();
+                        for h in 0..NC {
+                            if blocked(fresh, h) {
+                                r[h] = 0.0;
+                            }
+                        }
+                        showdown(st, &r, &mut share, &mut mass);
+                        for &h in &st.order {
+                            let h = h as usize;
+                            res.v[p][h] += weight * (pot_total * share[h] - node.inv[p] * mass[h]);
+                            res.m[p][h] += weight * mass[h];
+                        }
+                    }
+                }
+                res
+            }
             PKind::AllIn { .. } => {
                 let mut res = Res::zero();
                 let mut share = vec![0f32; NC];
@@ -632,19 +668,26 @@ impl<'a> FullBr<'a> {
                 }
                 res
             }
-            PKind::Chance { cards, children, .. } => {
+            PKind::Chance { cards, children, weight: w_sample } => {
                 let mut acc = Res::zero();
                 let bm = mask_of(board);
                 let n_rem = 52 - board.len();
-                let weight = 1.0 / (n_rem as f32 - 4.0);
                 // the real -> sampled card map of the current street
                 let sampled_board = &node.board;
                 let cur = board_perm(board, sampled_board);
-                for c in 0..52u8 {
-                    if (bm >> c) & 1 == 1 {
-                        continue;
+                let full = self.full[node.street as usize];
+                // (real card, sampled child)
+                let deal: Vec<(u8, usize)> = if full {
+                    (0..52u8).filter(|c| (bm >> c) & 1 == 0).map(|c| (c, assign_card(sampled_board, cards, cur[c as usize], self.rule))).collect()
+                } else {
+                    let mut inv = [0u8; 52];
+                    for c in 0..52 {
+                        inv[cur[c] as usize] = c as u8;
                     }
-                    let j = assign_card(sampled_board, cards, cur[c as usize], self.rule);
+                    cards.iter().enumerate().map(|(j, &s)| (inv[s as usize], j)).collect()
+                };
+                let weight = if full { 1.0 / (n_rem as f32 - 4.0) } else { *w_sample };
+                for (c, j) in deal {
                     let child = children[j] as usize;
                     let mut nb = board.to_vec();
                     nb.push(c);
@@ -842,6 +885,21 @@ mod tests {
         let got = FullBr::new(&tree, &s.avg, &s.prior, Assign::Nearest).exploitability();
         assert!(close(got.pct, want), "{} vs {}", got.pct, want);
         assert!(want > 0.05, "the test needs an unconverged strategy: {}", want);
+    }
+
+    /// On a sampled tree (like the shipped ones), dealing only the sampled cards reproduces
+    /// `Solver::exploitability`; dealing every card gives a different (here larger) value.
+    #[test]
+    fn sampled_deal_matches_solver_on_a_sampled_tree() {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, raise_sizes: [false; 3], turn_cards: 3, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let mut s = solve(&tree, 60);
+        let want = 100.0 * s.exploitability() / cfg.pot;
+        let sampled = FullBr::new(&tree, &s.avg, &s.prior, Assign::Nearest).with_full([false; 3]).exploitability();
+        assert!(close(sampled.pct, want), "{} vs {}", sampled.pct, want);
+        let full = FullBr::new(&tree, &s.avg, &s.prior, Assign::Nearest).exploitability();
+        assert!(full.pct > want + 1.0, "full {} vs sampled {}", full.pct, want);
+        assert!((full.base[0] + full.base[1] - cfg.pot).abs() < 1e-2, "constant sum {:?}", full.base);
     }
 
     #[test]
