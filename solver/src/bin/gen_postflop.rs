@@ -5,6 +5,19 @@
 //! Every turn / river card (REFACTOR_PLAN 3-3; regrets of the river only, no river average, docs/14 §2 (a)):
 //!   ... --turn-cards 49 --river-cards 48 --flop-runouts 1176 --no-average-from 2
 //!
+//! Production of plan B (REFACTOR_PLAN 3-3-5, `TSP1` v3: flop and turn nodes + the reach ranges at every river start,
+//! the river is solved on the device):
+//!
+//!   ... --all-cards [--scenario srp-btn-bb] [--only-flop 0] --threads 1 --solve-threads 4 [--checkpoint DIR]
+//!
+//! `--all-cards` = `--turn-cards 49 --river-cards 48 --flop-runouts 1176 --no-average-from 2` (each can still be given,
+//! e.g. `--river-cards 2` for a quick run) and writes `TSP1` v3.  Every flop's `<n>.bin` and `<n>.stats.json` are
+//! written as soon as it is solved, and `index.json` is rewritten from all the `.stats.json` files after every flop, so
+//! an interrupted run loses at most the flops being solved; running the same command again skips the flops whose
+//! `.bin` and `.stats.json` are there.  `--checkpoint DIR` also saves each flop's solver every `--checkpoint-every`
+//! iterations (default 100) to `DIR/<scenario>-<flop>/` and resumes from there (REFACTOR_PLAN 3-3-3; bit for bit the
+//! same result), removed once the flop is written.
+//!
 //! Threads: `--threads N` solves N flops at a time; `--solve-threads M` walks one flop's turn card subtrees on M
 //! threads (REFACTOR_PLAN 3-3-2; default 1, the results are bit for bit the same for every M).  The two
 //! multiply: up to N x M busy threads, so keep N x M at most the number of cores (e.g. one big flop at a time:
@@ -12,6 +25,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
+use tessera_solver::allcards::{run_iterations, Checkpoints, Plan};
 use tessera_solver::cards::{class_info, RANK_CHARS, NUM_CLASSES};
 use tessera_solver::postflop::*;
 use tessera_solver::solution_io;
@@ -169,6 +183,68 @@ fn peak_rss() -> String {
         .unwrap_or_else(|| "?".into())
 }
 
+/// write `bytes` to `path` through a temporary file and a rename, so that `path` is never half written
+fn write_atomic(path: &str, bytes: &[u8]) {
+    let tmp = format!("{}.tmp", path);
+    std::fs::write(&tmp, bytes).unwrap_or_else(|e| panic!("{}: {}", tmp, e));
+    std::fs::rename(&tmp, path).unwrap_or_else(|e| panic!("{}: {}", path, e));
+}
+
+/// `index.json`: the flops, the scenarios that were run (with their ranges and settings) and the stats
+/// (`(scenario index, flop index, stats JSON)`, in any order)
+#[allow(clippy::too_many_arguments)] // the run's settings, as main has them
+fn index_json(n_flops: usize, only: &str, ranges: &[[Vec<f32>; 2]], iters: u32, turn_cards: usize, river_cards: usize, pre_of: &[String], stats: &[(usize, usize, String)]) -> String {
+    let mut idx = String::from("{\"format\":1,\"flops\":[");
+    for (i, f) in FLOPS.iter().take(n_flops.min(FLOPS.len())).enumerate() {
+        if i > 0 {
+            idx.push(',');
+        }
+        idx.push_str(&format!("\"{}\"", f));
+    }
+    idx.push_str("],\"scenarios\":[");
+    let mut first = true;
+    for (i, sc) in SCENARIOS.iter().enumerate() {
+        if !only.is_empty() && !only.split(',').any(|x| x == sc.id) {
+            continue;
+        }
+        if !first {
+            idx.push(',');
+        }
+        first = false;
+        let stat = |r: &Vec<f32>| r.iter().sum::<f32>() / 13.26;
+        idx.push_str(&format!(
+            "{{\"id\":\"{}\",\"title\":\"{}\",\"pot\":{},\"stack\":{},\"oop\":\"{}\",\"ip\":\"{}\",\"oopPct\":{:.2},\"ipPct\":{:.2},\"iterations\":{},\"turnCards\":{},\"riverCards\":{},\"pre\":{}}}",
+            sc.id, sc.title, sc.pot, sc.stack, sc.oop_seat, sc.ip_seat, stat(&ranges[i][0]), stat(&ranges[i][1]), iters, turn_cards, river_cards, pre_of[i]
+        ));
+    }
+    idx.push_str("],\"stats\":{");
+    let mut st = stats.to_vec();
+    st.sort_by_key(|x| (x.0, x.1));
+    for (i, (si, fi, js)) in st.iter().enumerate() {
+        if i > 0 {
+            idx.push(',');
+        }
+        idx.push_str(&format!("\"{}/{}\":{}", SCENARIOS[*si].id, fi, js));
+    }
+    idx.push_str("}}");
+    idx
+}
+
+/// `--all-cards`: the stats of the flops written so far (`<out>/<scenario>/<flop>.stats.json` next to a `.bin`), for the
+/// scenarios and flops of the run
+fn stats_on_disk(out: &str, tasks: &[(usize, usize)]) -> Vec<(usize, usize, String)> {
+    tasks
+        .iter()
+        .filter_map(|&(si, fi)| {
+            let base = format!("{}/{}/{}", out, SCENARIOS[si].id, fi);
+            if !std::path::Path::new(&format!("{}.bin", base)).exists() {
+                return None;
+            }
+            std::fs::read_to_string(format!("{}.stats.json", base)).ok().map(|js| (si, fi, js.trim().to_string()))
+        })
+        .collect()
+}
+
 fn main() {
     #[cfg(target_arch = "x86_64")]
     #[allow(deprecated)]
@@ -177,6 +253,8 @@ fn main() {
         _mm_setcsr(_mm_getcsr() | 0x8040);
     }
     let args: Vec<String> = std::env::args().collect();
+    // plan B's production (see the top of the file): every card, no river average, TSP1 v3, one flop at a time on disk
+    let all_cards = args.iter().any(|a| a == "--all-cards");
     let pre: String = arg(&args, "--pre", "out/cash6max-100bb".to_string());
     let out: String = arg(&args, "--out", "out/postflop".to_string());
     let iters: u32 = arg(&args, "--iters", 700);
@@ -184,15 +262,20 @@ fn main() {
     let only: String = arg(&args, "--scenario", String::new());
     let n_flops: usize = arg(&args, "--flops", FLOPS.len());
     let min_reach: f32 = arg(&args, "--min-reach", 0.004);
-    let turn_cards: usize = arg(&args, "--turn-cards", 6);
-    let river_cards: usize = arg(&args, "--river-cards", 2);
+    let turn_cards: usize = arg(&args, "--turn-cards", if all_cards { 49 } else { 6 });
+    let river_cards: usize = arg(&args, "--river-cards", if all_cards { 48 } else { 2 });
     let avg_from: f32 = arg(&args, "--avg-from", 0.5);
     let only_flop: i32 = arg(&args, "--only-flop", -1);
     let from_flop: usize = arg(&args, "--from-flop", 0);
     // run-outs that value a flop all-in (1176 = every turn / river pair) and the first street without a
     // strategy average (3 = none; 2 = no river average, plan B of REFACTOR_PLAN 3-3)
-    let flop_runouts: usize = arg(&args, "--flop-runouts", Config::default().flop_runouts);
-    let no_average_from: u8 = arg(&args, "--no-average-from", SolverOptions::default().no_average_from);
+    let flop_runouts: usize = arg(&args, "--flop-runouts", if all_cards { 1176 } else { Config::default().flop_runouts });
+    let no_average_from: u8 = arg(&args, "--no-average-from", if all_cards { 2 } else { SolverOptions::default().no_average_from });
+    // --all-cards: save each flop's solver every K iterations to DIR/<scenario>-<flop>/ and resume from there
+    let checkpoint: String = arg(&args, "--checkpoint", String::new());
+    let checkpoint_every: u32 = arg(&args, "--checkpoint-every", 100);
+    assert!(all_cards || checkpoint.is_empty(), "--checkpoint needs --all-cards");
+    assert!(!all_cards || no_average_from >= 2, "--all-cards writes the flop and turn averages: --no-average-from must be at least 2");
     // threads inside one flop (see the top of the file: N x M threads with --threads N, keep it <= the cores)
     let solve_threads: usize = arg(&args, "--solve-threads", SolverOptions::default().threads).max(1);
 
@@ -232,6 +315,21 @@ fn main() {
     }
 
     std::fs::create_dir_all(&out).unwrap();
+    let index_lock = Mutex::new(());
+    // --all-cards: index.json from the stats written so far, of every flop of the scenarios run (also those of earlier
+    // runs, e.g. with another --only-flop)
+    let indexed: Vec<(usize, usize)> = (0..SCENARIOS.len())
+        .filter(|&si| only.is_empty() || only.split(',').any(|x| x == SCENARIOS[si].id))
+        .flat_map(|si| (0..n_flops.min(FLOPS.len())).map(move |fi| (si, fi)))
+        .collect();
+    let write_index = || {
+        let _guard = index_lock.lock().unwrap();
+        let idx = index_json(n_flops, &only, &ranges, iters, turn_cards, river_cards, &pre_of, &stats_on_disk(&out, &indexed));
+        write_atomic(&format!("{}/index.json", out), idx.as_bytes());
+    };
+    if all_cards {
+        write_index();
+    }
     let next = AtomicUsize::new(0);
     let stats_log = Mutex::new(Vec::<(usize, usize, String)>::new());
     let t0 = Instant::now();
@@ -244,6 +342,11 @@ fn main() {
                 }
                 let (si, fi) = tasks[i];
                 let sc = &SCENARIOS[si];
+                let dir = format!("{}/{}", out, sc.id);
+                if all_cards && stats_on_disk(&out, &[(si, fi)]).len() == 1 {
+                    eprintln!("{} flop {:2} {:<9} already written (skipped)", sc.id, fi, FLOPS[fi]);
+                    continue;
+                }
                 let board: Vec<u8> = FLOPS[fi].split_whitespace().map(card).collect();
                 let cfg = Config { pot: sc.pot, stack: sc.stack, turn_cards, river_cards, flop_runouts, seed: 11 + fi as u64, ..Config::default() };
                 let t = Instant::now();
@@ -252,11 +355,25 @@ fn main() {
                 let t_build = t.elapsed().as_secs_f32();
                 let n_dec = tree.nodes.iter().filter(|n| matches!(n.kind, PKind::Decision { .. })).count();
                 eprintln!("{} flop {:2} {:<9} built: {} nodes ({} decisions), {:.2} GB regret+ssum, {:.1}s, peak RSS {}", sc.id, fi, FLOPS[fi], tree.nodes.len(), n_dec, solver.strategy_bytes() as f64 / 1e9, t_build, peak_rss());
-                for i in 0..iters {
-                    if i == (iters as f32 * avg_from) as u32 && avg_from > 0.0 {
-                        solver.reset_average();
+                let mut ck = None;
+                if all_cards {
+                    // the same iterations (and restart of the average) as the loop below, resumable
+                    let plan = Plan::new(iters, avg_from, if checkpoint.is_empty() { 0 } else { checkpoint_every });
+                    if !checkpoint.is_empty() {
+                        ck = Some(Checkpoints::new(format!("{}/{}-{}", checkpoint, sc.id, fi), format!("gen_postflop {}", plan.tag())).expect("checkpoint directory"));
                     }
-                    solver.iterate();
+                    let mut log = |m: &str| eprintln!("{} flop {:2} {:<9} {}", sc.id, fi, FLOPS[fi], m);
+                    let info = run_iterations(&mut solver, &plan, ck.as_ref(), None, &mut log).expect("checkpoint IO");
+                    if info.resumed_from > 0 {
+                        eprintln!("{} flop {:2} {:<9} resumed from iteration {}", sc.id, fi, FLOPS[fi], info.resumed_from);
+                    }
+                } else {
+                    for i in 0..iters {
+                        if i == (iters as f32 * avg_from) as u32 && avg_from > 0.0 {
+                            solver.reset_average();
+                        }
+                        solver.iterate();
+                    }
                 }
                 let t_iter = (t.elapsed().as_secs_f32() - t_build) / iters.max(1) as f32;
                 eprintln!("{} flop {:2} {:<9} {} iterations: {:.2} s/iteration, peak RSS {}", sc.id, fi, FLOPS[fi], iters, t_iter, peak_rss());
@@ -265,51 +382,36 @@ fn main() {
                 let ev = solver.evaluate();
                 let (eq_oop, eq_ip) = (solver.range_equity(0), solver.range_equity(1));
                 let stats = flop_stats(&tree, &ev, eq_oop, eq_ip, 100.0 * expl / sc.pot);
-                stats_log.lock().unwrap().push((si, fi, stats));
-                let bytes = export(&tree, &ev, min_reach);
-                let dir = format!("{}/{}", out, sc.id);
                 std::fs::create_dir_all(&dir).unwrap();
-                std::fs::write(format!("{}/{}.bin", dir, fi), &bytes).unwrap();
+                let bytes = if all_cards {
+                    let starts = solver.river_starts().expect("the flop and turn averages");
+                    let bytes = export_v3(&tree, &ev, &starts, min_reach);
+                    // the file first, then its stats: a flop counts as written once both are there
+                    write_atomic(&format!("{}/{}.bin", dir, fi), &bytes);
+                    write_atomic(&format!("{}/{}.stats.json", dir, fi), stats.as_bytes());
+                    write_index();
+                    if let Some(ck) = &ck {
+                        ck.clear().expect("remove the checkpoints");
+                    }
+                    bytes
+                } else {
+                    stats_log.lock().unwrap().push((si, fi, stats));
+                    let bytes = export(&tree, &ev, min_reach);
+                    std::fs::write(format!("{}/{}.bin", dir, fi), &bytes).unwrap();
+                    bytes
+                };
                 let msg = format!("{} flop {:2} {:<9} nodes {:4}  expl {:.3} chips ({:.2}% pot)  {:>7} B  {:.0}s  peak RSS {}", sc.id, fi, FLOPS[fi], tree.nodes.len(), expl, 100.0 * expl / sc.pot, bytes.len(), t.elapsed().as_secs_f32(), peak_rss());
                 eprintln!("{}", msg);
             });
         }
     });
     // index of what was produced
-    let mut idx = String::from("{\"format\":1,\"flops\":[");
-    for (i, f) in FLOPS.iter().take(n_flops.min(FLOPS.len())).enumerate() {
-        if i > 0 {
-            idx.push(',');
-        }
-        idx.push_str(&format!("\"{}\"", f));
+    if all_cards {
+        write_index();
+    } else {
+        let idx = index_json(n_flops, &only, &ranges, iters, turn_cards, river_cards, &pre_of, &stats_log.lock().unwrap());
+        std::fs::write(format!("{}/index.json", out), idx).unwrap();
     }
-    idx.push_str("],\"scenarios\":[");
-    let mut first = true;
-    for (i, sc) in SCENARIOS.iter().enumerate() {
-        if !only.is_empty() && !only.split(',').any(|x| x == sc.id) {
-            continue;
-        }
-        if !first {
-            idx.push(',');
-        }
-        first = false;
-        let stat = |r: &Vec<f32>| r.iter().sum::<f32>() / 13.26;
-        idx.push_str(&format!(
-            "{{\"id\":\"{}\",\"title\":\"{}\",\"pot\":{},\"stack\":{},\"oop\":\"{}\",\"ip\":\"{}\",\"oopPct\":{:.2},\"ipPct\":{:.2},\"iterations\":{},\"turnCards\":{},\"riverCards\":{},\"pre\":{}}}",
-            sc.id, sc.title, sc.pot, sc.stack, sc.oop_seat, sc.ip_seat, stat(&ranges[i][0]), stat(&ranges[i][1]), iters, turn_cards, river_cards, pre_of[i]
-        ));
-    }
-    idx.push_str("],\"stats\":{");
-    let mut st = stats_log.lock().unwrap().clone();
-    st.sort_by_key(|x| (x.0, x.1));
-    for (i, (si, fi, js)) in st.iter().enumerate() {
-        if i > 0 {
-            idx.push(',');
-        }
-        idx.push_str(&format!("\"{}/{}\":{}", SCENARIOS[*si].id, fi, js));
-    }
-    idx.push_str("}}");
-    std::fs::write(format!("{}/index.json", out), idx).unwrap();
     eprintln!("done in {:.0}s", t0.elapsed().as_secs_f32());
     let _ = (class_info as fn(usize) -> _, RANK_CHARS, NUM_CLASSES);
 }
