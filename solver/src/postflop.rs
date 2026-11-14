@@ -10,6 +10,7 @@
 //! belongs to nobody, and `v0 + v1 = pot` at every terminal (constant sum).
 use crate::engine::regret_match;
 use crate::eval::eval7;
+use crate::river::{self, RiverWalk};
 use crate::rng::Rng;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
@@ -611,6 +612,8 @@ pub struct Solver<'a> {
     current_from: u8,
     extra: HashMap<u64, Strength>,
     z0: f64,
+    /// the training walk of a river tree (`river.rs`, REFACTOR_PLAN 3-3-4); `None` for other trees
+    river: Option<Box<RiverWalk>>,
 }
 
 /// `sigma` (`na * NC`) from the regrets of a support (`na * k`): regret matching on the support,
@@ -691,6 +694,7 @@ impl<'a> Solver<'a> {
         compat_mass(fm, &prior[1], &mut cm);
         let z0: f64 = (0..NC).map(|h| prior[0][h] as f64 * cm[h] as f64).sum();
         let locks = vec![None; tree.nodes.len()];
+        let river = river::applies(tree).then(|| Box::new(RiverWalk::new(tree, &prior, |i| &supports[support_of[i] as usize][..])));
         let supports = Arc::new(supports);
         let subtree_end = subtree_ends(tree);
         let threads = opts.threads.max(1);
@@ -712,6 +716,7 @@ impl<'a> Solver<'a> {
             current_from: 3,
             extra: HashMap::new(),
             z0,
+            river,
         }
     }
 
@@ -824,7 +829,18 @@ impl<'a> Solver<'a> {
         self.avg_start = self.iters;
     }
 
+    /// One CFR+ iteration.  A river tree takes the river walk (`river.rs`): the same regrets and strategy sums, bit
+    /// for bit, as the general walk (`iterate_full_width`), several times faster.
     pub fn iterate(&mut self) {
+        let Some(river) = self.river.as_mut() else { return self.iterate_full_width() };
+        self.iters += 1;
+        let t = (self.iters - self.avg_start) as f32;
+        river.train(self.tree, &mut self.regret, &mut self.ssum, &self.locks, &self.has_avg, t);
+    }
+
+    /// One iteration with the general walk (1,326 wide vectors), whatever the tree: the reference of the river walk
+    /// (tests, `measure_exploit --bench-river --reference`).
+    pub fn iterate_full_width(&mut self) {
         self.iters += 1;
         let t = (self.iters - self.avg_start) as f32;
         self.run(Mode::Train(t), None, false);
@@ -2065,5 +2081,109 @@ mod tests {
         // the flop estimate uses 80 sampled run-outs: ~±4%
         assert!((got - exact).abs() < 0.06, "equity {} vs exact {}", got, exact);
         assert!(exact > 0.85 && exact < 0.95);
+    }
+
+    // ---- the river walk (REFACTOR_PLAN 3-3-4): `river.rs` against the general walk
+
+    /// Solves a river tree with the river walk (`iterate`) and with the general walk (`iterate_full_width`), the average
+    /// restarted half-way, and compares: average strategies and exploitability within 1e-4 (the plan's tolerance), and
+    /// the regrets and strategy sums bit for bit (the river walk does the same arithmetic in the same order).
+    fn assert_river_walk_matches(tree: &Tree, ranges: &[Vec<f32>; 2], opts: SolverOptions, iters: u32, locks: &[(usize, Vec<f32>)]) {
+        let solve = |river_walk: bool| {
+            let mut s = Solver::with_options(tree, ranges, opts);
+            assert!(s.river.is_some(), "a river tree takes the river walk");
+            for (node, l) in locks {
+                s.lock_node(*node, l.clone()).unwrap();
+            }
+            for i in 0..iters {
+                if i == iters / 2 {
+                    s.reset_average();
+                }
+                if river_walk {
+                    s.iterate();
+                } else {
+                    s.iterate_full_width();
+                }
+            }
+            s.finalize_avg();
+            s
+        };
+        let (mut a, mut b) = (solve(true), solve(false));
+        let bits = |v: &Vec<f32>| v.iter().map(|x| x.to_bits()).collect::<Vec<u32>>();
+        let mut worst = 0f32;
+        for i in 0..tree.nodes.len() {
+            assert_eq!(bits(&a.regret[i]), bits(&b.regret[i]), "regrets of node {}", i);
+            assert_eq!(bits(&a.ssum[i]), bits(&b.ssum[i]), "strategy sums of node {}", i);
+            assert_eq!(a.avg[i].len(), b.avg[i].len());
+            for (x, y) in a.avg[i].iter().zip(&b.avg[i]) {
+                worst = worst.max((x - y).abs());
+            }
+        }
+        assert!(worst <= 1e-4, "average strategies differ by {}", worst);
+        let pot = tree.cfg.pot;
+        let (ea, eb) = (100.0 * a.exploitability() / pot, 100.0 * b.exploitability() / pot);
+        assert!((ea - eb).abs() <= 1e-4, "exploitability {}% vs {}% of the pot", ea, eb);
+        assert!(ea > 0.0 && ea < 100.0, "exploitability {}%", ea);
+    }
+
+    /// a strategy for `lock_node`: per hand, a mix that depends on the hand
+    fn uneven_lock(na: usize) -> Vec<f32> {
+        let mut l = vec![0f32; na * NC];
+        for h in 0..NC {
+            let w: Vec<f32> = (0..na).map(|a| 1.0 + ((h * 7 + a * 3) % 5) as f32).collect();
+            let sum: f32 = w.iter().sum();
+            for a in 0..na {
+                l[a * NC + h] = w[a] / sum;
+            }
+        }
+        l
+    }
+
+    fn actions(tree: &Tree, i: usize) -> usize {
+        match &tree.nodes[i].kind {
+            PKind::Decision { children, .. } => children.len(),
+            _ => 0,
+        }
+    }
+
+    #[test]
+    fn river_walk_matches_the_general_walk() {
+        // two sizes, raises and all-ins (an all-in call is a showdown); partial ranges with ~40 % of the combos out
+        let cfg = Config { pot: 10.0, stack: 40.0, bets: [vec![], vec![], vec![0.5, 1.0]], raise_sizes: [false, false, true], allow_allin: true, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ah 8d 7c 2s 3d"));
+        assert!(tree.nodes.len() > 20);
+        assert_river_walk_matches(&tree, &mixed_ranges(1), SolverOptions::default(), 300, &[]);
+        // the default tree (gen_postflop's river), a paired board, other ranges
+        let tree = build_tree(&Config::default(), &board("Kd Kh 9c 4s 4d"));
+        assert_river_walk_matches(&tree, &mixed_ranges(5), SolverOptions::default(), 300, &[]);
+        // one player holds 9 combos, the other 6 (the clairvoyant game): most showdown entries are one player's only
+        let oop = ["AdAc", "AdAs", "AcAs", "6c5c", "6d5d", "6h5h", "6s5s", "9c4c", "9d4h"];
+        let ip = ["QcQd", "QcQh", "QcQs", "QdQh", "QdQs", "QhQs"];
+        let r = |l: &[&str]| range_of(&l.iter().map(|s| (&s[0..2], &s[2..4], 1.0)).collect::<Vec<_>>());
+        let tree = build_tree(&river_cfg(), &board("Ah 8d 7c 2s 3d"));
+        assert_river_walk_matches(&tree, &[r(&oop), r(&ip)], SolverOptions::default(), 300, &[]);
+    }
+
+    #[test]
+    fn river_walk_matches_with_locked_nodes_and_without_averages() {
+        let cfg = Config { pot: 10.0, stack: 40.0, bets: [vec![], vec![], vec![0.5, 1.0]], raise_sizes: [false, false, true], allow_allin: true, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ah 8d 7c 2s 3d"));
+        let ranges = mixed_ranges(1);
+        // the root (OOP) and IP's node after a check
+        let ip = (1..tree.nodes.len()).find(|&i| matches!(tree.nodes[i].kind, PKind::Decision { player: 1, .. })).unwrap();
+        let locks = [(0, uneven_lock(actions(&tree, 0))), (ip, uneven_lock(actions(&tree, ip)))];
+        assert_river_walk_matches(&tree, &ranges, SolverOptions::default(), 200, &locks);
+        // no strategy average on the river (plan B's precomputation): the current strategies are compared
+        assert_river_walk_matches(&tree, &ranges, SolverOptions { no_average_from: 2, ..Default::default() }, 200, &locks[..1]);
+    }
+
+    #[test]
+    fn river_walk_is_only_for_river_trees() {
+        let cfg = Config { pot: 8.0, stack: 20.0, bets: [vec![], vec![0.5], vec![0.75]], raise_sizes: [false; 3], allow_allin: true, river_cards: 2, ..Config::default() };
+        let ranges = mixed_ranges(2);
+        let turn = build_tree(&cfg, &board("Ks 9h 5h 2d"));
+        assert!(Solver::new(&turn, &ranges).river.is_none());
+        let river = build_tree(&cfg, &board("Ks 9h 5h 2d 2c"));
+        assert!(Solver::new(&river, &ranges).river.is_some());
     }
 }

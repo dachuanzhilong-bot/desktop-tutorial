@@ -6,6 +6,7 @@
 //! * `engine`  – generic n-player vector-form CFR+ engine
 //! * `preflop` – 6-max preflop tree, payoff model, export
 //! * `postflop` – heads-up flop/turn/river solver over 1,326 combos
+//! * `river`   – the training walk of a river tree on the supports (REFACTOR_PLAN 3-3-4)
 //! * `measure` – exploitability of a shipped postflop file over every turn / river card
 //! * `allcards` – one flop over every card: checkpoints, full-card values, the river re-solved (REFACTOR_PLAN 3-3-3)
 //! * `icm`     – ICM push/fold for up to nine players
@@ -25,5 +26,6 @@ pub mod icm;
 pub mod measure;
 pub mod postflop;
 pub mod preflop;
+mod river;
 pub mod rng;
 pub mod solution_io;
