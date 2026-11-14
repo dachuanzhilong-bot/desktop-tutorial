@@ -12,7 +12,7 @@ use crate::engine::regret_match;
 use crate::eval::eval7;
 use crate::rng::Rng;
 use std::collections::HashMap;
-use std::sync::OnceLock;
+use std::sync::{Arc, OnceLock};
 
 pub const NC: usize = 1326;
 
@@ -528,10 +528,48 @@ pub struct NodeEval {
     pub reach: f32,
 }
 
+/// Options of a `Solver` that do not change the tree.
+#[derive(Clone, Copy, Debug)]
+pub struct SolverOptions {
+    /// Decision nodes of this street and later keep no strategy average (no `ssum`, no `avg`):
+    /// 0 flop, 1 turn, 2 river, 3 (default) = every street keeps one.  Plan B of REFACTOR_PLAN 3-3
+    /// re-solves the river on the device, so the precomputation needs no river average (`no_average_from: 2`).
+    /// See `Solver` for how such nodes are evaluated and exported.
+    pub no_average_from: u8,
+}
+
+impl Default for SolverOptions {
+    fn default() -> Self {
+        SolverOptions { no_average_from: 3 }
+    }
+}
+
+/// Vector-form CFR+ over a `Tree`.
+///
+/// **Storage (REFACTOR_PLAN 3-3-1).**  A decision node keeps its regrets and strategy sums only for the
+/// node's *support*: the combos that are in the acting player's starting range (`prior != 0`) and do not
+/// collide with the node's board.  Every other combo has reach 0 at the node, so it never changes a value of
+/// the other combos; for a combo on the board the full-width solver also kept regret 0 (uniform strategy),
+/// which is what the solver uses for it.  `regret[node]` / `ssum[node]` are laid out as `na * k`
+/// (action-major, `k` = the support's size, the combos in `supports[support_of[node]]` order).
+/// The arithmetic on the support is the full-width solver's, in the same order, so the results are bit
+/// for bit the same (tests `*_results_match_the_full_width_solver`).  For combos outside the starting range
+/// the strategy reported by `avg` / `evaluate` is uniform (the full-width solver reported the regret-matched
+/// mix of regrets that such a combo could never act on); they have weight 0 everywhere.
+///
+/// **Nodes without an average** (`SolverOptions::no_average_from`): `ssum[node]` and `avg[node]` are empty.
+/// Where the average strategy would be used (`exploitability`, `root_values`, `evaluate`, the opponent of a
+/// best response) these nodes play the current strategy (regret matching of the regrets), and `evaluate`
+/// returns `None` for them, so `export` writes no node of those streets (their parents point at a pruned
+/// subtree, code -2, as for an unplayed line).
 pub struct Solver<'a> {
     pub tree: &'a Tree,
+    /// per decision node, `na * k` over the node's support (see above); empty for other nodes
     pub regret: Vec<Vec<f32>>,
+    /// per decision node, `na * k` over the node's support; empty for other nodes and nodes without an average
     pub ssum: Vec<Vec<f32>>,
+    /// average strategy per decision node, `na * NC` (filled by `finalize_avg`, or set by the caller);
+    /// empty for other nodes and nodes without an average
     pub avg: Vec<Vec<f32>>,
     pub iters: u32,
     /// iteration at which the strategy average was (re)started
@@ -539,13 +577,37 @@ pub struct Solver<'a> {
     /// node-locking: a fixed strategy (na * NC) for a decision node; the node is then never updated
     locks: Vec<Option<Vec<f32>>>,
     pub prior: [Vec<f32>; 2],
+    /// supports shared by the nodes of the same player and board: ascending combo indices
+    pub supports: Arc<Vec<Vec<u16>>>,
+    /// per node, the index into `supports` (`u32::MAX` for a node that is not a decision)
+    pub support_of: Vec<u32>,
+    /// per node: does it keep a strategy average
+    has_avg: Vec<bool>,
     extra: HashMap<u64, Strength>,
     z0: f64,
+}
+
+/// `sigma` (`na * NC`) from the regrets of a support (`na * k`): regret matching on the support,
+/// uniform elsewhere (what regret matching gives for zero regrets).
+fn current_strategy(regret: &[f32], na: usize, support: &[u16], sigma: &mut [f32]) {
+    let k = support.len();
+    let mut sc = vec![0f32; na * k];
+    regret_match(regret, na, k, &mut sc);
+    sigma.iter_mut().for_each(|x| *x = 1.0 / na as f32);
+    for a in 0..na {
+        for (j, &h) in support.iter().enumerate() {
+            sigma[a * NC + h as usize] = sc[a * k + j];
+        }
+    }
 }
 
 impl<'a> Solver<'a> {
     /// `ranges[p][h]` = weight (0..1) of combo `h` in player p's range at the start of the flop.
     pub fn new(tree: &'a Tree, ranges: &[Vec<f32>; 2]) -> Self {
+        Self::with_options(tree, ranges, SolverOptions::default())
+    }
+
+    pub fn with_options(tree: &'a Tree, ranges: &[Vec<f32>; 2], opts: SolverOptions) -> Self {
         let fm = mask_of(&tree.board);
         let mut prior = [ranges[0].clone(), ranges[1].clone()];
         for p in 0..2 {
@@ -555,13 +617,29 @@ impl<'a> Solver<'a> {
                 }
             }
         }
-        let mut regret = Vec::new();
-        let mut ssum = Vec::new();
+        let mut supports: Vec<Vec<u16>> = Vec::new();
+        let mut support_ids: HashMap<(u8, u64), u32> = HashMap::new();
+        let mut support_of = Vec::with_capacity(tree.nodes.len());
+        let mut has_avg = Vec::with_capacity(tree.nodes.len());
+        let mut regret = Vec::with_capacity(tree.nodes.len());
+        let mut ssum = Vec::with_capacity(tree.nodes.len());
         for n in &tree.nodes {
-            if let PKind::Decision { children, .. } = &n.kind {
-                regret.push(vec![0f32; children.len() * NC]);
-                ssum.push(vec![0f32; children.len() * NC]);
+            if let PKind::Decision { player, children, .. } = &n.kind {
+                let bm = mask_of(&n.board);
+                let sid = *support_ids.entry((*player, bm)).or_insert_with(|| {
+                    let pr = &prior[*player as usize];
+                    supports.push((0..NC).filter(|&h| pr[h] != 0.0 && !blocked(bm, h)).map(|h| h as u16).collect());
+                    (supports.len() - 1) as u32
+                });
+                let len = children.len() * supports[sid as usize].len();
+                let keep = n.street < opts.no_average_from;
+                support_of.push(sid);
+                has_avg.push(keep);
+                regret.push(vec![0f32; len]);
+                ssum.push(if keep { vec![0f32; len] } else { Vec::new() });
             } else {
+                support_of.push(u32::MAX);
+                has_avg.push(false);
                 regret.push(Vec::new());
                 ssum.push(Vec::new());
             }
@@ -570,7 +648,27 @@ impl<'a> Solver<'a> {
         compat_mass(fm, &prior[1], &mut cm);
         let z0: f64 = (0..NC).map(|h| prior[0][h] as f64 * cm[h] as f64).sum();
         let locks = vec![None; tree.nodes.len()];
-        Solver { tree, regret, ssum, avg: Vec::new(), iters: 0, avg_start: 0, locks, prior, extra: HashMap::new(), z0 }
+        let supports = Arc::new(supports);
+        Solver { tree, regret, ssum, avg: Vec::new(), iters: 0, avg_start: 0, locks, prior, supports, support_of, has_avg, extra: HashMap::new(), z0 }
+    }
+
+    /// does this node keep a strategy average (see `SolverOptions::no_average_from`)
+    pub fn has_average(&self, node: usize) -> bool {
+        self.has_avg.get(node).copied().unwrap_or(false)
+    }
+
+    /// the support of a decision node (ascending combo indices); empty for other nodes
+    pub fn support(&self, node: usize) -> &[u16] {
+        match self.support_of.get(node) {
+            Some(&s) if s != u32::MAX => &self.supports[s as usize],
+            _ => &[],
+        }
+    }
+
+    /// bytes held by the regrets, strategy sums and average strategies (the per node `Vec` headers excluded)
+    pub fn strategy_bytes(&self) -> usize {
+        let f = |v: &Vec<Vec<f32>>| v.iter().map(|x| x.len() * 4).sum::<usize>();
+        f(&self.regret) + f(&self.ssum) + f(&self.avg)
     }
 
     /// Fix the strategy at a decision node (`strategy` is na * NC, each hand's row must sum to 1).
@@ -619,23 +717,31 @@ impl<'a> Solver<'a> {
         self.walk(0, &r0, &r1, Mode::Train(t), &mut none, false);
     }
 
+    /// Average strategy (`avg`) of every decision node that keeps one; a hand without strategy sums gets
+    /// the current strategy.  Nodes without an average get an empty `avg` entry.
     pub fn finalize_avg(&mut self) {
         self.avg = Vec::with_capacity(self.tree.nodes.len());
         for (i, n) in self.tree.nodes.iter().enumerate() {
-            if let PKind::Decision { children, .. } = &n.kind {
-                let na = children.len();
-                let mut fb = vec![0f32; na * NC];
-                regret_match(&self.regret[i], na, NC, &mut fb);
-                let mut sg = vec![0f32; na * NC];
-                for h in 0..NC {
-                    let s: f32 = (0..na).map(|a| self.ssum[i][a * NC + h]).sum();
-                    for a in 0..na {
-                        sg[a * NC + h] = if s > 1e-20 { self.ssum[i][a * NC + h] / s } else { fb[a * NC + h] };
+            match &n.kind {
+                PKind::Decision { children, .. } if self.has_avg[i] => {
+                    let na = children.len();
+                    let sup = &self.supports[self.support_of[i] as usize];
+                    let k = sup.len();
+                    let mut sg = vec![0f32; na * NC];
+                    current_strategy(&self.regret[i], na, sup, &mut sg);
+                    let ss = &self.ssum[i];
+                    for (j, &h) in sup.iter().enumerate() {
+                        let h = h as usize;
+                        let s: f32 = (0..na).map(|a| ss[a * k + j]).sum();
+                        if s > 1e-20 {
+                            for a in 0..na {
+                                sg[a * NC + h] = ss[a * k + j] / s;
+                            }
+                        }
                     }
+                    self.avg.push(sg);
                 }
-                self.avg.push(sg);
-            } else {
-                self.avg.push(Vec::new());
+                _ => self.avg.push(Vec::new()),
             }
         }
     }
@@ -830,13 +936,17 @@ impl<'a> Solver<'a> {
                 let rp: &[f32] = if p == 0 { r0 } else { r1 };
                 let ro: &[f32] = if p == 0 { r1 } else { r0 };
                 let locked = self.locks[ni].is_some();
+                let has_avg = self.has_avg[ni];
+                let supports = Arc::clone(&self.supports);
+                let sup: &[u16] = &supports[self.support_of[ni] as usize];
                 let mut sigma = vec![0f32; na * NC];
                 if locked {
                     sigma.copy_from_slice(self.locks[ni].as_ref().unwrap());
                 } else {
                     match mode {
-                        Mode::Train(_) => regret_match(&self.regret[ni], na, NC, &mut sigma),
+                        Mode::Train(_) => current_strategy(&self.regret[ni], na, sup, &mut sigma),
                         Mode::Br(bp) if bp == p => {}
+                        _ if !has_avg => current_strategy(&self.regret[ni], na, sup, &mut sigma),
                         _ => sigma.copy_from_slice(&self.avg[ni]),
                     }
                 }
@@ -881,15 +991,27 @@ impl<'a> Solver<'a> {
                 match mode {
                     Mode::Train(_) if locked => {}
                     Mode::Train(t) => {
+                        // the support only: elsewhere the reach is 0 (see `Solver`)
+                        let k = sup.len();
+                        let regret = &mut self.regret[ni];
                         for a in 0..na {
-                            for h in 0..NC {
-                                let i = a * NC + h;
-                                self.regret[ni][i] = (self.regret[ni][i] + child_p[a][h] - cfv_p[h]).max(0.0);
-                                self.ssum[ni][i] += t * rp[h] * sigma[i];
+                            for (j, &h) in sup.iter().enumerate() {
+                                let h = h as usize;
+                                let i = a * k + j;
+                                regret[i] = (regret[i] + child_p[a][h] - cfv_p[h]).max(0.0);
+                            }
+                        }
+                        if has_avg {
+                            let ssum = &mut self.ssum[ni];
+                            for a in 0..na {
+                                for (j, &h) in sup.iter().enumerate() {
+                                    let h = h as usize;
+                                    ssum[a * k + j] += t * rp[h] * sigma[a * NC + h];
+                                }
                             }
                         }
                     }
-                    Mode::Eval if ev.len() == tree.nodes.len() => {
+                    Mode::Eval if ev.len() == tree.nodes.len() && has_avg => {
                         let mut e = NodeEval { player: p as u8, weight: rp.to_vec(), freq: sigma.clone(), ..Default::default() };
                         e.ev = vec![0f32; na * NC];
                         for a in 0..na {
@@ -1413,6 +1535,124 @@ mod tests {
         let tree = build_tree(&cfg, &board("Ks 7d 2c"));
         let mut s = solve_for_fingerprint(&tree, 40, &mixed_ranges(3));
         assert_eq!(fingerprint(&tree, &mut s), [12371070372254420016, 8577233353959569927, 7758034386023338362, 12683480788134467501]);
+    }
+
+    /// the supports: the actor's starting range minus the node's board, shared by nodes of the same board
+    #[test]
+    fn supports_are_the_range_off_the_board() {
+        let cfg = Config { pot: 8.0, stack: 20.0, bets: [vec![], vec![0.5], vec![0.75]], raise_sizes: [false; 3], allow_allin: true, river_cards: 48, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 9h 5h 2d"));
+        let ranges = mixed_ranges(2);
+        let s = Solver::new(&tree, &ranges);
+        let mut boards = std::collections::HashSet::new();
+        for (i, n) in tree.nodes.iter().enumerate() {
+            let PKind::Decision { player, children, .. } = &n.kind else {
+                assert!(s.support(i).is_empty() && s.regret[i].is_empty() && s.ssum[i].is_empty());
+                continue;
+            };
+            let p = *player as usize;
+            let want: Vec<u16> = (0..NC).filter(|&h| ranges[p][h] != 0.0 && !blocked(mask_of(&n.board), h)).map(|h| h as u16).collect();
+            assert_eq!(s.support(i), &want[..]);
+            assert_eq!(s.regret[i].len(), children.len() * want.len());
+            assert_eq!(s.ssum[i].len(), children.len() * want.len());
+            boards.insert((p, mask_of(&n.board)));
+        }
+        // one list per (player, board): 1 turn board + 48 river boards, both players
+        assert_eq!(s.supports.len(), boards.len());
+        assert_eq!(s.supports.len(), 2 * 49);
+    }
+
+    /// `no_average_from`: the regrets (training) do not depend on it; the nodes of those streets keep no
+    /// average, play their current strategy wherever the average would be used, and are not exported.
+    /// The exploitability is therefore that of "average on the earlier streets + current strategy on the
+    /// later ones", which differs from the all-average value.
+    #[test]
+    fn no_average_from_the_river() {
+        let cfg = Config { pot: 8.0, stack: 20.0, bets: [vec![], vec![0.5], vec![0.75]], raise_sizes: [false; 3], allow_allin: true, river_cards: 48, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 9h 5h 2d"));
+        let ranges = mixed_ranges(2);
+        let mut full = solve_for_fingerprint(&tree, 40, &ranges);
+        let mut s = Solver::with_options(&tree, &ranges, SolverOptions { no_average_from: 2 });
+        for i in 0..40 {
+            if i == 20 {
+                s.reset_average();
+            }
+            s.iterate();
+        }
+        s.finalize_avg();
+        assert_eq!(s.regret, full.regret, "the training does not read the averages");
+        let mut rivers = 0;
+        for (i, n) in tree.nodes.iter().enumerate() {
+            if !matches!(n.kind, PKind::Decision { .. }) {
+                continue;
+            }
+            if n.street == 2 {
+                rivers += 1;
+                assert!(!s.has_average(i) && s.ssum[i].is_empty() && s.avg[i].is_empty());
+            } else {
+                assert!(s.has_average(i));
+                assert_eq!(s.ssum[i], full.ssum[i]);
+                assert_eq!(s.avg[i], full.avg[i]);
+            }
+        }
+        assert!(rivers > 0);
+        assert!(s.strategy_bytes() < full.strategy_bytes() / 2);
+
+        // the same values as the all-average solver whose river averages are replaced by the current strategy
+        let e_full = full.exploitability();
+        let mut mixed = solve_for_fingerprint(&tree, 40, &ranges);
+        for (i, n) in tree.nodes.iter().enumerate() {
+            if let PKind::Decision { children, .. } = &n.kind {
+                if n.street == 2 {
+                    current_strategy(&mixed.regret[i], children.len(), &mixed.supports[mixed.support_of[i] as usize].clone(), &mut mixed.avg[i]);
+                }
+            }
+        }
+        let e = s.exploitability();
+        assert_eq!(e.to_bits(), mixed.exploitability().to_bits());
+        assert_eq!(s.root_values(), mixed.root_values());
+        assert_ne!(e, e_full, "a different river strategy, a different value");
+        assert!(e > 0.0 && e_full > 0.0);
+
+        // evaluate: nothing on the river; the turn nodes as in `mixed`; export writes no river node
+        let ev = s.evaluate();
+        let mut ev_mixed = mixed.evaluate();
+        for (i, n) in tree.nodes.iter().enumerate() {
+            if n.street == 2 {
+                assert!(ev[i].is_none());
+                ev_mixed[i] = None;
+            } else if let Some(e) = &ev[i] {
+                let m = ev_mixed[i].as_ref().unwrap();
+                assert_eq!((&e.weight, &e.freq, &e.ev, &e.eq, e.reach), (&m.weight, &m.freq, &m.ev, &m.eq, m.reach));
+            }
+        }
+        let (bytes, map) = export_with_map(&tree, &ev, 0.0);
+        assert!(map.iter().all(|&i| tree.nodes[i as usize].street < 2));
+        assert!(map.iter().any(|&i| matches!(tree.nodes[i as usize].kind, PKind::Decision { .. })));
+        assert_eq!(bytes, export(&tree, &ev_mixed, 0.0));
+    }
+
+    /// `flop_runouts: 1176` values a flop all-in over every (turn, river) pair, each with weight 1/990
+    #[test]
+    fn flop_runouts_1176_deals_every_run_out() {
+        let b = board("As 7d 2c");
+        let cfg = Config { pot: 6.0, stack: 9.0, bets: [vec![0.5], vec![], vec![]], raise_sizes: [false; 3], allow_allin: true, turn_cards: 2, river_cards: 2, flop_runouts: 1176, ..Config::default() };
+        let tree = build_tree(&cfg, &b);
+        let fm = mask_of(&b);
+        let mut n_allin = 0;
+        for n in &tree.nodes {
+            if let PKind::AllIn { tables, weight } = &n.kind {
+                if n.board.len() != 3 {
+                    continue;
+                }
+                n_allin += 1;
+                assert_eq!(*weight, 1.0 / 990.0);
+                let runs: std::collections::HashSet<u64> = tables.iter().map(|&t| tree.tables[t as usize].mask & !fm).collect();
+                assert_eq!(runs.len(), 1176);
+                assert!(runs.iter().all(|m| m.count_ones() == 2));
+            }
+        }
+        assert!(n_allin > 0);
     }
 
     #[test]
