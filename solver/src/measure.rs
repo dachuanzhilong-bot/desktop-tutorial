@@ -284,7 +284,8 @@ pub enum Source {
 }
 
 pub struct Shipped {
-    /// starting ranges (OOP: weights of the root node; IP: weights of its first decision)
+    /// starting ranges (OOP: weights of the root node; IP: weights of its first decision, after
+    /// OOP's check or, if the file left that line out, after OOP's first kept action)
     pub prior: [Vec<f32>; 2],
     /// per tree node: na x NC (empty for non-decision nodes)
     pub strat: Vec<Vec<f32>>,
@@ -444,10 +445,17 @@ pub fn shipped_strategy(tree: &Tree, f: &Tsp1, map: &[Option<usize>], fallback: 
             source[ti] = Some(Source::Default);
         }
     }
-    // starting ranges
+    // starting ranges.  IP has not acted and no card is dealt before IP's first decision, so IP's
+    // weights there are its starting range whatever OOP did first.  Read them after OOP's check if
+    // the file has that node, else after the first OOP action that the file kept (OOP almost never
+    // checks: the check line is below `min_reach` and not written).
     let root = map[0].ok_or("root missing")?;
     let PKind::Decision { children, .. } = &tree.nodes[0].kind else { return Err("root is not a decision".into()) };
-    let ip_first = map[children[0] as usize].ok_or("IP's first decision missing")?;
+    let ip_first = children
+        .iter()
+        .filter(|&&c| matches!(tree.nodes[c as usize].kind, PKind::Decision { player: 1, .. }))
+        .find_map(|&c| map[c as usize])
+        .ok_or("IP's first decision missing")?;
     let mut prior = [vec![0f32; NC], vec![0f32; NC]];
     for (p, fi) in [(0usize, root), (1, ip_first)] {
         let fnd = &f.nodes[fi];
@@ -834,6 +842,46 @@ mod tests {
         // u8 frequencies and dropped low-weight hands move the value only a little
         assert!((got.pct - own).abs() < 0.5, "file {}% vs live solver {}%", got.pct, own);
         assert!(got.pct > 0.0 && got.pct < 5.0, "{}", got.pct);
+    }
+
+    /// OOP always bets, so the line "OOP checks" is never played and the file leaves out IP's decision
+    /// after a check (the one the starting ranges used to be read from; `3bp-btn-bb` 5c3d2h / 5c5d2h).
+    /// IP's starting range then comes from IP's decision after a bet, and the value still agrees
+    /// with `Solver::exploitability`.
+    #[test]
+    fn ip_range_without_the_check_line_in_the_file() {
+        let cfg = river_cfg();
+        let tree = build_tree(&cfg, &board("Ah 8d 7c 2s 3d"));
+        let PKind::Decision { acts, children, .. } = &tree.nodes[0].kind else { panic!("root is not a decision") };
+        assert_eq!(acts[0].kind, 1, "first root action is the check");
+        let mut lock = vec![0f32; acts.len() * NC];
+        lock[NC..2 * NC].iter_mut().for_each(|x| *x = 1.0);
+        let mut s = Solver::new(&tree, &ranges());
+        s.lock_node(0, lock).unwrap();
+        for _ in 0..200 {
+            s.iterate();
+        }
+        s.finalize_avg();
+        let ev = s.evaluate();
+        let f = parse_tsp1(&export(&tree, &ev, 0.004)).unwrap();
+        let map = match_tree(&tree, &f).unwrap();
+        assert!(map[children[0] as usize].is_none(), "the check line must be missing from the file");
+        assert!(map[children[1] as usize].is_some());
+        let sh = shipped_strategy(&tree, &f, &map, Fallback::Passive).unwrap();
+        // the range read from the file is the solver's starting range, quantized like the file
+        for p in 0..2 {
+            for h in 0..NC {
+                let w = s.prior[p][h];
+                let want = if w >= 0.01 { (w.clamp(0.0, 1.0) * 255.0).round() / 255.0 } else { 0.0 };
+                assert!((sh.prior[p][h] - want).abs() < 1e-6, "player {} hand {}: {} vs {}", p, h, sh.prior[p][h], want);
+            }
+        }
+        let mut ref_solver = Solver::new(&tree, &sh.prior);
+        ref_solver.avg = sh.strat.clone();
+        let want = 100.0 * ref_solver.exploitability() / cfg.pot;
+        let got = FullBr::new(&tree, &sh.strat, &sh.prior, Assign::Nearest).exploitability();
+        assert!(close(got.pct, want), "measured {}% vs Solver::exploitability {}%", got.pct, want);
+        assert!((got.base[0] + got.base[1] - cfg.pot).abs() < 1e-3, "constant sum {:?}", got.base);
     }
 
     /// a strategy far from equilibrium (everybody always checks / calls) is heavily exploitable,
