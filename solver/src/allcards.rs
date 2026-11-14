@@ -66,8 +66,8 @@ impl Crc {
     pub fn update(&mut self, b: &[u8]) {
         let t = crc_tables();
         let mut c = self.0;
-        let mut it = b.chunks_exact(8);
-        for x in &mut it {
+        let (words, rest) = b.as_chunks::<8>();
+        for x in words {
             let one = u32::from_le_bytes([x[0], x[1], x[2], x[3]]) ^ c;
             let two = u32::from_le_bytes([x[4], x[5], x[6], x[7]]);
             c = t[7][(one & 0xff) as usize]
@@ -79,7 +79,7 @@ impl Crc {
                 ^ t[1][((two >> 16) & 0xff) as usize]
                 ^ t[0][(two >> 24) as usize];
         }
-        for &x in it.remainder() {
+        for &x in rest {
             c = t[0][((c ^ x as u32) & 0xff) as usize] ^ (c >> 8);
         }
         self.0 = c;
@@ -193,7 +193,8 @@ fn read_f32s(r: &mut impl Read, crc: &mut Crc, v: &mut [f32], buf: &mut Vec<u8>)
         buf.resize(c.len() * 4, 0);
         r.read_exact(buf)?;
         crc.update(buf);
-        for (x, b) in c.iter_mut().zip(buf.chunks_exact(4)) {
+        // `buf` holds exactly 4 bytes per value, so `chunks(4)` never yields a short chunk
+        for (x, b) in c.iter_mut().zip(buf.chunks(4)) {
             *x = f32::from_le_bytes([b[0], b[1], b[2], b[3]]);
         }
     }
