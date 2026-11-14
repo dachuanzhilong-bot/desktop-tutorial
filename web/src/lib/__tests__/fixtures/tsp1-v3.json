@@ -1,0 +1,23 @@
+{
+"version":3,"board":[43, 37, 19],"pot":6,"stack":30,"nodes":17,
+"decisions":[
+{"id":0,"street":0,"actor":0,"n":23,"weightSum":14.262745},
+{"id":1,"street":0,"actor":1,"n":22,"weightSum":14.666667},
+{"id":3,"street":1,"actor":0,"n":22,"weightSum":13.513725},
+{"id":4,"street":1,"actor":1,"n":20,"weightSum":13.666667},
+{"id":6,"street":1,"actor":0,"n":22,"weightSum":8.443137},
+{"id":8,"street":1,"actor":1,"n":20,"weightSum":13.666667},
+{"id":10,"street":1,"actor":0,"n":22,"weightSum":13.760784},
+{"id":11,"street":1,"actor":1,"n":21,"weightSum":14},
+{"id":13,"street":1,"actor":0,"n":19,"weightSum":5.976471},
+{"id":15,"street":1,"actor":1,"n":21,"weightSum":14}
+],
+"riverStarts":[
+{"id":5,"inv":[0,0],"reach":0.153223,"board":[43, 37, 19, 34],"n":[22,20],"sum":[8.429717,7.639675],"card":18,"dealtN":[21,19],"dealtSum":[7.610539,6.668153]},
+{"id":7,"inv":[3,3],"reach":0.074156,"board":[43, 37, 19, 34],"n":[22,20],"sum":[4.985527,6.027],"card":26,"dealtN":[20,19],"dealtSum":[4.365029,5.361409]},
+{"id":9,"inv":[3,3],"reach":0.096543,"board":[43, 37, 19, 34],"n":[22,20],"sum":[5.070262,7.903896],"card":3,"dealtN":[21,20],"dealtSum":[4.594797,7.903896]},
+{"id":12,"inv":[0,0],"reach":0.113688,"board":[43, 37, 19, 10],"n":[22,21],"sum":[5.978663,8.072461],"card":12,"dealtN":[21,21],"dealtSum":[5.109444,8.072461]},
+{"id":14,"inv":[3,3],"reach":0.044345,"board":[43, 37, 19, 10],"n":[22,21],"sum":[2.992463,5.927568],"card":18,"dealtN":[21,20],"dealtSum":[2.371205,5.755304]},
+{"id":16,"inv":[3,3],"reach":0.157432,"board":[43, 37, 19, 10],"n":[22,21],"sum":[7.771353,8.464902],"card":36,"dealtN":[20,21],"dealtSum":[6.300474,8.464902]}
+]
+}
