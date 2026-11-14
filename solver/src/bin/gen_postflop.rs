@@ -248,7 +248,7 @@ fn main() {
                 let cfg = Config { pot: sc.pot, stack: sc.stack, turn_cards, river_cards, flop_runouts, seed: 11 + fi as u64, ..Config::default() };
                 let t = Instant::now();
                 let tree = build_tree(&cfg, &board);
-                let mut solver = Solver::with_options(&tree, &ranges[si], SolverOptions { no_average_from, threads: solve_threads });
+                let mut solver = Solver::with_options(&tree, &ranges[si], SolverOptions { no_average_from, threads: solve_threads, ..Default::default() });
                 let t_build = t.elapsed().as_secs_f32();
                 let n_dec = tree.nodes.iter().filter(|n| matches!(n.kind, PKind::Decision { .. })).count();
                 eprintln!("{} flop {:2} {:<9} built: {} nodes ({} decisions), {:.2} GB regret+ssum, {:.1}s, peak RSS {}", sc.id, fi, FLOPS[fi], tree.nodes.len(), n_dec, solver.strategy_bytes() as f64 / 1e9, t_build, peak_rss());

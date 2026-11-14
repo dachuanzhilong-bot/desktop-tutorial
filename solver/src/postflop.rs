@@ -542,11 +542,17 @@ pub struct SolverOptions {
     /// results are added in card order as before, so every result is bit for bit that of 1 thread.
     /// Always 1 on wasm32 (no threads there).
     pub threads: usize,
+    /// Decision nodes of this street and later that keep a strategy average get no `avg` array from
+    /// `finalize_avg`: wherever their average strategy is used, it is computed on the spot from their strategy
+    /// sums (`ssum`), with the same arithmetic as `finalize_avg`, so every value is bit for bit that of the
+    /// stored `avg` (REFACTOR_PLAN 3-3-3: the river average of a 49 x 48 tree, `na x 1,326` per node, would
+    /// not fit in memory; its `ssum` on the support does).  3 (default) = `finalize_avg` fills every node.
+    pub avg_on_demand_from: u8,
 }
 
 impl Default for SolverOptions {
     fn default() -> Self {
-        SolverOptions { no_average_from: 3, threads: 1 }
+        SolverOptions { no_average_from: 3, threads: 1, avg_on_demand_from: 3 }
     }
 }
 
@@ -562,6 +568,10 @@ impl Default for SolverOptions {
 /// for bit the same (tests `*_results_match_the_full_width_solver`).  For combos outside the starting range
 /// the strategy reported by `avg` / `evaluate` is uniform (the full-width solver reported the regret-matched
 /// mix of regrets that such a combo could never act on); they have weight 0 everywhere.
+///
+/// **Averages on demand** (`SolverOptions::avg_on_demand_from`): such a node keeps its `ssum` but `avg[node]` stays
+/// empty; the walk computes the average from `ssum` (`average_strategy`) whenever it needs it.  The same happens
+/// for any node with an average whose `avg` entry is empty (e.g. before `finalize_avg`).
 ///
 /// **Nodes without an average** (`SolverOptions::no_average_from`): `ssum[node]` and `avg[node]` are empty.
 /// Where the average strategy would be used (`exploitability`, `root_values`, `evaluate`, the opponent of a
@@ -594,6 +604,11 @@ pub struct Solver<'a> {
     subtree_end: Vec<u32>,
     /// `SolverOptions::threads`
     threads: usize,
+    /// `SolverOptions::avg_on_demand_from`
+    avg_on_demand_from: u8,
+    /// nodes of this street and later play their current strategy where the average would be used, even if they
+    /// keep one (`set_current_strategy_from`; 3 = never)
+    current_from: u8,
     extra: HashMap<u64, Strength>,
     z0: f64,
 }
@@ -608,6 +623,23 @@ fn current_strategy(regret: &[f32], na: usize, support: &[u16], sigma: &mut [f32
     for a in 0..na {
         for (j, &h) in support.iter().enumerate() {
             sigma[a * NC + h as usize] = sc[a * k + j];
+        }
+    }
+}
+
+/// The average strategy (`na * NC`) of a node from its regrets and strategy sums (both `na * k` over the
+/// support): the normalized strategy sums, and the current strategy for a hand without strategy sums.
+/// `finalize_avg` and the averages made on demand (`SolverOptions::avg_on_demand_from`) both use this.
+fn average_strategy(regret: &[f32], ssum: &[f32], na: usize, support: &[u16], sigma: &mut [f32]) {
+    current_strategy(regret, na, support, sigma);
+    let k = support.len();
+    for (j, &h) in support.iter().enumerate() {
+        let h = h as usize;
+        let s: f32 = (0..na).map(|a| ssum[a * k + j]).sum();
+        if s > 1e-20 {
+            for a in 0..na {
+                sigma[a * NC + h] = ssum[a * k + j] / s;
+            }
         }
     }
 }
@@ -662,7 +694,25 @@ impl<'a> Solver<'a> {
         let supports = Arc::new(supports);
         let subtree_end = subtree_ends(tree);
         let threads = opts.threads.max(1);
-        Solver { tree, regret, ssum, avg: Vec::new(), iters: 0, avg_start: 0, locks, prior, supports, support_of, has_avg, subtree_end, threads, extra: HashMap::new(), z0 }
+        Solver {
+            tree,
+            regret,
+            ssum,
+            avg: Vec::new(),
+            iters: 0,
+            avg_start: 0,
+            locks,
+            prior,
+            supports,
+            support_of,
+            has_avg,
+            subtree_end,
+            threads,
+            avg_on_demand_from: opts.avg_on_demand_from,
+            current_from: 3,
+            extra: HashMap::new(),
+            z0,
+        }
     }
 
     /// threads that walk the tree (see `SolverOptions::threads`)
@@ -674,7 +724,18 @@ impl<'a> Solver<'a> {
     fn run(&mut self, mode: Mode, ev: Option<&mut [Option<NodeEval>]>, want_mass: bool) -> Res {
         let (r0, r1) = (self.prior[0].clone(), self.prior[1].clone());
         let threads = if cfg!(target_arch = "wasm32") { 1 } else { self.threads };
-        let sh = Shared { tree: self.tree, locks: &self.locks, avg: &self.avg, supports: &self.supports, support_of: &self.support_of, has_avg: &self.has_avg, subtree_end: &self.subtree_end, z0: self.z0, threads };
+        let sh = Shared {
+            tree: self.tree,
+            locks: &self.locks,
+            avg: &self.avg,
+            supports: &self.supports,
+            support_of: &self.support_of,
+            has_avg: &self.has_avg,
+            subtree_end: &self.subtree_end,
+            z0: self.z0,
+            threads,
+            current_from: self.current_from,
+        };
         let mut part = Part { sh: &sh, base: 0, regret: &mut self.regret, ssum: &mut self.ssum, ev, extra: &mut self.extra, fork: threads > 1 };
         part.walk(0, &r0, &r1, mode, want_mass)
     }
@@ -727,6 +788,33 @@ impl<'a> Solver<'a> {
         }
     }
 
+    /// the strategy a node is locked to (as `lock_node` normalized it), `None` if it is not locked
+    pub fn locked_strategy(&self, node: usize) -> Option<&[f32]> {
+        self.locks.get(node).and_then(|l| l.as_deref())
+    }
+
+    /// iteration at which the strategy average was last (re)started (`reset_average`)
+    pub fn avg_start(&self) -> u32 {
+        self.avg_start
+    }
+
+    /// Set the iteration counters (`iters`, and the start of the average) of a solver whose `regret` / `ssum` were
+    /// restored from a checkpoint (REFACTOR_PLAN 3-3-3), so that it continues exactly where the saved one was.
+    pub fn restore_counters(&mut self, iters: u32, avg_start: u32) {
+        assert!(avg_start <= iters, "the average starts before the current iteration");
+        self.iters = iters;
+        self.avg_start = avg_start;
+    }
+
+    /// Decision nodes of `street` and later play their current strategy (regret matching) wherever the average
+    /// strategy would be used (`exploitability`, `root_values`, `evaluate`), even if they keep an average; 3 (the
+    /// default) = never.  Measures "the average on the earlier streets + the last iterate on the later ones"
+    /// (what a solver without those averages, `no_average_from`, plays) without solving twice.  Training is not
+    /// affected.
+    pub fn set_current_strategy_from(&mut self, street: u8) {
+        self.current_from = street;
+    }
+
     /// Forget the strategy sums (keeps the regrets): early iterations are far from equilibrium and
     /// would otherwise keep dragging the average, so the average is restarted part-way through.
     pub fn reset_average(&mut self) {
@@ -743,27 +831,17 @@ impl<'a> Solver<'a> {
     }
 
     /// Average strategy (`avg`) of every decision node that keeps one; a hand without strategy sums gets
-    /// the current strategy.  Nodes without an average get an empty `avg` entry.
+    /// the current strategy.  Nodes without an average, and nodes whose average is made on demand
+    /// (`SolverOptions::avg_on_demand_from`), get an empty `avg` entry.
     pub fn finalize_avg(&mut self) {
         self.avg = Vec::with_capacity(self.tree.nodes.len());
         for (i, n) in self.tree.nodes.iter().enumerate() {
             match &n.kind {
-                PKind::Decision { children, .. } if self.has_avg[i] => {
+                PKind::Decision { children, .. } if self.has_avg[i] && n.street < self.avg_on_demand_from => {
                     let na = children.len();
                     let sup = &self.supports[self.support_of[i] as usize];
-                    let k = sup.len();
                     let mut sg = vec![0f32; na * NC];
-                    current_strategy(&self.regret[i], na, sup, &mut sg);
-                    let ss = &self.ssum[i];
-                    for (j, &h) in sup.iter().enumerate() {
-                        let h = h as usize;
-                        let s: f32 = (0..na).map(|a| ss[a * k + j]).sum();
-                        if s > 1e-20 {
-                            for a in 0..na {
-                                sg[a * NC + h] = ss[a * k + j] / s;
-                            }
-                        }
-                    }
+                    average_strategy(&self.regret[i], &self.ssum[i], na, sup, &mut sg);
                     self.avg.push(sg);
                 }
                 _ => self.avg.push(Vec::new()),
@@ -906,6 +984,8 @@ struct Shared<'w> {
     subtree_end: &'w [u32],
     z0: f64,
     threads: usize,
+    /// `Solver::set_current_strategy_from`
+    current_from: u8,
 }
 
 /// What a walk writes, for the nodes `base..base + regret.len()`: the whole tree, or one subtree that a thread
@@ -1125,7 +1205,9 @@ impl<'w> Part<'w> {
                     match mode {
                         Mode::Train(_) => current_strategy(&self.regret[li], na, sup, &mut sigma),
                         Mode::Br(bp) if bp == p => {}
-                        _ if !has_avg => current_strategy(&self.regret[li], na, sup, &mut sigma),
+                        _ if !has_avg || node.street >= sh.current_from => current_strategy(&self.regret[li], na, sup, &mut sigma),
+                        // an average made on demand (see `Solver`)
+                        _ if sh.avg.get(ni).is_none_or(|a| a.is_empty()) => average_strategy(&self.regret[li], &self.ssum[li], na, sup, &mut sigma),
                         _ => sigma.copy_from_slice(&sh.avg[ni]),
                     }
                 }
@@ -1861,7 +1943,7 @@ mod tests {
     /// compares 1, 2 and 4 threads, f32 values as bits (so that -0 and 0 differ)
     fn assert_threads_agree(tree: &Tree, ranges: &[Vec<f32>; 2], no_average_from: u8, iters: u32, lock: Option<(usize, Vec<f32>)>) {
         let run = |threads: usize| {
-            let mut s = solve_with_threads(tree, ranges, SolverOptions { no_average_from, threads }, iters, lock.clone());
+            let mut s = solve_with_threads(tree, ranges, SolverOptions { no_average_from, threads, ..Default::default() }, iters, lock.clone());
             assert_eq!(s.threads(), threads);
             everything(tree, &mut s)
         };
