@@ -1,6 +1,9 @@
 //! Solves a set of representative flops for several preflop scenarios and writes `TSP1` files.
 //!
 //!   cargo run --release --bin gen_postflop -- --pre out/cash6max-100bb --out out/postflop
+//!
+//! Every turn / river card (REFACTOR_PLAN 3-3; regrets of the river only, no river average, docs/14 §2 (a)):
+//!   ... --turn-cards 49 --river-cards 48 --flop-runouts 1176 --no-average-from 2
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
@@ -152,6 +155,15 @@ fn expand(class_range: &[f32]) -> Vec<f32> {
         .collect()
 }
 
+/// the process's peak resident set in GB (10^9 bytes; VmHWM of /proc/self/status, "?" where there is none)
+fn peak_rss() -> String {
+    std::fs::read_to_string("/proc/self/status")
+        .ok()
+        .and_then(|s| s.lines().find(|l| l.starts_with("VmHWM:")).and_then(|l| l.split_whitespace().nth(1)).and_then(|kb| kb.parse::<f64>().ok()))
+        .map(|kb| format!("{:.2} GB", kb * 1024.0 / 1e9))
+        .unwrap_or_else(|| "?".into())
+}
+
 fn main() {
     #[cfg(target_arch = "x86_64")]
     #[allow(deprecated)]
@@ -172,6 +184,10 @@ fn main() {
     let avg_from: f32 = arg(&args, "--avg-from", 0.5);
     let only_flop: i32 = arg(&args, "--only-flop", -1);
     let from_flop: usize = arg(&args, "--from-flop", 0);
+    // run-outs that value a flop all-in (1176 = every turn / river pair) and the first street without a
+    // strategy average (3 = none; 2 = no river average, plan B of REFACTOR_PLAN 3-3)
+    let flop_runouts: usize = arg(&args, "--flop-runouts", Config::default().flop_runouts);
+    let no_average_from: u8 = arg(&args, "--no-average-from", SolverOptions::default().no_average_from);
 
     let sol = solution_io::load(&pre).expect("preflop solution");
     let (seats, pre_stack, blinds) = manifest_table(&pre);
@@ -218,16 +234,21 @@ fn main() {
                 let (si, fi) = tasks[i];
                 let sc = &SCENARIOS[si];
                 let board: Vec<u8> = FLOPS[fi].split_whitespace().map(card).collect();
-                let cfg = Config { pot: sc.pot, stack: sc.stack, turn_cards, river_cards, seed: 11 + fi as u64, ..Config::default() };
+                let cfg = Config { pot: sc.pot, stack: sc.stack, turn_cards, river_cards, flop_runouts, seed: 11 + fi as u64, ..Config::default() };
                 let t = Instant::now();
                 let tree = build_tree(&cfg, &board);
-                let mut solver = Solver::new(&tree, &ranges[si]);
+                let mut solver = Solver::with_options(&tree, &ranges[si], SolverOptions { no_average_from });
+                let t_build = t.elapsed().as_secs_f32();
+                let n_dec = tree.nodes.iter().filter(|n| matches!(n.kind, PKind::Decision { .. })).count();
+                eprintln!("{} flop {:2} {:<9} built: {} nodes ({} decisions), {:.2} GB regret+ssum, {:.1}s, peak RSS {}", sc.id, fi, FLOPS[fi], tree.nodes.len(), n_dec, solver.strategy_bytes() as f64 / 1e9, t_build, peak_rss());
                 for i in 0..iters {
                     if i == (iters as f32 * avg_from) as u32 && avg_from > 0.0 {
                         solver.reset_average();
                     }
                     solver.iterate();
                 }
+                let t_iter = (t.elapsed().as_secs_f32() - t_build) / iters.max(1) as f32;
+                eprintln!("{} flop {:2} {:<9} {} iterations: {:.2} s/iteration, peak RSS {}", sc.id, fi, FLOPS[fi], iters, t_iter, peak_rss());
                 solver.finalize_avg();
                 let expl = solver.exploitability();
                 let ev = solver.evaluate();
@@ -238,7 +259,7 @@ fn main() {
                 let dir = format!("{}/{}", out, sc.id);
                 std::fs::create_dir_all(&dir).unwrap();
                 std::fs::write(format!("{}/{}.bin", dir, fi), &bytes).unwrap();
-                let msg = format!("{} flop {:2} {:<9} nodes {:4}  expl {:.3} chips ({:.2}% pot)  {:>7} B  {:.0}s", sc.id, fi, FLOPS[fi], tree.nodes.len(), expl, 100.0 * expl / sc.pot, bytes.len(), t.elapsed().as_secs_f32());
+                let msg = format!("{} flop {:2} {:<9} nodes {:4}  expl {:.3} chips ({:.2}% pot)  {:>7} B  {:.0}s  peak RSS {}", sc.id, fi, FLOPS[fi], tree.nodes.len(), expl, 100.0 * expl / sc.pot, bytes.len(), t.elapsed().as_secs_f32(), peak_rss());
                 eprintln!("{}", msg);
             });
         }
