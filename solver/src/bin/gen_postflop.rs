@@ -4,6 +4,11 @@
 //!
 //! Every turn / river card (REFACTOR_PLAN 3-3; regrets of the river only, no river average, docs/14 §2 (a)):
 //!   ... --turn-cards 49 --river-cards 48 --flop-runouts 1176 --no-average-from 2
+//!
+//! Threads: `--threads N` solves N flops at a time; `--solve-threads M` walks one flop's turn card subtrees on M
+//! threads (REFACTOR_PLAN 3-3-2; default 1, the results are bit for bit the same for every M).  The two
+//! multiply: up to N x M busy threads, so keep N x M at most the number of cores (e.g. one big flop at a time:
+//! `--threads 1 --solve-threads 4`).  Memory grows with N (one tree per flop being solved), not with M.
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
@@ -188,6 +193,8 @@ fn main() {
     // strategy average (3 = none; 2 = no river average, plan B of REFACTOR_PLAN 3-3)
     let flop_runouts: usize = arg(&args, "--flop-runouts", Config::default().flop_runouts);
     let no_average_from: u8 = arg(&args, "--no-average-from", SolverOptions::default().no_average_from);
+    // threads inside one flop (see the top of the file: N x M threads with --threads N, keep it <= the cores)
+    let solve_threads: usize = arg(&args, "--solve-threads", SolverOptions::default().threads).max(1);
 
     let sol = solution_io::load(&pre).expect("preflop solution");
     let (seats, pre_stack, blinds) = manifest_table(&pre);
@@ -204,6 +211,10 @@ fn main() {
             }
             tasks.push((si, fi));
         }
+    }
+    let busy = threads.min(tasks.len()) * solve_threads;
+    if busy > std::thread::available_parallelism().map(|n| n.get()).unwrap_or(1) {
+        eprintln!("warning: {} flops at a time x --solve-threads {} = {} threads, more than the cores of this machine", threads.min(tasks.len()), solve_threads, busy);
     }
     // ranges per scenario
     let mut ranges: Vec<[Vec<f32>; 2]> = Vec::new();
@@ -237,7 +248,7 @@ fn main() {
                 let cfg = Config { pot: sc.pot, stack: sc.stack, turn_cards, river_cards, flop_runouts, seed: 11 + fi as u64, ..Config::default() };
                 let t = Instant::now();
                 let tree = build_tree(&cfg, &board);
-                let mut solver = Solver::with_options(&tree, &ranges[si], SolverOptions { no_average_from });
+                let mut solver = Solver::with_options(&tree, &ranges[si], SolverOptions { no_average_from, threads: solve_threads });
                 let t_build = t.elapsed().as_secs_f32();
                 let n_dec = tree.nodes.iter().filter(|n| matches!(n.kind, PKind::Decision { .. })).count();
                 eprintln!("{} flop {:2} {:<9} built: {} nodes ({} decisions), {:.2} GB regret+ssum, {:.1}s, peak RSS {}", sc.id, fi, FLOPS[fi], tree.nodes.len(), n_dec, solver.strategy_bytes() as f64 / 1e9, t_build, peak_rss());
