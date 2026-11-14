@@ -1293,6 +1293,128 @@ mod tests {
         assert!(e < 0.04 * 6.0, "exploitability {} chips of a 6 chip pot", e);
     }
 
+    // ---- fingerprints of the solver's results (REFACTOR_PLAN 3-3-1)
+    //
+    // The expected hashes were taken from the solver before regrets / strategy sums were stored only for
+    // the combos of the acting player's range that avoid the board.  They cover every value a caller can
+    // see for a hand that can be at the node: exploitability, root values, the exported file, `evaluate`
+    // (weight, equity and reach for every combo; frequency and EV for the combos of the support) and
+    // `avg` on the support.  Combos outside the starting range never reach a node, so their frequency /
+    // EV / average are not part of the result (they may differ, see `Solver`).
+
+    struct Fnv(u64);
+    impl Fnv {
+        fn new() -> Fnv {
+            Fnv(0xcbf2_9ce4_8422_2325)
+        }
+        fn bytes(&mut self, b: &[u8]) {
+            for &x in b {
+                self.0 = (self.0 ^ x as u64).wrapping_mul(0x0100_0000_01b3);
+            }
+        }
+        fn f(&mut self, x: f32) {
+            self.bytes(&x.to_bits().to_le_bytes());
+        }
+    }
+
+    /// combos that can hold a hand of player `p` at a node with `board`
+    fn can_hold(s: &Solver, p: usize, board: &[u8], h: usize) -> bool {
+        s.prior[p][h] != 0.0 && !blocked(mask_of(board), h)
+    }
+
+    /// [exploitability + root values, export, evaluate, avg]
+    fn fingerprint(tree: &Tree, s: &mut Solver) -> [u64; 4] {
+        let mut a = Fnv::new();
+        a.f(s.exploitability());
+        let v = s.root_values();
+        a.f(v[0]);
+        a.f(v[1]);
+        let ev = s.evaluate();
+        let mut b = Fnv::new();
+        b.bytes(&export(tree, &ev, 0.0));
+        b.bytes(&export(tree, &ev, 0.004));
+        let mut c = Fnv::new();
+        let mut d = Fnv::new();
+        for (i, n) in tree.nodes.iter().enumerate() {
+            let PKind::Decision { player, children, .. } = &n.kind else {
+                c.bytes(&[ev[i].is_some() as u8]);
+                continue;
+            };
+            let (p, na) = (*player as usize, children.len());
+            if let Some(e) = &ev[i] {
+                c.bytes(&[1, e.player]);
+                c.f(e.reach);
+                e.weight.iter().chain(e.eq.iter()).for_each(|&x| c.f(x));
+                for h in (0..NC).filter(|&h| can_hold(s, p, &n.board, h)) {
+                    (0..na).for_each(|a| c.f(e.freq[a * NC + h]));
+                    (0..na).for_each(|a| c.f(e.ev[a * NC + h]));
+                }
+            } else {
+                c.bytes(&[0]);
+            }
+            for h in (0..NC).filter(|&h| can_hold(s, p, &n.board, h)) {
+                (0..na).for_each(|a| d.f(s.avg[i][a * NC + h]));
+            }
+        }
+        [a.0, b.0, c.0, d.0]
+    }
+
+    /// deterministic ranges with partial weights and ~40 % of the combos outside the range
+    fn mixed_ranges(seed: u64) -> [Vec<f32>; 2] {
+        let mut rng = Rng::new(seed);
+        let mut one = || (0..NC).map(|_| { let x = rng.below(10); if x < 4 { 0.0 } else { x as f32 / 9.0 } }).collect::<Vec<f32>>();
+        [one(), one()]
+    }
+
+    fn solve_for_fingerprint<'t>(tree: &'t Tree, iters: u32, ranges: &[Vec<f32>; 2]) -> Solver<'t> {
+        let mut s = Solver::new(tree, ranges);
+        for i in 0..iters {
+            if i == iters / 2 {
+                s.reset_average();
+            }
+            s.iterate();
+        }
+        s.finalize_avg();
+        s
+    }
+
+    #[test]
+    fn river_results_match_the_full_width_solver() {
+        let cfg = Config { pot: 10.0, stack: 40.0, bets: [vec![], vec![], vec![0.5, 1.0]], raise_sizes: [false, false, true], allow_allin: true, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ah 8d 7c 2s 3d"));
+        let mut s = solve_for_fingerprint(&tree, 200, &mixed_ranges(1));
+        assert_eq!(fingerprint(&tree, &mut s), [15487618981337517224, 14948454361802919539, 2450223270168397083, 3658067780336906346]);
+        // a locked node takes the same path in both layouts
+        let mut s = Solver::new(&tree, &mixed_ranges(1));
+        let mut lock = vec![0f32; 3 * NC];
+        for h in 0..NC {
+            lock[h] = 0.25 + (h % 3) as f32 * 0.25;
+            lock[NC + h] = 1.0 - lock[h];
+        }
+        s.lock_node(0, lock).unwrap();
+        for _ in 0..100 {
+            s.iterate();
+        }
+        s.finalize_avg();
+        assert_eq!(fingerprint(&tree, &mut s), [6198926106085766835, 2706718799317836531, 3652014784600167342, 1407697205378330402]);
+    }
+
+    #[test]
+    fn turn_results_match_the_full_width_solver() {
+        let cfg = Config { pot: 8.0, stack: 20.0, bets: [vec![], vec![0.5], vec![0.75]], raise_sizes: [false; 3], allow_allin: true, river_cards: 48, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 9h 5h 2d"));
+        let mut s = solve_for_fingerprint(&tree, 40, &mixed_ranges(2));
+        assert_eq!(fingerprint(&tree, &mut s), [4668632911533140705, 14385437003168876600, 12427464498391449646, 10132772966205058396]);
+    }
+
+    #[test]
+    fn flop_results_match_the_full_width_solver() {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 3, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let mut s = solve_for_fingerprint(&tree, 40, &mixed_ranges(3));
+        assert_eq!(fingerprint(&tree, &mut s), [12371070372254420016, 8577233353959569927, 7758034386023338362, 12683480788134467501]);
+    }
+
     #[test]
     fn allin_equity_matches_enumeration() {
         // AhAd vs KhKd on 2c 7d 9s: all-in equity by exact enumeration of the run-outs
