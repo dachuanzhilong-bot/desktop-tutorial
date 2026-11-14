@@ -18,6 +18,7 @@
 | 11 | [icm.md](11-icm.md) | MTT/ICM プッシュフォールド、性能・アクセシビリティの計測 |
 | 12 | [12-design-tokens.md](12-design-tokens.md) | デザイントークンと画面の約束ごと |
 | 13 | [13-hosting.md](13-hosting.md) | 公開（GitHub Pages・Vercel・Netlify など）の手順と確認済みの範囲 |
+| 14 | [14-postflop-all-cards.md](14-postflop-all-cards.md) | ポストフロップを全カードで解く方針（A / B 案の設計レビュー、実験、目標、計算資源） |
 
 ## 設計上の大原則
 
