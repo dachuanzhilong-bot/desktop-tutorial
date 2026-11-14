@@ -536,11 +536,17 @@ pub struct SolverOptions {
     /// re-solves the river on the device, so the precomputation needs no river average (`no_average_from: 2`).
     /// See `Solver` for how such nodes are evaluated and exported.
     pub no_average_from: u8,
+    /// Threads that walk the tree (REFACTOR_PLAN 3-3-2); 1 (default) = the calling thread only.
+    /// With more, the children of the first chance node met on the way down (on a flop tree: the turn card
+    /// subtrees under each flop chance node; on a turn tree: the river cards) are walked in parallel, and their
+    /// results are added in card order as before, so every result is bit for bit that of 1 thread.
+    /// Always 1 on wasm32 (no threads there).
+    pub threads: usize,
 }
 
 impl Default for SolverOptions {
     fn default() -> Self {
-        SolverOptions { no_average_from: 3 }
+        SolverOptions { no_average_from: 3, threads: 1 }
     }
 }
 
@@ -583,6 +589,11 @@ pub struct Solver<'a> {
     pub support_of: Vec<u32>,
     /// per node: does it keep a strategy average
     has_avg: Vec<bool>,
+    /// per node, one past the last node of its subtree (the tree is built depth first, so a subtree is the
+    /// node range `i..subtree_end[i]` and the children of a node own consecutive ranges)
+    subtree_end: Vec<u32>,
+    /// `SolverOptions::threads`
+    threads: usize,
     extra: HashMap<u64, Strength>,
     z0: f64,
 }
@@ -649,7 +660,23 @@ impl<'a> Solver<'a> {
         let z0: f64 = (0..NC).map(|h| prior[0][h] as f64 * cm[h] as f64).sum();
         let locks = vec![None; tree.nodes.len()];
         let supports = Arc::new(supports);
-        Solver { tree, regret, ssum, avg: Vec::new(), iters: 0, avg_start: 0, locks, prior, supports, support_of, has_avg, extra: HashMap::new(), z0 }
+        let subtree_end = subtree_ends(tree);
+        let threads = opts.threads.max(1);
+        Solver { tree, regret, ssum, avg: Vec::new(), iters: 0, avg_start: 0, locks, prior, supports, support_of, has_avg, subtree_end, threads, extra: HashMap::new(), z0 }
+    }
+
+    /// threads that walk the tree (see `SolverOptions::threads`)
+    pub fn threads(&self) -> usize {
+        self.threads
+    }
+
+    /// Walk the whole tree from the root with the starting ranges.
+    fn run(&mut self, mode: Mode, ev: Option<&mut [Option<NodeEval>]>, want_mass: bool) -> Res {
+        let (r0, r1) = (self.prior[0].clone(), self.prior[1].clone());
+        let threads = if cfg!(target_arch = "wasm32") { 1 } else { self.threads };
+        let sh = Shared { tree: self.tree, locks: &self.locks, avg: &self.avg, supports: &self.supports, support_of: &self.support_of, has_avg: &self.has_avg, subtree_end: &self.subtree_end, z0: self.z0, threads };
+        let mut part = Part { sh: &sh, base: 0, regret: &mut self.regret, ssum: &mut self.ssum, ev, extra: &mut self.extra, fork: threads > 1 };
+        part.walk(0, &r0, &r1, mode, want_mass)
     }
 
     /// does this node keep a strategy average (see `SolverOptions::no_average_from`)
@@ -712,9 +739,7 @@ impl<'a> Solver<'a> {
     pub fn iterate(&mut self) {
         self.iters += 1;
         let t = (self.iters - self.avg_start) as f32;
-        let (r0, r1) = (self.prior[0].clone(), self.prior[1].clone());
-        let mut none = Vec::new();
-        self.walk(0, &r0, &r1, Mode::Train(t), &mut none, false);
+        self.run(Mode::Train(t), None, false);
     }
 
     /// Average strategy (`avg`) of every decision node that keeps one; a hand without strategy sums gets
@@ -748,9 +773,7 @@ impl<'a> Solver<'a> {
 
     /// value of each player at the root under the average strategy (chips, incl. the share of the initial pot)
     pub fn root_values(&mut self) -> [f32; 2] {
-        let (r0, r1) = (self.prior[0].clone(), self.prior[1].clone());
-        let mut none = Vec::new();
-        let res = self.walk(0, &r0, &r1, Mode::Eval, &mut none, true);
+        let res = self.run(Mode::Eval, None, true);
         self.value(&res, 0)
     }
 
@@ -769,9 +792,7 @@ impl<'a> Solver<'a> {
         let base = self.root_values();
         let mut gain = 0f32;
         for p in 0..2 {
-            let (r0, r1) = (self.prior[0].clone(), self.prior[1].clone());
-            let mut none = Vec::new();
-            let res = self.walk(0, &r0, &r1, Mode::Br(p), &mut none, true);
+            let res = self.run(Mode::Br(p), None, true);
             let br = self.value(&res, p)[p];
             gain += (br - base[p]).max(0.0);
         }
@@ -779,9 +800,8 @@ impl<'a> Solver<'a> {
     }
 
     pub fn evaluate(&mut self) -> Vec<Option<NodeEval>> {
-        let (r0, r1) = (self.prior[0].clone(), self.prior[1].clone());
         let mut ev: Vec<Option<NodeEval>> = vec![None; self.tree.nodes.len()];
-        self.walk(0, &r0, &r1, Mode::Eval, &mut ev, true);
+        self.run(Mode::Eval, Some(&mut ev), true);
         ev
     }
 
@@ -799,69 +819,221 @@ impl<'a> Solver<'a> {
         if den > 0.0 { (num / den) as f32 } else { 0.5 }
     }
 
-    fn strength_for(&mut self, board5: &[u8]) -> &Strength {
-        let key = mask_of(board5);
-        self.extra.entry(key).or_insert_with(|| Strength::new(&[board5[0], board5[1], board5[2], board5[3], board5[4]]))
-    }
-
     /// all-in equity of every hand against `r_opp` on the node's board
     fn equity_vs(&mut self, board: &[u8], r_opp: &[f32]) -> Vec<f32> {
-        let mut share = vec![0f32; NC];
-        let mut mass = vec![0f32; NC];
-        let mut s_acc = vec![0f64; NC];
-        let mut m_acc = vec![0f64; NC];
-        let bm = mask_of(board);
-        let mut boards: Vec<Vec<u8>> = Vec::new();
-        match board.len() {
-            5 => boards.push(board.to_vec()),
-            4 => {
-                for c in 0..52u8 {
-                    if (bm >> c) & 1 == 0 {
-                        let mut b = board.to_vec();
-                        b.push(c);
-                        boards.push(b);
-                    }
-                }
-            }
-            _ => {
-                let mut rng = Rng::new(99);
-                let mut rem: Vec<u8> = (0..52u8).filter(|c| (bm >> c) & 1 == 0).collect();
-                for _ in 0..80 {
-                    for i in 0..2 {
-                        let j = i + rng.below((rem.len() - i) as u32) as usize;
-                        rem.swap(i, j);
-                    }
+        equity_vs(&mut self.extra, board, r_opp)
+    }
+}
+
+/// all-in equity of every hand against `r_opp` on `board`; `extra` caches the hand strengths of the 5 card boards
+/// (a cache only: the result does not depend on what it holds)
+fn equity_vs(extra: &mut HashMap<u64, Strength>, board: &[u8], r_opp: &[f32]) -> Vec<f32> {
+    let mut share = vec![0f32; NC];
+    let mut mass = vec![0f32; NC];
+    let mut s_acc = vec![0f64; NC];
+    let mut m_acc = vec![0f64; NC];
+    let bm = mask_of(board);
+    let mut boards: Vec<Vec<u8>> = Vec::new();
+    match board.len() {
+        5 => boards.push(board.to_vec()),
+        4 => {
+            for c in 0..52u8 {
+                if (bm >> c) & 1 == 0 {
                     let mut b = board.to_vec();
-                    b.push(rem[0]);
-                    b.push(rem[1]);
+                    b.push(c);
                     boards.push(b);
                 }
             }
         }
-        for b in &boards {
-            let m5 = mask_of(b);
-            let mut r = r_opp.to_vec();
-            for h in 0..NC {
-                if blocked(m5, h) {
-                    r[h] = 0.0;
+        _ => {
+            let mut rng = Rng::new(99);
+            let mut rem: Vec<u8> = (0..52u8).filter(|c| (bm >> c) & 1 == 0).collect();
+            for _ in 0..80 {
+                for i in 0..2 {
+                    let j = i + rng.below((rem.len() - i) as u32) as usize;
+                    rem.swap(i, j);
                 }
-            }
-            let st = self.strength_for(b);
-            for &h in &st.order {
-                share[h as usize] = 0.0;
-                mass[h as usize] = 0.0;
-            }
-            showdown(st, &r, &mut share, &mut mass);
-            for &h in &st.order {
-                s_acc[h as usize] += share[h as usize] as f64;
-                m_acc[h as usize] += mass[h as usize] as f64;
+                let mut b = board.to_vec();
+                b.push(rem[0]);
+                b.push(rem[1]);
+                boards.push(b);
             }
         }
-        (0..NC).map(|h| if m_acc[h] > 0.0 { (s_acc[h] / m_acc[h]) as f32 } else { 0.5 }).collect()
+    }
+    for b in &boards {
+        let m5 = mask_of(b);
+        let mut r = r_opp.to_vec();
+        for h in 0..NC {
+            if blocked(m5, h) {
+                r[h] = 0.0;
+            }
+        }
+        let st = extra.entry(m5).or_insert_with(|| Strength::new(&[b[0], b[1], b[2], b[3], b[4]]));
+        for &h in &st.order {
+            share[h as usize] = 0.0;
+            mass[h as usize] = 0.0;
+        }
+        showdown(st, &r, &mut share, &mut mass);
+        for &h in &st.order {
+            s_acc[h as usize] += share[h as usize] as f64;
+            m_acc[h as usize] += mass[h as usize] as f64;
+        }
+    }
+    (0..NC).map(|h| if m_acc[h] > 0.0 { (s_acc[h] / m_acc[h]) as f32 } else { 0.5 }).collect()
+}
+
+/// per node, one past the last node of its subtree (nodes are numbered depth first by `build_tree`)
+fn subtree_ends(tree: &Tree) -> Vec<u32> {
+    let n = tree.nodes.len();
+    let mut end = vec![0u32; n];
+    for i in (0..n).rev() {
+        end[i] = match &tree.nodes[i].kind {
+            PKind::Decision { children, .. } | PKind::Chance { children, .. } => children.iter().map(|&c| end[c as usize]).max().unwrap_or(i as u32 + 1),
+            _ => i as u32 + 1,
+        };
+    }
+    end
+}
+
+/// What a walk only reads; shared by the threads of a parallel walk.
+struct Shared<'w> {
+    tree: &'w Tree,
+    locks: &'w [Option<Vec<f32>>],
+    avg: &'w [Vec<f32>],
+    supports: &'w [Vec<u16>],
+    support_of: &'w [u32],
+    has_avg: &'w [bool],
+    subtree_end: &'w [u32],
+    z0: f64,
+    threads: usize,
+}
+
+/// What a walk writes, for the nodes `base..base + regret.len()`: the whole tree, or one subtree that a thread
+/// walks.  A node's regrets / strategy sums / evaluation are written only by the walk of its own subtree, so
+/// the subtrees of a chance node's children can be walked at the same time with `split_at_mut` slices and no
+/// `unsafe` or locking.
+struct Part<'w> {
+    sh: &'w Shared<'w>,
+    base: usize,
+    regret: &'w mut [Vec<f32>],
+    ssum: &'w mut [Vec<f32>],
+    ev: Option<&'w mut [Option<NodeEval>]>,
+    extra: &'w mut HashMap<u64, Strength>,
+    /// walk the children of the next chance node in parallel (`Shared::threads` > 1, and not already inside a
+    /// parallel walk)
+    fork: bool,
+}
+
+/// one child subtree of a forked chance node: (child number, card, child node, its regrets, strategy sums, evaluations)
+type Job<'a> = (usize, u8, usize, &'a mut [Vec<f32>], &'a mut [Vec<f32>], Option<&'a mut [Option<NodeEval>]>);
+
+/// The floating point control word of the calling thread (x86-64 MXCSR: flush-to-zero / denormals-are-zero,
+/// which `gen_postflop` sets), so that a worker thread computes exactly as the thread that forked it.
+/// Linux threads inherit it, other systems need not; `0` elsewhere.
+#[cfg(target_arch = "x86_64")]
+fn fp_control() -> u32 {
+    // SAFETY: reading MXCSR has no precondition (SSE is part of x86-64)
+    #[allow(deprecated)]
+    unsafe {
+        std::arch::x86_64::_mm_getcsr()
+    }
+}
+
+#[cfg(target_arch = "x86_64")]
+fn set_fp_control(x: u32) {
+    // SAFETY: `x` was read from MXCSR by `fp_control` on another thread of this process, so it is a valid value
+    #[allow(deprecated)]
+    unsafe {
+        std::arch::x86_64::_mm_setcsr(x)
+    }
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+fn fp_control() -> u32 {
+    0
+}
+
+#[cfg(not(target_arch = "x86_64"))]
+fn set_fp_control(_: u32) {}
+
+/// stack of a worker thread (the walk recurses once per tree level, ~20 levels with small frames)
+const WORKER_STACK: usize = 8 << 20;
+
+impl<'w> Part<'w> {
+    /// Walk the children of chance node `ni` on `sh.threads` threads.  Child `i` owns the nodes
+    /// `children[i]..subtree_end[children[i]]` (consecutive ranges), which become the `Part`s of the jobs; a
+    /// thread takes the next job until none is left.  Returns the children's results in card order, whichever
+    /// thread computed them.
+    #[allow(clippy::too_many_arguments)] // the arguments of `walk`, plus the chance node's own
+    fn fork_children(&mut self, ni: usize, cards: &[u8], children: &[u32], r0: &[f32], r1: &[f32], mode: Mode, want_mass: bool) -> Vec<Res> {
+        let sh: &'w Shared<'w> = self.sh;
+        let n = children.len();
+        let lo = children[0] as usize - self.base;
+        let hi = sh.subtree_end[ni] as usize - self.base;
+        let mut regret = &mut self.regret[lo..hi];
+        let mut ssum = &mut self.ssum[lo..hi];
+        let mut ev = self.ev.as_deref_mut().map(|e| &mut e[lo..hi]);
+        let mut jobs: Vec<Job> = Vec::with_capacity(n);
+        for (i, (&c, &ch)) in cards.iter().zip(children).enumerate() {
+            let end = sh.subtree_end[ch as usize];
+            assert!(i + 1 == n || children[i + 1] == end, "child subtrees are consecutive");
+            let len = (end - ch) as usize;
+            let (r, rest) = std::mem::take(&mut regret).split_at_mut(len);
+            regret = rest;
+            let (s, rest) = std::mem::take(&mut ssum).split_at_mut(len);
+            ssum = rest;
+            let e = ev.take().map(|e| {
+                let (a, b) = e.split_at_mut(len);
+                ev = Some(b);
+                a
+            });
+            jobs.push((i, c, ch as usize, r, s, e));
+        }
+        let queue = std::sync::Mutex::new(jobs.into_iter());
+        let fpc = fp_control();
+        let mut out: Vec<Option<Res>> = (0..n).map(|_| None).collect();
+        let mut caches = Vec::new();
+        std::thread::scope(|s| {
+            let queue = &queue;
+            let handles: Vec<_> = (0..sh.threads.min(n))
+                .map(|_| {
+                    std::thread::Builder::new()
+                        .stack_size(WORKER_STACK)
+                        .spawn_scoped(s, move || {
+                            set_fp_control(fpc);
+                            let mut extra = HashMap::new();
+                            let mut done = Vec::new();
+                            loop {
+                                let job = queue.lock().expect("job queue").next();
+                                let Some((i, c, ch, regret, ssum, ev)) = job else { break };
+                                let mut part = Part { sh, base: ch, regret, ssum, ev, extra: &mut extra, fork: false };
+                                let (a0, a1) = (zero_card(r0, c), zero_card(r1, c));
+                                done.push((i, part.walk(ch, &a0, &a1, mode, want_mass)));
+                            }
+                            (done, extra)
+                        })
+                        .expect("start a solver thread")
+                })
+                .collect();
+            for h in handles {
+                let (done, extra) = h.join().expect("solver thread");
+                for (i, res) in done {
+                    out[i] = Some(res);
+                }
+                caches.push(extra);
+            }
+        });
+        for c in caches {
+            for (k, v) in c {
+                self.extra.entry(k).or_insert(v);
+            }
+        }
+        out.into_iter().map(|r| r.expect("every child walked")).collect()
     }
 
-    fn walk(&mut self, ni: usize, r0: &[f32], r1: &[f32], mode: Mode, ev: &mut Vec<Option<NodeEval>>, want_mass: bool) -> Res {
-        let tree: &'a Tree = self.tree;
+    fn walk(&mut self, ni: usize, r0: &[f32], r1: &[f32], mode: Mode, want_mass: bool) -> Res {
+        let sh: &'w Shared<'w> = self.sh;
+        let tree: &'w Tree = sh.tree;
         let node = &tree.nodes[ni];
         let pot_total = tree.cfg.pot + node.inv[0] + node.inv[1];
         let need_mass = want_mass || !matches!(mode, Mode::Train(_));
@@ -922,10 +1094,17 @@ impl<'a> Solver<'a> {
             }
             PKind::Chance { cards, children, weight } => {
                 let mut acc = Res::zero(need_mass);
-                for (&c, &ch) in cards.iter().zip(children.iter()) {
-                    let (a0, a1) = (zero_card(r0, c), zero_card(r1, c));
-                    let res = self.walk(ch as usize, &a0, &a1, mode, ev, want_mass);
-                    acc.add_scaled(&res, *weight);
+                if self.fork && children.len() > 1 {
+                    // the same sum in the same (card) order as below, only the children are computed in parallel
+                    for res in self.fork_children(ni, cards, children, r0, r1, mode, want_mass) {
+                        acc.add_scaled(&res, *weight);
+                    }
+                } else {
+                    for (&c, &ch) in cards.iter().zip(children.iter()) {
+                        let (a0, a1) = (zero_card(r0, c), zero_card(r1, c));
+                        let res = self.walk(ch as usize, &a0, &a1, mode, want_mass);
+                        acc.add_scaled(&res, *weight);
+                    }
                 }
                 acc
             }
@@ -935,19 +1114,19 @@ impl<'a> Solver<'a> {
                 let na = children.len();
                 let rp: &[f32] = if p == 0 { r0 } else { r1 };
                 let ro: &[f32] = if p == 0 { r1 } else { r0 };
-                let locked = self.locks[ni].is_some();
-                let has_avg = self.has_avg[ni];
-                let supports = Arc::clone(&self.supports);
-                let sup: &[u16] = &supports[self.support_of[ni] as usize];
+                let li = ni - self.base;
+                let locked = sh.locks[ni].is_some();
+                let has_avg = sh.has_avg[ni];
+                let sup: &[u16] = &sh.supports[sh.support_of[ni] as usize];
                 let mut sigma = vec![0f32; na * NC];
-                if locked {
-                    sigma.copy_from_slice(self.locks[ni].as_ref().unwrap());
+                if let Some(l) = &sh.locks[ni] {
+                    sigma.copy_from_slice(l);
                 } else {
                     match mode {
-                        Mode::Train(_) => current_strategy(&self.regret[ni], na, sup, &mut sigma),
+                        Mode::Train(_) => current_strategy(&self.regret[li], na, sup, &mut sigma),
                         Mode::Br(bp) if bp == p => {}
-                        _ if !has_avg => current_strategy(&self.regret[ni], na, sup, &mut sigma),
-                        _ => sigma.copy_from_slice(&self.avg[ni]),
+                        _ if !has_avg => current_strategy(&self.regret[li], na, sup, &mut sigma),
+                        _ => sigma.copy_from_slice(&sh.avg[ni]),
                     }
                 }
                 let mut cfv_p = vec![0f32; NC];
@@ -958,7 +1137,7 @@ impl<'a> Solver<'a> {
                 let mut best: Option<Vec<f32>> = None;
                 for a in 0..na {
                     let new_rp: Vec<f32> = (0..NC).map(|h| rp[h] * sigma[a * NC + h]).collect();
-                    let res = if p == 0 { self.walk(children[a] as usize, &new_rp, ro, mode, ev, want_mass) } else { self.walk(children[a] as usize, ro, &new_rp, mode, ev, want_mass) };
+                    let res = if p == 0 { self.walk(children[a] as usize, &new_rp, ro, mode, want_mass) } else { self.walk(children[a] as usize, ro, &new_rp, mode, want_mass) };
                     for h in 0..NC {
                         cfv_o[h] += res.v[o][h];
                     }
@@ -993,7 +1172,7 @@ impl<'a> Solver<'a> {
                     Mode::Train(t) => {
                         // the support only: elsewhere the reach is 0 (see `Solver`)
                         let k = sup.len();
-                        let regret = &mut self.regret[ni];
+                        let regret = &mut self.regret[li];
                         for a in 0..na {
                             for (j, &h) in sup.iter().enumerate() {
                                 let h = h as usize;
@@ -1002,7 +1181,7 @@ impl<'a> Solver<'a> {
                             }
                         }
                         if has_avg {
-                            let ssum = &mut self.ssum[ni];
+                            let ssum = &mut self.ssum[li];
                             for a in 0..na {
                                 for (j, &h) in sup.iter().enumerate() {
                                     let h = h as usize;
@@ -1011,7 +1190,7 @@ impl<'a> Solver<'a> {
                             }
                         }
                     }
-                    Mode::Eval if ev.len() == tree.nodes.len() && has_avg => {
+                    Mode::Eval if self.ev.is_some() && has_avg => {
                         let mut e = NodeEval { player: p as u8, weight: rp.to_vec(), freq: sigma.clone(), ..Default::default() };
                         e.ev = vec![0f32; na * NC];
                         for a in 0..na {
@@ -1022,11 +1201,13 @@ impl<'a> Solver<'a> {
                         let mut cm = vec![0f32; NC];
                         compat_mass(mask_of(&node.board), ro, &mut cm);
                         let pair: f64 = (0..NC).map(|h| rp[h] as f64 * cm[h] as f64).sum();
-                        e.reach = (node.chance_p as f64 * pair / self.z0.max(1e-30)) as f32;
+                        e.reach = (node.chance_p as f64 * pair / sh.z0.max(1e-30)) as f32;
                         if e.reach > 1e-5 {
-                            e.eq = self.equity_vs(&node.board, ro);
+                            e.eq = equity_vs(self.extra, &node.board, ro);
                         }
-                        ev[ni] = Some(e);
+                        if let Some(ev) = self.ev.as_deref_mut() {
+                            ev[li] = Some(e);
+                        }
                     }
                     _ => {}
                 }
@@ -1572,7 +1753,7 @@ mod tests {
         let tree = build_tree(&cfg, &board("Ks 9h 5h 2d"));
         let ranges = mixed_ranges(2);
         let mut full = solve_for_fingerprint(&tree, 40, &ranges);
-        let mut s = Solver::with_options(&tree, &ranges, SolverOptions { no_average_from: 2 });
+        let mut s = Solver::with_options(&tree, &ranges, SolverOptions { no_average_from: 2, ..Default::default() });
         for i in 0..40 {
             if i == 20 {
                 s.reset_average();
@@ -1630,6 +1811,124 @@ mod tests {
         assert!(map.iter().all(|&i| tree.nodes[i as usize].street < 2));
         assert!(map.iter().any(|&i| matches!(tree.nodes[i as usize].kind, PKind::Decision { .. })));
         assert_eq!(bytes, export(&tree, &ev_mixed, 0.0));
+    }
+
+    // ---- threads (REFACTOR_PLAN 3-3-2): every result bit for bit that of 1 thread
+
+    /// everything a caller can read after a solve, as bits: regrets, strategy sums, averages, exploitability,
+    /// root values, every field of `evaluate`; and the exported files
+    fn everything(tree: &Tree, s: &mut Solver) -> (Vec<u32>, Vec<u8>) {
+        let mut bits = Vec::new();
+        for x in s.regret.iter().chain(s.ssum.iter()).chain(s.avg.iter()) {
+            bits.push(x.len() as u32);
+            bits.extend(x.iter().map(|y| y.to_bits()));
+        }
+        bits.push(s.exploitability().to_bits());
+        bits.extend(s.root_values().map(f32::to_bits));
+        let ev = s.evaluate();
+        for e in &ev {
+            match e {
+                Some(e) => {
+                    bits.extend([1, e.player as u32, e.reach.to_bits()]);
+                    for v in [&e.weight, &e.freq, &e.ev, &e.eq] {
+                        bits.push(v.len() as u32);
+                        bits.extend(v.iter().map(|y| y.to_bits()));
+                    }
+                }
+                None => bits.push(0),
+            }
+        }
+        let mut file = export(tree, &ev, 0.0);
+        file.extend(export(tree, &ev, 0.004));
+        (bits, file)
+    }
+
+    fn solve_with_threads<'t>(tree: &'t Tree, ranges: &[Vec<f32>; 2], opts: SolverOptions, iters: u32, lock: Option<(usize, Vec<f32>)>) -> Solver<'t> {
+        let mut s = Solver::with_options(tree, ranges, opts);
+        if let Some((node, strategy)) = lock {
+            s.lock_node(node, strategy).unwrap();
+        }
+        for i in 0..iters {
+            if i == iters / 2 {
+                s.reset_average();
+            }
+            s.iterate();
+        }
+        s.finalize_avg();
+        s
+    }
+
+    /// compares 1, 2 and 4 threads, f32 values as bits (so that -0 and 0 differ)
+    fn assert_threads_agree(tree: &Tree, ranges: &[Vec<f32>; 2], no_average_from: u8, iters: u32, lock: Option<(usize, Vec<f32>)>) {
+        let run = |threads: usize| {
+            let mut s = solve_with_threads(tree, ranges, SolverOptions { no_average_from, threads }, iters, lock.clone());
+            assert_eq!(s.threads(), threads);
+            everything(tree, &mut s)
+        };
+        let one = run(1);
+        assert!(one.0.len() > 1000 && one.1.len() > 1000);
+        for t in [2, 4] {
+            let other = run(t);
+            assert!(other.0 == one.0, "{} threads: different values", t);
+            assert!(other.1 == one.1, "{} threads: different file", t);
+        }
+    }
+
+    #[test]
+    fn threads_give_the_same_bits_on_a_flop_tree() {
+        // 5 turn cards x 2 river cards; flop all-ins over 24 run-outs; partial ranges
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 5, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let ranges = mixed_ranges(3);
+        assert_threads_agree(&tree, &ranges, 3, 30, None);
+        // no river average (plan B of 3-3)
+        assert_threads_agree(&tree, &ranges, 2, 30, None);
+        // a locked node above the parallel part (the flop root) and one inside a turn subtree
+        let na = |i: usize| match &tree.nodes[i].kind {
+            PKind::Decision { children, .. } => children.len(),
+            _ => unreachable!(),
+        };
+        let lock = |na: usize| {
+            let mut l = vec![0f32; na * NC];
+            for h in 0..NC {
+                l[h] = 0.25 + (h % 3) as f32 * 0.25;
+                for a in 1..na {
+                    l[a * NC + h] = (1.0 - l[h]) / (na - 1) as f32;
+                }
+            }
+            l
+        };
+        assert_threads_agree(&tree, &ranges, 3, 30, Some((0, lock(na(0)))));
+        let turn = tree.nodes.iter().position(|n| n.street == 1 && matches!(n.kind, PKind::Decision { .. })).unwrap();
+        assert_threads_agree(&tree, &ranges, 3, 30, Some((turn, lock(na(turn)))));
+    }
+
+    #[test]
+    fn threads_give_the_same_bits_on_a_turn_tree() {
+        // a turn tree forks at its river chance nodes (10 river cards)
+        let cfg = Config { pot: 8.0, stack: 20.0, bets: [vec![], vec![0.5], vec![0.75]], raise_sizes: [false; 3], allow_allin: true, river_cards: 10, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 9h 5h 2d"));
+        assert_threads_agree(&tree, &mixed_ranges(2), 3, 40, None);
+    }
+
+    /// the children of every node own consecutive node ranges (what the parallel walk splits the arrays by)
+    #[test]
+    fn subtrees_are_consecutive_node_ranges() {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 5, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let end = subtree_ends(&tree);
+        assert_eq!(end[0] as usize, tree.nodes.len());
+        for (i, n) in tree.nodes.iter().enumerate() {
+            if let PKind::Decision { children, .. } | PKind::Chance { children, .. } = &n.kind {
+                assert_eq!(children[0] as usize, i + 1);
+                for w in children.windows(2) {
+                    assert_eq!(end[w[0] as usize], w[1]);
+                }
+                assert_eq!(end[*children.last().unwrap() as usize], end[i]);
+            } else {
+                assert_eq!(end[i] as usize, i + 1);
+            }
+        }
     }
 
     /// `flop_runouts: 1176` values a flop all-in over every (turn, river) pair, each with weight 1/990
