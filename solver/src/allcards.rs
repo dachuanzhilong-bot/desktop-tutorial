@@ -514,6 +514,17 @@ impl Plan {
     }
 }
 
+/// The checkpoint tag of an all-card solve trained with `SolverOptions::tremble` (0: the tag as it always was), so
+/// that a solve never continues the checkpoints of another tremble.
+pub fn solve_tag(plan: &Plan, tremble: f32) -> String {
+    let base = format!("all-cards {}", plan.tag());
+    if tremble == 0.0 {
+        base
+    } else {
+        format!("{} tremble={:e}", base, tremble)
+    }
+}
+
 /// how a `run_iterations` call went
 #[derive(Clone, Debug, Default)]
 pub struct RunInfo {
@@ -920,14 +931,8 @@ pub fn tremble_upstream(tree: &Tree, up: &Upstream, eps: f32) -> Result<Upstream
         if st.len() != na * NC {
             return Err(format!("node {} does not match the file", i));
         }
-        let going: Vec<usize> = (0..na).filter(|&a| acts[a].kind == 1 || acts[a].kind == 2).collect();
         *st = normalize_strategy(std::mem::take(st), na);
-        for a in 0..na {
-            let add = if going.contains(&a) { eps / going.len() as f32 } else { 0.0 };
-            for x in &mut st[a * NC..(a + 1) * NC] {
-                *x = (1.0 - eps) * *x + add;
-            }
-        }
+        tremble_strategy(st, acts, eps);
     }
     Ok(Upstream { tree: up.tree, tag: up.tag.clone(), nodes, crc: up.crc })
 }
@@ -1494,6 +1499,207 @@ mod tests {
         let (_, info) = resolve_river_eps(&mut s, &up, 0.0, &ck_plan, Some(&ck0), Some(21), &mut |_| {}).unwrap();
         assert_eq!(info.resumed_from, 0, "and the eps checkpoints by an eps 0 run");
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// `SolverOptions::tremble`: 0 is the solver as it was, bit for bit; with a tremble the flop / turn train on other
+    /// values, the averages are those of the chosen strategies (the tremble taken off), the measures play them
+    /// without a tremble, and with the tremble put back every river start is reached by a slice of both whole ranges
+    #[test]
+    fn training_with_a_tremble_keeps_every_line_reached() {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 5, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let ranges = mixed_ranges(9);
+        let iters = 120;
+        // a large tremble, so that the lines the plain solve abandons are clearly below its floor
+        let eps = 0.3f32;
+        let with = |tremble: f32, threads: usize| SolverOptions { tremble, ..on_demand(threads) };
+        // tremble 0: the same bits as a solver that knows no tremble
+        let mut plain = solve(&tree, &ranges, on_demand(1), iters);
+        let mut zero = solve(&tree, &ranges, with(0.0, 1), iters);
+        assert_eq!(bits(&zero.regret), bits(&plain.regret));
+        assert_eq!(bits(&zero.ssum), bits(&plain.ssum));
+        let (vp, vz) = (all_cards_values(&mut plain), all_cards_values(&mut zero));
+        assert_eq!((vz.full.to_bits(), vz.river_only.to_bits()), (vp.full.to_bits(), vp.river_only.to_bits()));
+        let plan = Plan::new(iters, 0.5, 0);
+        assert_eq!(solve_tag(&plan, 0.0), format!("all-cards {}", plan.tag()));
+        assert_ne!(solve_tag(&plan, eps), solve_tag(&plan, 0.0));
+        assert_ne!(solve_tag(&plan, eps), solve_tag(&plan, 0.01));
+
+        // with a tremble: other regrets (also on the river: it is trained against other ranges), the same for any
+        // number of threads
+        let mut t = solve(&tree, &ranges, with(eps, 1), iters);
+        let t3 = solve(&tree, &ranges, with(eps, 3), iters);
+        assert_eq!(bits(&t.regret), bits(&t3.regret));
+        assert_eq!(bits(&t.ssum), bits(&t3.ssum));
+        let (mut up_differs, mut river_differs) = (0, 0);
+        for (i, n) in tree.nodes.iter().enumerate() {
+            if matches!(n.kind, PKind::Decision { .. }) && t.regret[i] != plain.regret[i] {
+                if n.street < 2 {
+                    up_differs += 1;
+                } else {
+                    river_differs += 1;
+                }
+            }
+        }
+        assert!(up_differs > 10 && river_differs > 100, "{} flop / turn and {} river nodes trained differently", up_differs, river_differs);
+
+        // the measures play the averages as they are: an independent solver without a tremble gives the same bits
+        let vt = all_cards_values(&mut t);
+        let mut m = Solver::with_options(&tree, &ranges, on_demand(1));
+        m.regret = t.regret.clone();
+        m.ssum = t.ssum.clone();
+        let vm = all_cards_values(&mut m);
+        assert_eq!((vt.full.to_bits(), vt.river_only.to_bits()), (vm.full.to_bits(), vm.river_only.to_bits()));
+        assert_eq!(bits(&t.avg), bits(&m.avg));
+
+        // the regrets compare each action with the chosen strategy's own value, not the trembling one's.  After one
+        // iteration (chosen = uniform, played = its trembling copy) an action of a flop node has a positive regret
+        // exactly when its value is above the mean of all actions; the values come from a solver without a tremble
+        // whose flop / turn are locked to that trembling copy (its river plays uniform, as iteration 1 does)
+        let one = solve(&tree, &ranges, with(eps, 1), 1);
+        let mut f = Solver::new(&tree, &ranges);
+        for (i, n) in tree.nodes.iter().enumerate() {
+            if let PKind::Decision { acts, .. } = &n.kind {
+                if n.street < 2 {
+                    let mut st = vec![1.0 / acts.len() as f32; acts.len() * NC];
+                    tremble_strategy(&mut st, acts, eps);
+                    f.lock_node(i, st).unwrap();
+                }
+            }
+        }
+        let ev = f.evaluate();
+        let (mut checked, mut telling) = (0, 0);
+        for (i, n) in tree.nodes.iter().enumerate() {
+            let PKind::Decision { acts, .. } = &n.kind else { continue };
+            if n.street != 0 {
+                continue;
+            }
+            let e = ev[i].as_ref().expect("evaluated");
+            let (na, k) = (acts.len(), one.support(i).len());
+            let going: Vec<usize> = (0..na).filter(|&a| acts[a].kind == 1 || acts[a].kind == 2).collect();
+            for (j, &h) in one.support(i).iter().enumerate() {
+                let v: Vec<f32> = (0..na).map(|a| e.ev[a * NC + h as usize]).collect();
+                let mean = v.iter().sum::<f32>() / na as f32;
+                let trembling = (1.0 - eps) * mean + eps * going.iter().map(|&a| v[a]).sum::<f32>() / going.len() as f32;
+                for a in 0..na {
+                    if (v[a] - mean).abs() < 1e-3 || (v[a] - trembling).abs() < 1e-3 {
+                        continue;
+                    }
+                    checked += 1;
+                    assert_eq!(one.regret[i][a * k + j] > 0.0, v[a] > mean, "node {} hand {} action {}: values {:?}, regret {}", i, h, a, v, one.regret[i][a * k + j]);
+                    if (v[a] > mean) != (v[a] > trembling) {
+                        telling += 1;
+                    }
+                }
+            }
+        }
+        assert!(checked > 1000 && telling > 20, "{} checked, {} between the two means", checked, telling);
+
+        // the averages are those of the chosen strategies: a going action can be (nearly) unused, which the trembling
+        // strategy never is
+        let up = Upstream { tree: tree_fingerprint(&t), tag: String::new(), nodes: upstream_of(&t), crc: 0 };
+        let mut unused = 0;
+        for (i, st) in &up.nodes {
+            let PKind::Decision { acts, .. } = &tree.nodes[*i as usize].kind else { panic!() };
+            let k = acts.iter().filter(|x| x.kind == 1 || x.kind == 2).count();
+            for (a, act) in acts.iter().enumerate() {
+                if act.kind == 1 || act.kind == 2 {
+                    unused += t.support(*i as usize).iter().filter(|&&h| st[a * NC + h as usize] < 0.5 * eps / k as f32).count();
+                }
+            }
+        }
+        assert!(unused > 1000, "{} (hand, going action) pairs below the tremble's floor", unused);
+
+        // the reach of every river start: with the tremble put back (what training played, and what
+        // `resolve_river_eps` solves against) each player arrives with at least the tremble's share of its whole
+        // range; the solve without a tremble leaves lines below that
+        let depth = |want: usize| -> Vec<(f32, f32)> {
+            // per player: the product of eps / (going actions) over its decisions on the way to node `want`
+            fn go(tree: &Tree, i: usize, want: usize, eps: f32, f: (f32, f32)) -> Option<(f32, f32)> {
+                if i == want {
+                    return Some(f);
+                }
+                match &tree.nodes[i].kind {
+                    PKind::Decision { player, acts, children } => {
+                        let k = acts.iter().filter(|x| x.kind == 1 || x.kind == 2).count() as f32;
+                        children.iter().zip(acts).find_map(|(&c, act)| {
+                            let x = if act.kind == 1 || act.kind == 2 { eps / k } else { 0.0 };
+                            go(tree, c as usize, want, eps, if *player == 0 { (f.0 * x, f.1) } else { (f.0, f.1 * x) })
+                        })
+                    }
+                    PKind::Chance { children, .. } if tree.nodes[i].street < 2 => children.iter().find_map(|&c| go(tree, c as usize, want, eps, f)),
+                    _ => None,
+                }
+            }
+            vec![go(&tree, 0, want, eps, (1.0, 1.0)).expect("a river start")]
+        };
+        let fraction = |rs: &RiverStart, p: usize| -> f64 {
+            let bm = mask_of(&tree.nodes[rs.node as usize].board);
+            let whole: f64 = (0..NC).filter(|&h| !blocked(bm, h)).map(|h| t.prior[p][h] as f64).sum();
+            rs.ranges[p].iter().map(|&x| x as f64).sum::<f64>() / whole
+        };
+        let trembling = upstream_river_starts(&tree, &ranges, &tremble_upstream(&tree, &up, eps).unwrap()).unwrap();
+        assert!(trembling.len() > 20);
+        // the weight of the averaging iterations (`Solver::iterate`: 1, 2, ... after the restart)
+        let n_avg = (iters - iters / 2) as f64;
+        let t_sum = n_avg * (n_avg + 1.0) / 2.0;
+        let (mut rows, mut below) = (0, 0);
+        for rs in &trembling {
+            let floor = depth(rs.node as usize)[0];
+            for (p, fl) in [floor.0, floor.1].into_iter().enumerate() {
+                assert!(fl > 0.0);
+                assert!(fraction(rs, p) >= 0.999 * fl as f64, "river start {} player {}: {} of the range, the tremble gives {}", rs.node, p, fraction(rs, p), fl);
+            }
+            // what training itself played: at the first river node (OOP's) of every river card, the strategy sums
+            // of a hand add up to (iteration weights) x (its reach in those iterations), at least the tremble's
+            // share of its starting weight; the solve without a tremble leaves hands below that
+            let PKind::Chance { children, .. } = &tree.nodes[rs.node as usize].kind else { panic!() };
+            for &c in children {
+                let c = c as usize;
+                let PKind::Decision { player: 0, children: acts, .. } = &tree.nodes[c].kind else { panic!("OOP acts first on the river") };
+                let sup = t.support(c);
+                let k = sup.len();
+                for (j, &h) in sup.iter().enumerate() {
+                    let need = t_sum * t.prior[0][h as usize] as f64 * floor.0 as f64;
+                    let row = |s: &Solver| (0..acts.len()).map(|a| s.ssum[c][a * k + j] as f64).sum::<f64>();
+                    rows += 1;
+                    assert!(row(&t) >= 0.99 * need, "node {} hand {}: strategy sums {} < {}", c, h, row(&t), need);
+                    if row(&plain) < 0.5 * need {
+                        below += 1;
+                    }
+                }
+            }
+        }
+        assert!(rows > 10_000 && below > 100, "{} of {} hands below the tremble's floor without a tremble: the test must show some", below, rows);
+
+        // the re-solve against the trembling strategies, measured with the averages themselves
+        let mut r = Solver::with_options(&tree, &ranges, on_demand(1));
+        let (v, _) = resolve_river_eps(&mut r, &up, eps, &Plan::new(40, 0.5, 0), None, None, &mut |_| {}).unwrap();
+        assert!(v.unwrap().full.is_finite());
+
+        // a checkpoint of another tremble is not continued
+        let dir = tmp_dir("tremble");
+        let ck_plan = Plan::new(30, 0.5, 9);
+        let ck0 = Checkpoints::new(&dir, solve_tag(&ck_plan, 0.0)).unwrap();
+        let mut s = Solver::with_options(&tree, &ranges, with(0.0, 1));
+        assert!(!run_iterations(&mut s, &ck_plan, Some(&ck0), Some(20), &mut |_| {}).unwrap().finished);
+        let cke = Checkpoints::new(&dir, solve_tag(&ck_plan, eps)).unwrap();
+        let mut s = Solver::with_options(&tree, &ranges, with(eps, 1));
+        let mut warned = false;
+        let info = run_iterations(&mut s, &ck_plan, Some(&cke), None, &mut |m| warned |= m.contains("not used")).unwrap();
+        assert!(warned && info.resumed_from == 0 && info.finished);
+        // ... and a solve with a tremble resumes its own checkpoints to the same bits
+        let dir2 = tmp_dir("tremble2");
+        let ck = Checkpoints::new(&dir2, solve_tag(&ck_plan, eps)).unwrap();
+        let mut a = Solver::with_options(&tree, &ranges, with(eps, 1));
+        assert!(!run_iterations(&mut a, &ck_plan, Some(&ck), Some(20), &mut |_| {}).unwrap().finished);
+        let mut b = Solver::with_options(&tree, &ranges, with(eps, 2));
+        let info = run_iterations(&mut b, &ck_plan, Some(&ck), None, &mut |_| {}).unwrap();
+        assert_eq!(info.resumed_from, 18);
+        assert_eq!(bits(&b.regret), bits(&s.regret));
+        assert_eq!(bits(&b.ssum), bits(&s.ssum));
+        std::fs::remove_dir_all(&dir).unwrap();
+        std::fs::remove_dir_all(&dir2).unwrap();
     }
 
     /// (c) with the turn locked, one river subgame of the re-solve is that river solved on its own from the reach
