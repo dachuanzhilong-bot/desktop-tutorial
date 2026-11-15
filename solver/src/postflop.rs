@@ -915,12 +915,19 @@ impl<'a> Solver<'a> {
 
     /// Sum of both best-response gains in chips (0 at equilibrium).
     pub fn exploitability(&mut self) -> f32 {
+        let g = self.exploitability_by_player();
+        g[0] + g[1]
+    }
+
+    /// The best-response gain of each player in chips (OOP, IP): what that player wins more than under the
+    /// average strategies by best-responding alone.  `exploitability` is their sum.
+    pub fn exploitability_by_player(&mut self) -> [f32; 2] {
         let base = self.root_values();
-        let mut gain = 0f32;
+        let mut gain = [0f32; 2];
         for p in 0..2 {
             let res = self.run(Mode::Br(p), None, true);
             let br = self.value(&res, p)[p];
-            gain += (br - base[p]).max(0.0);
+            gain[p] = (br - base[p]).max(0.0);
         }
         gain
     }

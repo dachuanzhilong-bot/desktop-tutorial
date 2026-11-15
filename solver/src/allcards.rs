@@ -889,11 +889,47 @@ pub struct ResolveValues {
     pub river_only: f32,
     /// locks removed: both players best-respond everywhere against "upstream strategy + re-solved river average"
     pub full: f32,
+    /// `full` by player (OOP, IP): the gain of that player's best response alone; `full` is their sum
+    pub full_by_player: [f32; 2],
 }
 
-/// The re-solve's checkpoint tag
-pub fn resolve_tag(plan: &Plan, up: &Upstream) -> String {
-    format!("resolve-river {} upstream={:08x}", plan.tag(), up.crc)
+/// The re-solve's checkpoint tag (`eps`: `resolve_river_eps`; 0 gives the tag of `resolve_river`)
+pub fn resolve_tag(plan: &Plan, up: &Upstream, eps: f32) -> String {
+    let base = format!("resolve-river {} upstream={:08x}", plan.tag(), up.crc);
+    if eps == 0.0 {
+        base
+    } else {
+        format!("{} eps={:e}", base, eps)
+    }
+}
+
+/// The strategies of `up` with a tremble: at every flop / turn decision node and for every hand,
+/// `sigma' = (1 - eps) sigma + eps u`, `u` uniform over the actions that keep the hand going (check / call and
+/// bet / raise; not fold, not all-in).  With them every river start is reached by a thin slice of the whole range
+/// of each player, whatever `up` plays (`docs/14` §8-1, `--resolve-eps`).
+pub fn tremble_upstream(tree: &Tree, up: &Upstream, eps: f32) -> Result<Upstream, String> {
+    if !(0.0..=1.0).contains(&eps) {
+        return Err(format!("eps {} is not in 0..=1", eps));
+    }
+    let mut nodes = up.nodes.clone();
+    for (i, st) in nodes.iter_mut() {
+        let Some(PKind::Decision { acts, .. }) = tree.nodes.get(*i as usize).map(|n| &n.kind) else {
+            return Err(format!("node {} is not a decision node", i));
+        };
+        let na = acts.len();
+        if st.len() != na * NC {
+            return Err(format!("node {} does not match the file", i));
+        }
+        let going: Vec<usize> = (0..na).filter(|&a| acts[a].kind == 1 || acts[a].kind == 2).collect();
+        *st = normalize_strategy(std::mem::take(st), na);
+        for a in 0..na {
+            let add = if going.contains(&a) { eps / going.len() as f32 } else { 0.0 };
+            for x in &mut st[a * NC..(a + 1) * NC] {
+                *x = (1.0 - eps) * *x + add;
+            }
+        }
+    }
+    Ok(Upstream { tree: up.tree, tag: up.tag.clone(), nodes, crc: up.crc })
 }
 
 /// Re-solve the river of `s` (a new solver whose river averages are kept, e.g. `avg_on_demand_from: 2`) for
@@ -901,13 +937,30 @@ pub fn resolve_tag(plan: &Plan, up: &Upstream) -> String {
 /// `ck` like `run_iterations`.  `None` if stopped by `stop_after`.  The locks are removed at the end, and the flop and
 /// turn nodes' `avg` holds the locked strategies.
 pub fn resolve_river(s: &mut Solver, up: &Upstream, plan: &Plan, ck: Option<&Checkpoints>, stop_after: Option<u32>, log: &mut dyn FnMut(&str)) -> Result<(Option<ResolveValues>, RunInfo), String> {
+    resolve_river_eps(s, up, 0.0, plan, ck, stop_after, log)
+}
+
+/// `resolve_river` with the river's reach ranges taken from a trembling copy of the flop / turn strategies: during
+/// the iterations the flop and turn are locked to `tremble_upstream(up, eps)`; the values are then measured with the
+/// strategies of `up` themselves (locked for `river_only`, unlocked for `full`), so they are those of
+/// "`up` + the rivers re-solved from the trembling reach".  `eps` 0 is `resolve_river`, bit for bit.  `ck`'s tag
+/// must be `resolve_tag(plan, up, eps)`.
+pub fn resolve_river_eps(s: &mut Solver, up: &Upstream, eps: f32, plan: &Plan, ck: Option<&Checkpoints>, stop_after: Option<u32>, log: &mut dyn FnMut(&str)) -> Result<(Option<ResolveValues>, RunInfo), String> {
     if !keeps_river_average(s) {
         return Err("the re-solve needs the river averages (avg_on_demand_from: 2, no_average_from: 3)".into());
     }
-    lock_upstream(s, up)?;
+    if eps == 0.0 {
+        lock_upstream(s, up)?;
+    } else {
+        lock_upstream(s, &tremble_upstream(s.tree, up, eps)?)?;
+    }
     let info = run_iterations(s, plan, ck, stop_after, log).map_err(|e| e.to_string())?;
     if !info.finished {
         return Ok((None, info));
+    }
+    if eps != 0.0 {
+        // measure with the strategies of `up`, not the trembling ones the river was solved against
+        lock_upstream(s, up)?;
     }
     s.finalize_avg();
     let river_only = s.exploitability();
@@ -916,8 +969,9 @@ pub fn resolve_river(s: &mut Solver, up: &Upstream, plan: &Plan, ck: Option<&Che
         s.avg[i] = st;
         s.unlock_node(i);
     }
-    let full = s.exploitability();
-    Ok((Some(ResolveValues { river_only, full }), info))
+    let full_by_player = s.exploitability_by_player();
+    let full = full_by_player[0] + full_by_player[1];
+    Ok((Some(ResolveValues { river_only, full, full_by_player }), info))
 }
 
 // ------------------------------------------------------------------ memory
@@ -1319,7 +1373,7 @@ mod tests {
 
         // the re-solve resumes from its checkpoints like the solve
         let ck_plan = Plan::new(60, 0.5, 9);
-        let ck = Checkpoints::new(dir.join("ck"), resolve_tag(&ck_plan, &up)).unwrap();
+        let ck = Checkpoints::new(dir.join("ck"), resolve_tag(&ck_plan, &up, 0.0)).unwrap();
         let mut r3 = Solver::with_options(&tree, &ranges, on_demand(1));
         let (none, _) = resolve_river(&mut r3, &up, &ck_plan, Some(&ck), Some(31), &mut |_| {}).unwrap();
         assert!(none.is_none());
@@ -1329,6 +1383,116 @@ mod tests {
         let v4 = v4.unwrap();
         assert_eq!((v4.full.to_bits(), v4.river_only.to_bits()), (v.full.to_bits(), v.river_only.to_bits()));
         assert_eq!(bits(&r4.regret), bits(&r.regret));
+        std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// `resolve_river_eps`: eps 0 is `resolve_river` bit for bit; with eps > 0 the rivers are solved against the trembling
+    /// flop / turn strategies while the values are measured with the file's own strategies; the checkpoint tag
+    /// carries eps, so a re-solve never continues the checkpoints of another eps
+    #[test]
+    fn the_resolve_with_a_tremble_solves_against_it_and_measures_the_upstream() {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 5, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let ranges = mixed_ranges(9);
+        let mut a = solve(&tree, &ranges, on_demand(1), 60);
+        a.finalize_avg();
+        let up = Upstream { tree: tree_fingerprint(&a), tag: String::new(), nodes: upstream_of(&a), crc: 7 };
+        let plan = Plan::new(40, 0.5, 0);
+        let run = |eps: Option<f32>| {
+            let mut r = Solver::with_options(&tree, &ranges, on_demand(2));
+            let (v, _) = match eps {
+                None => resolve_river(&mut r, &up, &plan, None, None, &mut |_| {}).unwrap(),
+                Some(e) => resolve_river_eps(&mut r, &up, e, &plan, None, None, &mut |_| {}).unwrap(),
+            };
+            (r, v.unwrap())
+        };
+        // eps 0: the same bits as `resolve_river`, and the same tag as before the tremble existed
+        let (r0, v0) = run(None);
+        let (rz, vz) = run(Some(0.0));
+        assert_eq!(bits(&rz.regret), bits(&r0.regret));
+        assert_eq!(bits(&rz.ssum), bits(&r0.ssum));
+        assert_eq!((vz.full.to_bits(), vz.river_only.to_bits()), (v0.full.to_bits(), v0.river_only.to_bits()));
+        assert_eq!(vz.full_by_player.map(f32::to_bits), v0.full_by_player.map(f32::to_bits));
+        assert_eq!((v0.full_by_player[0] + v0.full_by_player[1]).to_bits(), v0.full.to_bits());
+        assert!(v0.full_by_player.iter().all(|&g| g >= 0.0));
+        assert_eq!(resolve_tag(&plan, &up, 0.0), format!("resolve-river {} upstream={:08x}", plan.tag(), up.crc));
+
+        // the trembling strategies: rows still sum to 1, fold and all-in shrink by 1 - eps, the rest shares eps
+        let eps = 0.5f32;
+        let tr = tremble_upstream(&tree, &up, eps).unwrap();
+        assert_eq!((tr.tree, tr.crc, tr.nodes.len()), (up.tree, up.crc, up.nodes.len()));
+        let (mut stopping, mut going) = (0, 0);
+        for ((i, st), (j, orig)) in tr.nodes.iter().zip(&up.nodes) {
+            assert_eq!(i, j);
+            let PKind::Decision { acts, .. } = &tree.nodes[*i as usize].kind else { panic!() };
+            let na = acts.len();
+            let k = acts.iter().filter(|x| x.kind == 1 || x.kind == 2).count();
+            assert!(k >= 1);
+            for h in (0..NC).step_by(37) {
+                let sum: f32 = (0..na).map(|x| st[x * NC + h]).sum();
+                assert!((sum - 1.0).abs() < 1e-5);
+                for (x, act) in acts.iter().enumerate() {
+                    let (was, is) = (orig[x * NC + h], st[x * NC + h]);
+                    if act.kind == 1 || act.kind == 2 {
+                        going += 1;
+                        assert!((is - ((1.0 - eps) * was + eps / k as f32)).abs() < 1e-6 && is >= eps / k as f32 - 1e-6);
+                    } else {
+                        stopping += 1;
+                        assert!((is - (1.0 - eps) * was).abs() < 1e-6);
+                    }
+                }
+            }
+        }
+        assert!(stopping > 100 && going > 100);
+        assert!(tremble_upstream(&tree, &up, -0.1).is_err() && tremble_upstream(&tree, &up, 1.5).is_err());
+
+        // eps > 0: another river (solved against the trembling reach) ...
+        let (re, ve) = run(Some(eps));
+        assert_ne!(bits(&re.regret), bits(&r0.regret));
+        assert_ne!(ve.river_only.to_bits(), v0.river_only.to_bits());
+        // ... which is the river of a re-solve whose upstream file holds the trembling strategies ...
+        let mut rt = Solver::with_options(&tree, &ranges, on_demand(2));
+        let (vt, _) = resolve_river(&mut rt, &tr, &plan, None, None, &mut |_| {}).unwrap();
+        let vt = vt.unwrap();
+        assert_eq!(bits(&re.regret), bits(&rt.regret));
+        assert_eq!(bits(&re.ssum), bits(&rt.ssum));
+        // ... but measured with the file's own flop / turn strategies, not the trembling ones
+        assert_ne!(ve.full.to_bits(), vt.full.to_bits());
+        assert_ne!(ve.river_only.to_bits(), vt.river_only.to_bits());
+        let mut m = Solver::new(&tree, &ranges);
+        m.regret = re.regret.clone();
+        m.ssum = re.ssum.clone();
+        m.finalize_avg();
+        for (i, st) in &up.nodes {
+            let i = *i as usize;
+            assert!(re.locked_strategy(i).is_none(), "every lock removed");
+            assert!(re.avg[i].iter().zip(st).all(|(x, y)| (x - y).abs() < 1e-5), "node {}: the file's strategy, not the trembling one", i);
+            m.avg[i] = re.avg[i].clone();
+        }
+        assert_eq!(m.exploitability().to_bits(), ve.full.to_bits());
+        assert_eq!(m.exploitability_by_player().map(f32::to_bits), ve.full_by_player.map(f32::to_bits));
+        for (i, st) in &up.nodes {
+            m.lock_node(*i as usize, st.clone()).unwrap();
+        }
+        assert_eq!(m.exploitability().to_bits(), ve.river_only.to_bits());
+
+        // the tag carries eps: the checkpoints of one eps are not continued by another
+        assert_ne!(resolve_tag(&plan, &up, eps), resolve_tag(&plan, &up, 0.0));
+        assert_ne!(resolve_tag(&plan, &up, eps), resolve_tag(&plan, &up, 0.25));
+        let dir = tmp_dir("resolve-eps");
+        let ck_plan = Plan::new(40, 0.5, 9);
+        let ck0 = Checkpoints::new(&dir, resolve_tag(&ck_plan, &up, 0.0)).unwrap();
+        let mut s = Solver::with_options(&tree, &ranges, on_demand(1));
+        assert!(resolve_river_eps(&mut s, &up, 0.0, &ck_plan, Some(&ck0), Some(20), &mut |_| {}).unwrap().0.is_none());
+        let cke = Checkpoints::new(&dir, resolve_tag(&ck_plan, &up, eps)).unwrap();
+        let mut s = Solver::with_options(&tree, &ranges, on_demand(1));
+        let mut warned = false;
+        let (v, info) = resolve_river_eps(&mut s, &up, eps, &ck_plan, Some(&cke), None, &mut |m| warned |= m.contains("not used")).unwrap();
+        assert!(warned && info.resumed_from == 0, "the eps 0 checkpoint is refused");
+        assert_eq!(v.unwrap().full.to_bits(), ve.full.to_bits());
+        let mut s = Solver::with_options(&tree, &ranges, on_demand(1));
+        let (_, info) = resolve_river_eps(&mut s, &up, 0.0, &ck_plan, Some(&ck0), Some(21), &mut |_| {}).unwrap();
+        assert_eq!(info.resumed_from, 0, "and the eps checkpoints by an eps 0 run");
         std::fs::remove_dir_all(&dir).unwrap();
     }
 
