@@ -120,6 +120,30 @@ node × nNodes (DFS順):
 - EV(action) = `best − loss`。ハンド単位で「その手でこのノードに来た条件付き」の期待値（初期ポットの取り分を含む）。
 - 1フロップ(全ライン)で約0.15〜0.3MB(gzip)、3シナリオ×21フロップで計14.3MB。PWAでは `index.json` のみ事前キャッシュし、各フロップは開いたときにキャッシュする。
 
+## ポストフロップ: `TSP1` v3（リバーは端末で解く。REFACTOR_PLAN 3-3-5）
+
+3-3 の B 案（[14](14-postflop-all-cards.md)）のための形式。全ターン 49 枚 × 全リバー 48 枚で解いた解のうち、**フロップ・ターンの決定ノードだけ**を書き、リバーのノードは書かない。代わりに、各ラインの「リバー開始点」（ターンが終わってリバーのカードを配るチャンスノード）に**両者の到達レンジ**を書く。利用者がリバーのカードを選ぶと、端末はそのカードを含むコンボを 0 にしたレンジでリバー単独の木を WASM で解く（3-3-6）。今の出荷データ（`web/public/postflop`）は v2 のまま。v3 は 3-3-7 の量産で `gen_postflop --all-cards` が書く。
+
+```
+"TSP1" | u8 version=3 | u8 nBoard(3) | u8 board[nBoard] | f32 pot | f32 stack | u16 nNodes      ← v2 と同じ
+node × nNodes (DFS順):
+  u8 street | f32 inv0 | f32 inv1 | u8 kind | u8 actor | f32 reach | u8 nEdges | edge × nEdges   ← v2 と同じ
+  kind 0 (decision): v2 と同じ（bitmap・weight・eq・freq・best・loss）
+  kind 1 (chance)  : v2 と同じ（フロップの終わりでターンを配るノード。edge.kind = ターンのカード）
+  kind 2 (リバー開始点): street=1、actor=255、nEdges=0（リバーのカードは書かない）。続けて OOP、IP の順に:
+    f32 scale                 このレンジの最大値
+    u8 bitmap[166]            量子化した値が 0 でないコンボ(1326bit。v2 の bitmap と同じ並び)
+    u16 q[n]                  bitmap のコンボごとの値。到達 = q / 65535 × scale
+```
+
+- **v2 との違いは 3 点だけ**: version が 3、ノードの種類 2（リバー開始点）がある、street 2（リバー）のノードが無い。決定ノードとターンのチャンスノードのバイト列は、同じ解から書いた v2 と同じ（子の番号を除く。テスト `v3_round_trip`）。ターンのチャンスノードは 49 枚すべての辺を持つ（低い到達で書かないターンは code -2）。決定ノードの辺がリバー開始点を指すときは、その番号（≥0）。書かないリバー開始点は v2 と同じく -2。ノード数は u16 のまま（SRP の As7d2c で 838。`min_reach` 0 で全部書いても決定 約 2,700 + リバー開始点 1,323 で 65,535 に遠い）。
+- **到達レンジの定義**: そのリバー開始点に来たときの各プレイヤーの到達。開始時のレンジ（ボードと重なるコンボは 0）× そのラインでの自分の戦略（フロップ・ターンの平均戦略）の積で、ターンのカードを含むコンボは 0。**リバーのカードはまだ配っていない**ので、カード r のリバーを解くときは r を含むコンボを 0 にする（リバーのカードで変わるのはこのブロックだけなので、リバー開始点ごとに 1 組で足りる）。ソルバーの walk が運ぶ値とビット単位で同じ計算（`postflop.rs` の `river_starts`、`allcards.rs` の `upstream_river_starts`。テスト `upstream_ranges_are_the_ranges_of_the_resolve` が、`resolve_river` の解き直しで各リバーに入るレンジと全カードでビット一致することを確かめる）。相手の信念の更新は、相手の到達レンジそのものに含まれている（端末はこの 2 本から、リバーの開始時のポット・スタックで解く）。
+- **量子化**: プレイヤーごとに最大値 `scale` で割って 0..65535 に丸める（線形、`round(r / scale × 65535)`）。0 に丸まったコンボは bitmap に入れない。誤差はコンボごとに `scale / 131070` 以下。既存の `weight`（u8、0.01 未満を捨てる）は低い到達のラインで粗すぎるので使わない（[14](14-postflop-all-cards.md) §3）。1,326 幅の u16 を密に書く案とサイズを比べ、bitmap + u16 にした（[14](14-postflop-all-cards.md) §10）。
+- **reach**: 決定ノードとリバー開始点は v2 と同じ定義（両者のレンジとカードの確率を含む、そのラインが起きる確率）。v2 のチャンスノードは常に 1.0。
+- **書き出す範囲（`min_reach`）**: v3 では「**配ったカードを条件にした到達**」（`reach / そこまでのカードの確率`。ターンのノードならそのターンのカードが出たときにそのラインに来る確率）で判定する（既定 0.4%）。v2 の判定（カード込みの到達）のままだと、ターンが 49 枚になると 1 枚あたりの到達が 1/49 になり、ほぼ全部落ちる（テスト `v3_min_reach_is_conditional_on_the_cards`）。リバー開始点も同じ条件つきの到達で判定する。
+- **読み込み**: Rust は `measure.rs` の `parse_tsp1`（v2・v3 両方。`FileNode::ranges`、`QRange::dense`）、web は `lib/postflop/decode.ts` の `decodeFlop`（v2・v3 両方。`PfFlop.version`、リバー開始点は `type: "chance"`・辺なし・`riverStart`）。`riverStartRanges(flop, nodeId, riverCard)` が、選んだリバーのカードのコンボを 0 にした両者のレンジ（1,326 幅）を返す（ボード上のカードや、リバー開始点でないノードは `null`）。固定データ: `web/src/lib/__tests__/fixtures/tsp1-v3.bin`（Rust のテスト `v3_fixture_for_the_web_tests` が書き、一致を検査する）。
+- **互換**: v2 のファイルはそのまま読める。v2 の読み手（3-3-5 より前のアプリ）は version 3 を拒否する。`index.json` の形は変えない（`turnCards` 49・`riverCards` 48 で全カードの解と分かる）。`gen_postflop --all-cards` はフロップごとに `<n>.bin` と `<n>.stats.json` をすぐ書き、`index.json` を書き直す（中断しても済んだフロップは失わず、再実行で飛ばす）。
+
 ### シナリオの接続条件（`scenarios[].pre`）
 
 各シナリオは、どのプリフロップのラインの続きかを `pre` に持つ（REFACTOR_PLAN 2-4。`gen_postflop` が `SCENARIOS` とプリフロップ解の金額から書く）。
