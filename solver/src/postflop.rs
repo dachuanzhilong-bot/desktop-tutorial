@@ -63,7 +63,8 @@ pub fn blocked(mask: u64, h: usize) -> bool {
     (mask >> a) & 1 == 1 || (mask >> b) & 1 == 1
 }
 
-fn zero_card(r: &[f32], card: u8) -> Vec<f32> {
+/// `r` with the combos holding `card` set to 0 (the walk deals a card this way)
+pub fn zero_card(r: &[f32], card: u8) -> Vec<f32> {
     let mut v = r.to_vec();
     for &h in &ct().by_card[card as usize] {
         v[h as usize] = 0.0;
@@ -647,6 +648,64 @@ fn average_strategy(regret: &[f32], ssum: &[f32], na: usize, support: &[u16], si
     }
 }
 
+/// The starting ranges of a solver of `tree` (`Solver::prior`): `ranges` with the combos on the tree's board set to 0.
+pub fn starting_prior(tree: &Tree, ranges: &[Vec<f32>; 2]) -> [Vec<f32>; 2] {
+    let fm = mask_of(&tree.board);
+    let mut prior = [ranges[0].clone(), ranges[1].clone()];
+    for p in 0..2 {
+        for h in 0..NC {
+            if blocked(fm, h) {
+                prior[p][h] = 0.0;
+            }
+        }
+    }
+    prior
+}
+
+/// The supports of a solver of `tree` with starting ranges `prior` (`Solver::supports`, `Solver::support_of`): per
+/// decision node, the combos of the acting player's starting range that do not collide with the node's board,
+/// shared by the nodes of the same player and board (`u32::MAX` for a node that is not a decision).
+pub fn decision_supports(tree: &Tree, prior: &[Vec<f32>; 2]) -> (Vec<Vec<u16>>, Vec<u32>) {
+    let mut supports: Vec<Vec<u16>> = Vec::new();
+    let mut support_ids: HashMap<(u8, u64), u32> = HashMap::new();
+    let mut support_of = Vec::with_capacity(tree.nodes.len());
+    for n in &tree.nodes {
+        if let PKind::Decision { player, .. } = &n.kind {
+            let bm = mask_of(&n.board);
+            let sid = *support_ids.entry((*player, bm)).or_insert_with(|| {
+                let pr = &prior[*player as usize];
+                supports.push((0..NC).filter(|&h| pr[h] != 0.0 && !blocked(bm, h)).map(|h| h as u16).collect());
+                (supports.len() - 1) as u32
+            });
+            support_of.push(sid);
+        } else {
+            support_of.push(u32::MAX);
+        }
+    }
+    (supports, support_of)
+}
+
+/// `sum_h r0[h] * (r1's mass of the combos compatible with h on `board`)`: the (unnormalized) probability that both
+/// players hold hands with these reaches.  At the root it is the normalizer of `NodeEval::reach`.
+pub fn pair_mass(board: &[u8], r0: &[f32], r1: &[f32]) -> f64 {
+    let mut cm = vec![0f32; NC];
+    compat_mass(mask_of(board), r1, &mut cm);
+    (0..NC).map(|h| r0[h] as f64 * cm[h] as f64).sum()
+}
+
+/// A strategy (`na * NC`) as `Solver::lock_node` plays it: each hand's row with the negative entries set to 0, divided
+/// by its sum (uniform when the sum is about 0).
+pub fn normalize_strategy(strategy: Vec<f32>, na: usize) -> Vec<f32> {
+    let mut s = strategy;
+    for h in 0..NC {
+        let sum: f32 = (0..na).map(|a| s[a * NC + h].max(0.0)).sum();
+        for a in 0..na {
+            s[a * NC + h] = if sum > 1e-9 { s[a * NC + h].max(0.0) / sum } else { 1.0 / na as f32 };
+        }
+    }
+    s
+}
+
 impl<'a> Solver<'a> {
     /// `ranges[p][h]` = weight (0..1) of combo `h` in player p's range at the start of the flop.
     pub fn new(tree: &'a Tree, ranges: &[Vec<f32>; 2]) -> Self {
@@ -654,45 +713,25 @@ impl<'a> Solver<'a> {
     }
 
     pub fn with_options(tree: &'a Tree, ranges: &[Vec<f32>; 2], opts: SolverOptions) -> Self {
-        let fm = mask_of(&tree.board);
-        let mut prior = [ranges[0].clone(), ranges[1].clone()];
-        for p in 0..2 {
-            for h in 0..NC {
-                if blocked(fm, h) {
-                    prior[p][h] = 0.0;
-                }
-            }
-        }
-        let mut supports: Vec<Vec<u16>> = Vec::new();
-        let mut support_ids: HashMap<(u8, u64), u32> = HashMap::new();
-        let mut support_of = Vec::with_capacity(tree.nodes.len());
+        let prior = starting_prior(tree, ranges);
+        let (supports, support_of) = decision_supports(tree, &prior);
         let mut has_avg = Vec::with_capacity(tree.nodes.len());
         let mut regret = Vec::with_capacity(tree.nodes.len());
         let mut ssum = Vec::with_capacity(tree.nodes.len());
-        for n in &tree.nodes {
-            if let PKind::Decision { player, children, .. } = &n.kind {
-                let bm = mask_of(&n.board);
-                let sid = *support_ids.entry((*player, bm)).or_insert_with(|| {
-                    let pr = &prior[*player as usize];
-                    supports.push((0..NC).filter(|&h| pr[h] != 0.0 && !blocked(bm, h)).map(|h| h as u16).collect());
-                    (supports.len() - 1) as u32
-                });
+        for (n, &sid) in tree.nodes.iter().zip(&support_of) {
+            if let PKind::Decision { children, .. } = &n.kind {
                 let len = children.len() * supports[sid as usize].len();
                 let keep = n.street < opts.no_average_from;
-                support_of.push(sid);
                 has_avg.push(keep);
                 regret.push(vec![0f32; len]);
                 ssum.push(if keep { vec![0f32; len] } else { Vec::new() });
             } else {
-                support_of.push(u32::MAX);
                 has_avg.push(false);
                 regret.push(Vec::new());
                 ssum.push(Vec::new());
             }
         }
-        let mut cm = vec![0f32; NC];
-        compat_mass(fm, &prior[1], &mut cm);
-        let z0: f64 = (0..NC).map(|h| prior[0][h] as f64 * cm[h] as f64).sum();
+        let z0 = pair_mass(&tree.board, &prior[0], &prior[1]);
         let locks = vec![None; tree.nodes.len()];
         let river = river::applies(tree).then(|| Box::new(RiverWalk::new(tree, &prior, |i| &supports[support_of[i] as usize][..])));
         let supports = Arc::new(supports);
@@ -773,14 +812,7 @@ impl<'a> Solver<'a> {
                 if strategy.len() != na * NC {
                     return Err(format!("expected {} values, got {}", na * NC, strategy.len()));
                 }
-                let mut s = strategy;
-                for h in 0..NC {
-                    let sum: f32 = (0..na).map(|a| s[a * NC + h].max(0.0)).sum();
-                    for a in 0..na {
-                        s[a * NC + h] = if sum > 1e-9 { s[a * NC + h].max(0.0) / sum } else { 1.0 / na as f32 };
-                    }
-                }
-                self.locks[node] = Some(s);
+                self.locks[node] = Some(normalize_strategy(strategy, na));
                 Ok(())
             }
             _ => Err("not a decision node".into()),
@@ -1388,33 +1420,191 @@ pub fn decode_loss(c: u8) -> f32 {
     }
 }
 
-/// Binary file for one flop (see docs/03-solution-format.md, "TSP1").
+/// Binary file for one flop (see docs/03-solution-format.md, "TSP1" v2).
 pub fn export(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32) -> Vec<u8> {
     export_with_map(tree, ev, min_reach).0
 }
 
 /// Same as `export`, plus the tree node id of every exported node (needed to lock a node of the live solver).
 pub fn export_with_map(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32) -> (Vec<u8>, Vec<u32>) {
-    // keep decision nodes that are played, chance nodes that lead to something kept
+    write_tsp1(tree, ev, min_reach, None)
+}
+
+/// `TSP1` v3 (REFACTOR_PLAN 3-3-5, docs/03-solution-format.md): the flop and turn decision nodes as in v2, no river
+/// node; instead every river start (the chance node that deals the river) holds both players' reach ranges (`starts`,
+/// from `river_starts`), quantized to u16, from which the device re-solves the river for the card the user picks.
+/// `min_reach` is compared with the reach conditional on the dealt cards (`RiverStart::cond_reach`, and
+/// `NodeEval::reach / chance_p` for a decision node): with every turn card dealt, the unconditional reach of a turn
+/// line is 1/49 of the line's own probability.
+pub fn export_v3(tree: &Tree, ev: &[Option<NodeEval>], starts: &[RiverStart], min_reach: f32) -> Vec<u8> {
+    export_v3_with_map(tree, ev, starts, min_reach).0
+}
+
+/// Same as `export_v3`, plus the tree node id of every exported node.
+pub fn export_v3_with_map(tree: &Tree, ev: &[Option<NodeEval>], starts: &[RiverStart], min_reach: f32) -> (Vec<u8>, Vec<u32>) {
+    write_tsp1(tree, ev, min_reach, Some(starts))
+}
+
+/// A river start: the chance node at the end of a turn line, which deals the river card (`PKind::Chance` on street 1).
+pub fn is_river_start(node: &PNode) -> bool {
+    node.street == 1 && matches!(node.kind, PKind::Chance { .. })
+}
+
+/// The reach ranges at a river start (REFACTOR_PLAN 3-3-5).
+#[derive(Clone, Debug)]
+pub struct RiverStart {
+    pub node: u32,
+    /// each player's reach when the river is dealt, as the solver's walk carries it: the starting range (`Solver::prior`)
+    /// times the player's strategy along the line, the combos on the turn board at 0.  The river card is not dealt yet:
+    /// for river card `c` the walk (and the device) sets the combos holding `c` to 0.
+    pub ranges: [Vec<f32>; 2],
+    /// the probability that the line is played, as `NodeEval::reach` (both ranges, the turn card's probability included)
+    pub reach: f32,
+    /// the same given the turn card (without its probability): `reach / chance_p`
+    pub cond_reach: f32,
+}
+
+/// The reach ranges at every river start of `tree` (in node order) when the flop and turn decision nodes play
+/// `strategy(node)` (`na * NC`, each hand's row summing to 1), from the starting ranges `prior` (`Solver::prior`).  The
+/// arithmetic is the solver walk's (`rp[h] * sigma[a * NC + h]` per action, the dealt card's combos set to 0), so
+/// the ranges are bit for bit those that reach the river in `Solver` with the same flop / turn strategies (locked or
+/// averaged).  Errors if a flop / turn decision node on the way has no strategy of the right length.
+pub fn river_starts<'s>(tree: &Tree, prior: &[Vec<f32>; 2], strategy: &dyn Fn(usize) -> Option<&'s [f32]>) -> Result<Vec<RiverStart>, String> {
+    struct Walk<'w, 's> {
+        t: &'w Tree,
+        z0: f64,
+        strategy: &'w dyn Fn(usize) -> Option<&'s [f32]>,
+        out: Vec<RiverStart>,
+    }
+    fn go(w: &mut Walk, i: usize, r0: &[f32], r1: &[f32]) -> Result<(), String> {
+        let node = &w.t.nodes[i];
+        match &node.kind {
+            // a river decision (a river tree's root): no river start below
+            PKind::Decision { .. } if node.street >= 2 => Ok(()),
+            PKind::Decision { player, children, .. } => {
+                let na = children.len();
+                let sigma = (w.strategy)(i).ok_or_else(|| format!("node {}: no strategy", i))?;
+                if sigma.len() != na * NC {
+                    return Err(format!("node {}: {} strategy values, want {}", i, sigma.len(), na * NC));
+                }
+                let p = *player as usize;
+                for (a, &c) in children.iter().enumerate() {
+                    let rp = if p == 0 { r0 } else { r1 };
+                    let new_rp: Vec<f32> = (0..NC).map(|h| rp[h] * sigma[a * NC + h]).collect();
+                    if p == 0 {
+                        go(w, c as usize, &new_rp, r1)?;
+                    } else {
+                        go(w, c as usize, r0, &new_rp)?;
+                    }
+                }
+                Ok(())
+            }
+            PKind::Chance { .. } if is_river_start(node) => {
+                let pair = pair_mass(&node.board, r0, r1);
+                let reach = (node.chance_p as f64 * pair / w.z0) as f32;
+                w.out.push(RiverStart { node: i as u32, ranges: [r0.to_vec(), r1.to_vec()], reach, cond_reach: (pair / w.z0) as f32 });
+                Ok(())
+            }
+            PKind::Chance { cards, children, .. } => {
+                for (&c, &ch) in cards.iter().zip(children) {
+                    go(w, ch as usize, &zero_card(r0, c), &zero_card(r1, c))?;
+                }
+                Ok(())
+            }
+            _ => Ok(()),
+        }
+    }
+    let z0 = pair_mass(&tree.board, &prior[0], &prior[1]).max(1e-30);
+    let mut w = Walk { t: tree, z0, strategy, out: Vec::new() };
+    go(&mut w, 0, &prior[0], &prior[1])?;
+    Ok(w.out)
+}
+
+impl Solver<'_> {
+    /// `river_starts` with the strategies this solver's evaluation plays on the flop and turn: a node's lock if it has
+    /// one, else its stored average (`finalize_avg`; the flop and turn must keep an average stored, i.e.
+    /// `no_average_from` and `avg_on_demand_from` of at least 2).
+    pub fn river_starts(&self) -> Result<Vec<RiverStart>, String> {
+        let strategy = |i: usize| -> Option<&[f32]> { self.locked_strategy(i).or_else(|| self.avg.get(i).filter(|a| !a.is_empty()).map(|a| a.as_slice())) };
+        river_starts(self.tree, &self.prior, &strategy)
+    }
+}
+
+/// The range quantization of `TSP1` v3: a value is `q / RANGE_Q * scale` (`scale` = the range's largest value).
+pub const RANGE_Q: f32 = 65535.0;
+
+/// A reach range as `TSP1` v3 stores it: `scale` (the largest value) and the combos whose quantized value is not 0
+/// (ascending) with that value (`round(r / scale * 65535)`).
+#[derive(Clone, Debug, Default, PartialEq)]
+pub struct QRange {
+    pub scale: f32,
+    pub hands: Vec<u16>,
+    pub q: Vec<u16>,
+}
+
+impl QRange {
+    pub fn new(r: &[f32]) -> QRange {
+        let scale = r.iter().copied().fold(0f32, f32::max);
+        let mut out = QRange { scale, ..Default::default() };
+        if scale > 0.0 {
+            for (h, &x) in r.iter().enumerate() {
+                let q = (x / scale * RANGE_Q).round().clamp(0.0, RANGE_Q) as u16;
+                if q > 0 {
+                    out.hands.push(h as u16);
+                    out.q.push(q);
+                }
+            }
+        }
+        out
+    }
+
+    /// the 1,326 wide range (0 outside `hands`)
+    pub fn dense(&self) -> Vec<f32> {
+        let mut r = vec![0f32; NC];
+        for (&h, &q) in self.hands.iter().zip(&self.q) {
+            r[h as usize] = q as f32 / RANGE_Q * self.scale;
+        }
+        r
+    }
+}
+
+fn write_tsp1(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32, starts: Option<&[RiverStart]>) -> (Vec<u8>, Vec<u32>) {
+    // keep decision nodes that are played, chance nodes that lead to something kept, (v3) river starts that are played
     let n = tree.nodes.len();
-    let mut keep = vec![false; n];
-    fn mark(t: &Tree, ev: &[Option<NodeEval>], i: usize, min: f32, keep: &mut Vec<bool>) -> bool {
-        match &t.nodes[i].kind {
+    let start_of: HashMap<usize, &RiverStart> = starts.map(|s| s.iter().map(|x| (x.node as usize, x)).collect()).unwrap_or_default();
+    struct Mark<'m> {
+        t: &'m Tree,
+        ev: &'m [Option<NodeEval>],
+        min: f32,
+        /// v3: the river starts by node (`None`: v2)
+        starts: Option<&'m HashMap<usize, &'m RiverStart>>,
+    }
+    fn mark(m: &Mark, i: usize, keep: &mut Vec<bool>) -> bool {
+        let node = &m.t.nodes[i];
+        match &node.kind {
             PKind::Decision { children, .. } => {
-                let ok = ev[i].as_ref().map(|e| e.reach >= min).unwrap_or(false);
+                let ok = match m.starts {
+                    None => m.ev[i].as_ref().map(|e| e.reach >= m.min).unwrap_or(false),
+                    Some(_) => m.ev[i].as_ref().map(|e| (e.reach as f64 / node.chance_p as f64) as f32 >= m.min).unwrap_or(false),
+                };
                 if !ok {
                     return false;
                 }
                 keep[i] = true;
                 for &c in children {
-                    mark(t, ev, c as usize, min, keep);
+                    mark(m, c as usize, keep);
                 }
                 true
+            }
+            PKind::Chance { .. } if m.starts.is_some() && is_river_start(node) => {
+                let ok = m.starts.and_then(|s| s.get(&i)).is_some_and(|s| s.cond_reach >= m.min);
+                keep[i] = ok;
+                ok
             }
             PKind::Chance { children, .. } => {
                 let mut any = false;
                 for &c in children {
-                    any |= mark(t, ev, c as usize, min, keep);
+                    any |= mark(m, c as usize, keep);
                 }
                 keep[i] = any;
                 any
@@ -1422,7 +1612,8 @@ pub fn export_with_map(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32) -> 
             _ => false,
         }
     }
-    mark(tree, ev, 0, min_reach, &mut keep);
+    let mut keep = vec![false; n];
+    mark(&Mark { t: tree, ev, min: min_reach, starts: starts.map(|_| &start_of) }, 0, &mut keep);
 
     let mut order = Vec::new();
     let mut id = vec![-1i32; n];
@@ -1442,10 +1633,11 @@ pub fn export_with_map(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32) -> 
         }
     }
     dfs(tree, &keep, 0, &mut order, &mut id);
+    assert!(order.len() <= u16::MAX as usize, "{} nodes: more than a TSP1 file can hold", order.len());
 
     let mut b: Vec<u8> = Vec::new();
     b.extend_from_slice(b"TSP1");
-    b.push(2);
+    b.push(if starts.is_some() { 3 } else { 2 });
     b.push(tree.board.len() as u8);
     b.extend_from_slice(&tree.board);
     b.extend_from_slice(&tree.cfg.pot.to_le_bytes());
@@ -1483,11 +1675,7 @@ pub fn export_with_map(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32) -> 
                 let na = children.len();
                 // sparse: a bitmap of the hands that are in the range at this node, then per-hand arrays
                 let hands: Vec<usize> = (0..NC).filter(|&h| e.weight[h] >= 0.01).collect();
-                let mut bitmap = vec![0u8; NC.div_ceil(8)];
-                for &h in &hands {
-                    bitmap[h / 8] |= 1 << (h % 8);
-                }
-                b.extend_from_slice(&bitmap);
+                write_bitmap(&mut b, hands.iter().copied());
                 for &h in &hands {
                     b.push((e.weight[h].clamp(0.0, 1.0) * 255.0).round() as u8);
                 }
@@ -1517,6 +1705,22 @@ pub fn export_with_map(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32) -> 
                 }
                 b.extend_from_slice(&losses);
             }
+            PKind::Chance { .. } if starts.is_some() && is_river_start(node) => {
+                // v3: the river start, its reach ranges instead of the river cards
+                let s = start_of[&i];
+                b.push(2);
+                b.push(255);
+                b.extend_from_slice(&s.reach.to_le_bytes());
+                b.push(0);
+                for r in &s.ranges {
+                    let q = QRange::new(r);
+                    b.extend_from_slice(&q.scale.to_le_bytes());
+                    write_bitmap(&mut b, q.hands.iter().map(|&h| h as usize));
+                    for x in &q.q {
+                        b.extend_from_slice(&x.to_le_bytes());
+                    }
+                }
+            }
             PKind::Chance { cards, children, .. } => {
                 b.push(1);
                 b.push(255);
@@ -1532,6 +1736,15 @@ pub fn export_with_map(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32) -> 
         }
     }
     (b, order.iter().map(|&i| i as u32).collect())
+}
+
+/// a 1,326 bit set of combos (bit `h % 8` of byte `h / 8`)
+fn write_bitmap(b: &mut Vec<u8>, hands: impl Iterator<Item = usize>) {
+    let mut bitmap = vec![0u8; NC.div_ceil(8)];
+    for h in hands {
+        bitmap[h / 8] |= 1 << (h % 8);
+    }
+    b.extend_from_slice(&bitmap);
 }
 
 #[cfg(test)]

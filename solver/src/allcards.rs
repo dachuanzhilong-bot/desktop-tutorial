@@ -24,6 +24,7 @@
 //!   per node: u32 node, u32 actions, actions x 1,326 f32 (the average strategy, `na * NC` as `Solver::avg`);
 //!   u32 CRC-32, u64 file length.  Written the same way (temporary file, then rename).
 use crate::postflop::*;
+use std::collections::HashMap;
 use std::fs::File;
 use std::io::{BufReader, BufWriter, Read, Write};
 use std::path::{Path, PathBuf};
@@ -112,7 +113,18 @@ impl Fnv {
 /// The tree (configuration, every node's kind, street, board, actions and cards), the supports and the starting
 /// ranges of a solver: equal for two solvers of the same flop, scenario and tree settings.
 pub fn tree_fingerprint(s: &Solver) -> u64 {
-    let t = s.tree;
+    fingerprint(s.tree, &s.prior, &s.supports, &s.support_of)
+}
+
+/// `tree_fingerprint` of a solver of `tree` with the starting ranges `ranges` (as given to `Solver::new`), without
+/// making the solver (whose regrets a 49 x 48 tree could not hold next to another solve).
+pub fn tree_fingerprint_of(tree: &Tree, ranges: &[Vec<f32>; 2]) -> u64 {
+    let prior = starting_prior(tree, ranges);
+    let (supports, support_of) = decision_supports(tree, &prior);
+    fingerprint(tree, &prior, &supports, &support_of)
+}
+
+fn fingerprint(t: &Tree, prior: &[Vec<f32>; 2], supports: &[Vec<u16>], support_of: &[u32]) -> u64 {
     let mut h = Fnv::new();
     h.bytes(format!("{:?}", t.cfg).as_bytes());
     h.bytes(&t.board);
@@ -130,7 +142,7 @@ pub fn tree_fingerprint(s: &Solver) -> u64 {
                     h.f32(a.amount);
                     h.u64(c as u64);
                 }
-                h.u64(s.support(i).len() as u64);
+                h.u64(supports[support_of[i] as usize].len() as u64);
             }
             PKind::Chance { cards, children, weight } => {
                 h.bytes(&[1]);
@@ -150,12 +162,12 @@ pub fn tree_fingerprint(s: &Solver) -> u64 {
             }
         }
     }
-    for sup in s.supports.iter() {
+    for sup in supports {
         h.u64(sup.len() as u64);
         sup.iter().for_each(|&x| h.bytes(&x.to_le_bytes()));
     }
-    for p in 0..2 {
-        s.prior[p].iter().for_each(|&x| h.f32(x));
+    for p in prior {
+        p.iter().for_each(|&x| h.f32(x));
     }
     h.0
 }
@@ -721,6 +733,155 @@ pub fn lock_upstream(s: &mut Solver, up: &Upstream) -> Result<(), String> {
     Ok(())
 }
 
+/// The flop / turn strategies of `up`, checked against `tree` (fingerprint, node ids, action counts) and normalized as
+/// `Solver::lock_node` plays them, by node.
+fn upstream_strategies(tree: &Tree, ranges: &[Vec<f32>; 2], up: &Upstream) -> Result<HashMap<usize, Vec<f32>>, String> {
+    if up.tree != tree_fingerprint_of(tree, ranges) {
+        return Err("the upstream strategies belong to another tree / scenario / ranges".into());
+    }
+    let want: Vec<(usize, usize)> = upstream_nodes(tree).collect();
+    if want.len() != up.nodes.len() {
+        return Err(format!("{} flop / turn nodes in the tree, {} in the file", want.len(), up.nodes.len()));
+    }
+    let mut out = HashMap::with_capacity(want.len());
+    for ((i, na), (j, st)) in want.iter().zip(&up.nodes) {
+        if *i != *j as usize || st.len() != na * NC {
+            return Err(format!("node {} does not match the file", i));
+        }
+        out.insert(*i, normalize_strategy(st.clone(), *na));
+    }
+    Ok(out)
+}
+
+/// The reach ranges at every river start of `tree` (REFACTOR_PLAN 3-3-5, `TSP1` v3) when the flop and turn play the
+/// strategies of `up`, computed forward from the starting ranges without a `Solver` (so without the river's regrets).
+/// They are bit for bit the ranges with which `resolve_river` (flop and turn locked to `up`) solves each river, i.e. the
+/// ranges the device re-solves the river from (test `upstream_ranges_are_the_ranges_of_the_resolve`).
+pub fn upstream_river_starts(tree: &Tree, ranges: &[Vec<f32>; 2], up: &Upstream) -> Result<Vec<RiverStart>, String> {
+    let st = upstream_strategies(tree, ranges, up)?;
+    river_starts(tree, &starting_prior(tree, ranges), &|i| st.get(&i).map(|v| v.as_slice()))
+}
+
+/// The flop / turn strategies of `up`, written by a solve of `from` (e.g. the 49 x 48 tree), for `to`: a tree of the
+/// same flop, configuration and ranges except the river cards (e.g. 49 x 2), whose flop and turn are those of `from`
+/// node for node but numbered otherwise.  Lets a small tree play the strategies of a big solve (`measure_exploit
+/// --upstream-river-cards`).  The result's fingerprint is `to`'s.
+pub fn upstream_onto(up: &Upstream, from: &Tree, ranges: &[Vec<f32>; 2], to: &Tree) -> Result<Upstream, String> {
+    upstream_strategies(from, ranges, up)?;
+    let (a, b): (Vec<_>, Vec<_>) = (upstream_nodes(from).collect(), upstream_nodes(to).collect());
+    if a.len() != b.len() {
+        return Err(format!("{} flop / turn decision nodes in one tree, {} in the other", a.len(), b.len()));
+    }
+    let mut nodes = Vec::with_capacity(b.len());
+    for (((i, na), (j, nb)), (_, st)) in a.iter().zip(&b).zip(&up.nodes) {
+        let (x, y) = (&from.nodes[*i], &to.nodes[*j]);
+        let same = na == nb
+            && x.street == y.street
+            && x.board == y.board
+            && x.inv == y.inv
+            && match (&x.kind, &y.kind) {
+                (PKind::Decision { player: p, acts: aa, .. }, PKind::Decision { player: q, acts: ab, .. }) => p == q && aa.iter().zip(ab).all(|(u, v)| u.kind == v.kind && u.amount == v.amount),
+                _ => false,
+            };
+        if !same {
+            return Err(format!("node {} of the solved tree and node {} of the other differ", i, j));
+        }
+        nodes.push((*j as u32, st.clone()));
+    }
+    Ok(Upstream { tree: tree_fingerprint_of(to, ranges), tag: format!("{} (onto another tree)", up.tag), nodes, crc: up.crc })
+}
+
+/// The river tree that the device solves for river start `start` of `tree` and river card `card`: the 5 card board,
+/// the pot of the river start (`pot + inv0 + inv1`) and the stack behind (`stack - inv0`), the tree's bet settings.  It
+/// is the river subtree of `tree` node for node (checked by `resolve_rivers_alone`); its payoffs leave out the chips
+/// put in before the river (a constant per player, which changes no strategy).
+pub fn river_tree_of(tree: &Tree, start: usize, card: u8) -> Tree {
+    let n = &tree.nodes[start];
+    assert!(is_river_start(n), "node {} is not a river start", start);
+    assert!((n.inv[0] - n.inv[1]).abs() < 1e-6, "a street starts with equal investments");
+    let cfg = Config { pot: tree.cfg.pot + n.inv[0] + n.inv[1], stack: tree.cfg.stack - n.inv[0], ..tree.cfg.clone() };
+    let mut b = n.board.clone();
+    b.push(card);
+    build_tree(&cfg, &b)
+}
+
+/// does `alone` (from `river_tree_of`) have the shape of the subtree of `tree` at `root`
+fn same_river_subtree(tree: &Tree, root: usize, alone: &Tree) -> bool {
+    alone.nodes.iter().enumerate().all(|(k, a)| {
+        let Some(t) = tree.nodes.get(root + k) else { return false };
+        a.street == t.street
+            && a.board == t.board
+            && match (&a.kind, &t.kind) {
+                (PKind::Decision { player: p, acts: x, children: cx }, PKind::Decision { player: q, acts: y, children: cy }) => {
+                    p == q && x.len() == y.len() && x.iter().zip(y).all(|(u, v)| u.kind == v.kind && u.amount == v.amount) && cx.iter().zip(cy).all(|(&c, &d)| c as usize + root == d as usize)
+                }
+                (PKind::Fold { winner: u }, PKind::Fold { winner: v }) => u == v,
+                (PKind::Showdown { .. }, PKind::Showdown { .. }) => true,
+                _ => false,
+            }
+    })
+}
+
+/// The values of `resolve_rivers_alone` (chips).
+#[derive(Clone, Copy, Debug)]
+pub struct AloneValues {
+    /// flop and turn locked: only the river best-responds
+    pub river_only: f32,
+    /// no lock: both players best-respond everywhere against "upstream + the rivers solved alone"
+    pub full: f32,
+    /// river subgames solved
+    pub subgames: usize,
+}
+
+/// Plan B as the device plays it (REFACTOR_PLAN 3-3-5 / 3-3-6): the flop and turn play `up`, and every river subgame of
+/// `tree` (each river start x each river card of the tree) is solved **on its own** (`river_tree_of`, `plan`'s iterations
+/// and restart of the average) from the ranges `start_ranges` gives for its river start (the river card's combos set to
+/// 0 here), then measured over the whole tree as `resolve_river` measures.  With `start_ranges` = the exact ranges
+/// (`RiverStart::ranges`) this is `resolve_river` up to rounding (the subgames are independent once the flop and turn
+/// are fixed); with the ranges read from a `TSP1` v3 file it measures what the file's quantization costs.  Memory: a
+/// solver of `tree` with every average stored (small trees only, e.g. 49 x 2).
+pub fn resolve_rivers_alone(tree: &Tree, ranges: &[Vec<f32>; 2], up: &Upstream, plan: &Plan, start_ranges: &dyn Fn(&RiverStart) -> [Vec<f32>; 2], log: &mut dyn FnMut(&str)) -> Result<AloneValues, String> {
+    let starts = upstream_river_starts(tree, ranges, up)?;
+    let mut s = Solver::new(tree, ranges);
+    s.finalize_avg();
+    let st = upstream_strategies(tree, ranges, up)?;
+    for (&i, v) in &st {
+        s.avg[i] = v.clone();
+    }
+    let t0 = Instant::now();
+    let mut last = Instant::now();
+    let mut subgames = 0;
+    for (k, rs) in starts.iter().enumerate() {
+        let r = start_ranges(rs);
+        let PKind::Chance { cards, children, .. } = &tree.nodes[rs.node as usize].kind else { unreachable!() };
+        for (&c, &ch) in cards.iter().zip(children) {
+            let alone_tree = river_tree_of(tree, rs.node as usize, c);
+            if !same_river_subtree(tree, ch as usize, &alone_tree) {
+                return Err(format!("river start {} card {}: the river tree differs from the subtree", rs.node, c));
+            }
+            let mut a = Solver::new(&alone_tree, &[zero_card(&r[0], c), zero_card(&r[1], c)]);
+            run_iterations(&mut a, plan, None, None, &mut |_| {}).map_err(|e| e.to_string())?;
+            a.finalize_avg();
+            for (j, v) in a.avg.into_iter().enumerate() {
+                if !v.is_empty() {
+                    s.avg[ch as usize + j] = v;
+                }
+            }
+            subgames += 1;
+        }
+        if last.elapsed().as_secs() >= 60 {
+            last = Instant::now();
+            log(&format!("rivers solved alone: {} / {} river starts, {} subgames, {:.0} s", k + 1, starts.len(), subgames, t0.elapsed().as_secs_f32()));
+        }
+    }
+    let full = s.exploitability();
+    for (&i, v) in &st {
+        s.lock_node(i, v.clone())?;
+    }
+    let river_only = s.exploitability();
+    Ok(AloneValues { river_only, full, subgames })
+}
+
 /// The value of a river re-solve (chips).
 #[derive(Clone, Copy, Debug)]
 pub struct ResolveValues {
@@ -1217,5 +1378,104 @@ mod tests {
             checked += 1;
         }
         assert!(checked >= 4);
+    }
+
+    /// a flop tree with 4 turn x `river_cards` river cards (as `resolving_the_river_keeps_the_flop_and_turn`)
+    fn resolve_tree(river_cards: usize) -> Tree {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 4, river_cards, flop_runouts: 24, ..Config::default() };
+        build_tree(&cfg, &board("Ks 7d 2c"))
+    }
+
+    /// bit patterns of a range with the combos holding `c` at 0
+    fn dealt(r: &[f32], c: u8) -> Vec<u32> {
+        zero_card(r, c).iter().map(|x| x.to_bits()).collect()
+    }
+
+    /// (3-3-5) the reach ranges at the river starts, computed forward from `upstream.tsup` without a solver, are bit for
+    /// bit the ranges with which `resolve_river` solves each river (the weights its evaluation reports at each river
+    /// root: OOP's at the root, IP's after OOP's check), for every river card; and `Solver::river_starts` of the
+    /// all-card solve gives the ranges of that solve's evaluation
+    #[test]
+    fn upstream_ranges_are_the_ranges_of_the_resolve() {
+        let tree = resolve_tree(3);
+        let ranges = mixed_ranges(9);
+        let mut a = solve(&tree, &ranges, on_demand(2), 60);
+        a.finalize_avg();
+        assert_eq!(tree_fingerprint_of(&tree, &ranges), tree_fingerprint(&a));
+        let up = Upstream { tree: tree_fingerprint(&a), tag: String::new(), nodes: upstream_of(&a), crc: 0 };
+        let mut r = Solver::with_options(&tree, &ranges, on_demand(1));
+        resolve_river(&mut r, &up, &Plan::new(30, 0.5, 0), None, None, &mut |_| {}).unwrap();
+        let n_starts = tree.nodes.iter().filter(|n| is_river_start(n)).count();
+        let from_a = Solver::river_starts(&a).unwrap();
+        for (solver, starts) in [(&mut r, upstream_river_starts(&tree, &ranges, &up).unwrap()), (&mut a, from_a)] {
+            assert_eq!(starts.len(), n_starts);
+            let ev = solver.evaluate();
+            let (mut checked, mut wide) = (0, 0);
+            for rs in &starts {
+                let node = &tree.nodes[rs.node as usize];
+                let PKind::Chance { cards, children, .. } = &node.kind else { panic!("a river start is a chance node") };
+                assert!(close(rs.cond_reach * node.chance_p, rs.reach), "{} x {} vs {}", rs.cond_reach, node.chance_p, rs.reach);
+                for (&c, &ch) in cards.iter().zip(children) {
+                    let PKind::Decision { player: 0, children: acts, .. } = &tree.nodes[ch as usize].kind else { panic!("OOP acts first on the river") };
+                    let oop = ev[ch as usize].as_ref().expect("river root evaluated");
+                    let ip = ev[acts[0] as usize].as_ref().expect("IP after the check evaluated");
+                    assert_eq!(ip.player, 1);
+                    assert_eq!(oop.weight.iter().map(|x| x.to_bits()).collect::<Vec<_>>(), dealt(&rs.ranges[0], c), "river start {} card {}: OOP", rs.node, c);
+                    assert_eq!(ip.weight.iter().map(|x| x.to_bits()).collect::<Vec<_>>(), dealt(&rs.ranges[1], c), "river start {} card {}: IP", rs.node, c);
+                    checked += 1;
+                    wide += (rs.ranges[0].iter().filter(|&&x| x > 0.0).count() > 50) as usize;
+                }
+            }
+            assert!(checked >= 3 * n_starts && wide * 2 > checked, "{} river roots, {} with wide ranges", checked, wide);
+        }
+        // another scenario's file is refused
+        assert!(upstream_river_starts(&tree, &mixed_ranges(10), &up).is_err());
+    }
+
+    /// (3-3-5) the strategies of a 4 x 3 solve played on the 4 x 2 tree: the same flop / turn nodes renumbered, the same
+    /// river start ranges; a tree with other turn cards is refused
+    #[test]
+    fn upstream_onto_a_tree_with_fewer_river_cards() {
+        let (big, small) = (resolve_tree(3), resolve_tree(2));
+        let ranges = mixed_ranges(9);
+        let mut a = solve(&big, &ranges, on_demand(1), 20);
+        a.finalize_avg();
+        let up = Upstream { tree: tree_fingerprint(&a), tag: "t".into(), nodes: upstream_of(&a), crc: 7 };
+        let onto = upstream_onto(&up, &big, &ranges, &small).unwrap();
+        assert_ne!(onto.nodes.iter().map(|x| x.0).collect::<Vec<_>>(), up.nodes.iter().map(|x| x.0).collect::<Vec<_>>(), "renumbered");
+        let (sb, ss) = (upstream_river_starts(&big, &ranges, &up).unwrap(), upstream_river_starts(&small, &ranges, &onto).unwrap());
+        assert_eq!(sb.len(), ss.len());
+        for (x, y) in sb.iter().zip(&ss) {
+            assert_eq!(bits(&x.ranges), bits(&y.ranges));
+            assert_eq!(x.reach.to_bits(), y.reach.to_bits());
+        }
+        let cfg = Config { turn_cards: 3, ..small.cfg.clone() };
+        assert!(upstream_onto(&up, &big, &ranges, &build_tree(&cfg, &board("Ks 7d 2c"))).is_err());
+        assert!(upstream_onto(&up, &small, &ranges, &big).is_err(), "the file is not of the small tree");
+    }
+
+    /// (3-3-5) the rivers solved one by one on their own trees (as the device does) from the exact ranges measure as the
+    /// re-solve in the whole tree; from the ranges of a `TSP1` v3 file (u16) they measure about the same
+    #[test]
+    fn rivers_solved_alone_measure_as_the_resolve() {
+        let tree = resolve_tree(2);
+        let ranges = mixed_ranges(9);
+        let mut a = solve(&tree, &ranges, on_demand(1), 60);
+        a.finalize_avg();
+        let up = Upstream { tree: tree_fingerprint(&a), tag: String::new(), nodes: upstream_of(&a), crc: 0 };
+        let plan = Plan::new(40, 0.5, 0);
+        let mut r = Solver::with_options(&tree, &ranges, on_demand(1));
+        let (v, _) = resolve_river(&mut r, &up, &plan, None, None, &mut |_| {}).unwrap();
+        let v = v.unwrap();
+        let exact = resolve_rivers_alone(&tree, &ranges, &up, &plan, &|rs| rs.ranges.clone(), &mut |_| {}).unwrap();
+        assert_eq!(exact.subgames, tree.nodes.iter().filter(|n| is_river_start(n)).count() * 2);
+        let tol = 1e-3 * tree.cfg.pot;
+        assert!((exact.full - v.full).abs() < tol && (exact.river_only - v.river_only).abs() < tol, "alone {:?} vs in the tree {:?}", exact, v);
+        let quantized = resolve_rivers_alone(&tree, &ranges, &up, &plan, &|rs| [QRange::new(&rs.ranges[0]).dense(), QRange::new(&rs.ranges[1]).dense()], &mut |_| {}).unwrap();
+        assert!((quantized.full - exact.full).abs() < tol, "u16 {:?} vs exact {:?}", quantized, exact);
+        // the ranges matter: an IP range from another river start measures otherwise
+        let starts = upstream_river_starts(&tree, &ranges, &up).unwrap();
+        let wrong = resolve_rivers_alone(&tree, &ranges, &up, &plan, &|rs| [rs.ranges[0].clone(), starts[(rs.node as usize * 7) % starts.len()].ranges[1].clone()], &mut |_| {}).unwrap();
+        assert!((wrong.full - exact.full).abs() > 10.0 * tol, "{:?} vs {:?}", wrong, exact);
     }
 }

@@ -1,4 +1,4 @@
-import { NC } from "./combos";
+import { COMBOS, NC } from "./combos";
 
 /** edge codes: >= 0 child node id; -1 fold (hand over); -2 not stored (rare line); -3 showdown; -4 all-in run-out */
 export const END_FOLD = -1;
@@ -26,22 +26,37 @@ export interface PfData {
   loss: Float32Array;
 }
 
+/** a reach range of a v3 river start, as stored: value of `hands[j]` = `q[j] / RANGE_Q * scale` (other combos 0) */
+export interface PfRange {
+  scale: number;
+  hands: Uint16Array;
+  q: Uint16Array;
+}
+
+/** quantization step of the v3 ranges (docs/03-solution-format.md, `TSP1` v3) */
+export const RANGE_Q = 65535;
+
 export interface PfNode {
   id: number;
   /** 0 flop, 1 turn, 2 river */
   street: number;
   inv: [number, number];
+  /** a v3 river start is a "chance" node without edges (the river cards are not stored) and with `riverStart` */
   type: "decision" | "chance";
   /** 0 = out of position, 1 = in position */
   actor: number;
   reach: number;
   edges: PfEdge[];
   data: PfData | null;
+  /** v3 only: the river start (the river is solved on the device): both players' reach ranges [OOP, IP] */
+  riverStart?: [PfRange, PfRange];
   parent: number;
   parentEdge: number;
 }
 
 export interface PfFlop {
+  /** `TSP1` version: 2 (river nodes stored) or 3 (river starts with reach ranges instead) */
+  version?: 2 | 3;
   board: number[];
   pot: number;
   stack: number;
@@ -56,7 +71,8 @@ export function decodeLoss(c: number): number {
 
 export function decodeFlop(bytes: Uint8Array): PfFlop {
   const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
-  if (String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== "TSP1" || bytes[4] !== 2) throw new Error("bad postflop file");
+  const version = bytes[4];
+  if (String.fromCharCode(bytes[0], bytes[1], bytes[2], bytes[3]) !== "TSP1" || (version !== 2 && version !== 3)) throw new Error("bad postflop file");
   let o = 5;
   const nb = bytes[o++];
   const board: number[] = [];
@@ -84,6 +100,24 @@ export function decodeFlop(bytes: Uint8Array): PfFlop {
       o += 9;
     }
     let data: PfData | null = null;
+    let riverStart: [PfRange, PfRange] | undefined;
+    if (kind === 2) {
+      // v3 river start: per player f32 scale, a 1326-bit bitmap, u16 per combo of the bitmap
+      if (version !== 3 || street !== 1 || ne !== 0) throw new Error("bad postflop file");
+      const one = (): PfRange => {
+        const scale = dv.getFloat32(o, true);
+        o += 4;
+        const hands: number[] = [];
+        for (let h = 0; h < NC; h++) if (bytes[o + (h >> 3)] & (1 << (h & 7))) hands.push(h);
+        o += bitmapLen;
+        const q = new Uint16Array(hands.length);
+        for (let j = 0; j < hands.length; j++) q[j] = dv.getUint16(o + j * 2, true);
+        o += hands.length * 2;
+        return { scale, hands: Uint16Array.from(hands), q };
+      };
+      const oop = one();
+      riverStart = [oop, one()];
+    } else if (kind > 2) throw new Error("bad postflop file");
     if (kind === 0) {
       const na = ne;
       const hands: number[] = [];
@@ -111,15 +145,53 @@ export function decodeFlop(bytes: Uint8Array): PfFlop {
       o += na * n;
       data = { n, hands: Uint16Array.from(hands), weight, eq, freq, best, loss };
     }
-    nodes.push({ id, street, inv, type: kind === 0 ? "decision" : "chance", actor, reach, edges, data, parent: -1, parentEdge: -1 });
+    const node: PfNode = { id, street, inv, type: kind === 0 ? "decision" : "chance", actor, reach, edges, data, parent: -1, parentEdge: -1 };
+    if (riverStart) node.riverStart = riverStart;
+    nodes.push(node);
   }
+  if (o !== bytes.length) throw new Error("bad postflop file");
   for (const n of nodes) n.edges.forEach((e, i) => {
     if (e.code >= 0 && nodes[e.code]) {
       nodes[e.code].parent = n.id;
       nodes[e.code].parentEdge = i;
     }
   });
-  return { board, pot, stack, nodes };
+  return { version: version === 3 ? 3 : 2, board, pot, stack, nodes };
+}
+
+/** the board at a node: the flop + the cards dealt on the way from the root */
+export function boardAt(flop: PfFlop, nodeId: number): number[] {
+  const cards: number[] = [];
+  for (let n = flop.nodes[nodeId]; n && n.parent >= 0; n = flop.nodes[n.parent]) {
+    const p = flop.nodes[n.parent];
+    if (p.type === "chance") cards.unshift(p.edges[n.parentEdge].kind);
+  }
+  return [...flop.board, ...cards];
+}
+
+/** a v3 range, 1326 wide */
+export function denseRange(r: PfRange): Float32Array {
+  const out = new Float32Array(NC);
+  for (let j = 0; j < r.hands.length; j++) out[r.hands[j]] = (r.q[j] / RANGE_Q) * r.scale;
+  return out;
+}
+
+/**
+ * The reach ranges [OOP, IP] (1326 wide) with which the river is solved after `riverCard` is dealt at the v3 river start
+ * `nodeId`: the stored ranges with the combos holding `riverCard` set to 0.  `null` if the node is not a river start or
+ * the card is not a live card there (on the board, or not 0..51).
+ */
+export function riverStartRanges(flop: PfFlop, nodeId: number, riverCard: number): [Float32Array, Float32Array] | null {
+  const node = flop.nodes[nodeId];
+  if (!node?.riverStart || !Number.isInteger(riverCard) || riverCard < 0 || riverCard > 51 || boardAt(flop, nodeId).includes(riverCard)) return null;
+  const out = node.riverStart.map(denseRange) as [Float32Array, Float32Array];
+  for (let h = 0; h < NC; h++) {
+    if (COMBOS[h].c1 === riverCard || COMBOS[h].c2 === riverCard) {
+      out[0][h] = 0;
+      out[1][h] = 0;
+    }
+  }
+  return out;
 }
 
 /** dense (1326 wide) view of a decision node */

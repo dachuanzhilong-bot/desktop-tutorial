@@ -25,7 +25,7 @@ pub struct FileEdge {
 pub struct FileNode {
     pub street: u8,
     pub inv: [f32; 2],
-    /// 0 decision, 1 chance
+    /// 0 decision, 1 chance, 2 river start (v3: the river is solved on the device; no edges)
     pub kind: u8,
     pub actor: u8,
     pub reach: f32,
@@ -34,9 +34,13 @@ pub struct FileNode {
     pub hands: Vec<u16>,
     pub weight: Vec<u8>,
     pub freq: Vec<u8>,
+    /// river starts (v3): both players' reach ranges (OOP, IP), quantized
+    pub ranges: Option<[QRange; 2]>,
 }
 
 pub struct Tsp1 {
+    /// 2, or 3 (REFACTOR_PLAN 3-3-5: no river node; the river starts hold the reach ranges)
+    pub version: u8,
     pub board: Vec<u8>,
     pub pot: f32,
     pub stack: f32,
@@ -74,14 +78,14 @@ impl Rd<'_> {
     }
 }
 
-/// Read a raw (not gzipped) `TSP1` v2 file (`docs/03-solution-format.md`).
+/// Read a raw (not gzipped) `TSP1` v2 or v3 file (`docs/03-solution-format.md`).
 pub fn parse_tsp1(bytes: &[u8]) -> Result<Tsp1, String> {
     let mut r = Rd { b: bytes, o: 0 };
     if r.take(4)? != b"TSP1" {
         return Err("not a TSP1 file".into());
     }
     let ver = r.u8()?;
-    if ver != 2 {
+    if ver != 2 && ver != 3 {
         return Err(format!("unsupported TSP1 version {}", ver));
     }
     let nb = r.u8()? as usize;
@@ -102,6 +106,22 @@ pub fn parse_tsp1(bytes: &[u8]) -> Result<Tsp1, String> {
             edges.push(FileEdge { kind: r.u8()?, amount: r.f32()?, code: r.i32()? });
         }
         let (mut hands, mut weight, mut freq) = (Vec::new(), Vec::new(), Vec::new());
+        let mut ranges = None;
+        if kind == 2 {
+            if ver < 3 || street != 1 || ne != 0 {
+                return Err("a river start in a file that cannot have one".into());
+            }
+            let mut one = || -> Result<QRange, String> {
+                let scale = r.f32()?;
+                let bm = r.take(NC.div_ceil(8))?.to_vec();
+                let hands: Vec<u16> = (0..NC).filter(|&h| (bm[h / 8] >> (h % 8)) & 1 == 1).map(|h| h as u16).collect();
+                let q = (0..hands.len()).map(|_| r.u16()).collect::<Result<Vec<u16>, String>>()?;
+                Ok(QRange { scale, hands, q })
+            };
+            ranges = Some([one()?, one()?]);
+        } else if kind > 2 {
+            return Err(format!("unknown node kind {}", kind));
+        }
         if kind == 0 {
             let bm = r.take(NC.div_ceil(8))?.to_vec();
             hands = (0..NC).filter(|&h| (bm[h / 8] >> (h % 8)) & 1 == 1).map(|h| h as u16).collect();
@@ -112,12 +132,12 @@ pub fn parse_tsp1(bytes: &[u8]) -> Result<Tsp1, String> {
             r.take(2 * k)?; // best EV
             r.take(ne * k)?; // losses
         }
-        nodes.push(FileNode { street, inv, kind, actor, reach, edges, hands, weight, freq });
+        nodes.push(FileNode { street, inv, kind, actor, reach, edges, hands, weight, freq, ranges });
     }
     if r.o != bytes.len() {
         return Err(format!("{} trailing bytes", bytes.len() - r.o));
     }
-    Ok(Tsp1 { board, pot, stack, nodes })
+    Ok(Tsp1 { version: ver, board, pot, stack, nodes })
 }
 
 /// Pair every node of the rebuilt tree with its node in the file (`None` = not written: a rare line).
@@ -149,6 +169,8 @@ pub fn match_tree(tree: &Tree, f: &Tsp1) -> Result<Vec<Option<usize>>, String> {
                 }
                 children
             }
+            // v3: the river start holds ranges, no river card
+            (PKind::Chance { .. }, 2) if is_river_start(tn) => &[],
             (PKind::Chance { cards, children, .. }, 1) => {
                 if cards.len() != fnd.edges.len() || cards.iter().zip(&fnd.edges).any(|(&c, e)| c != e.kind) {
                     return bad("sampled cards");
@@ -987,5 +1009,203 @@ mod tests {
         // the stratum rule takes the sample of the card's own stratum
         assert_eq!(assign_card(&fl, &cards, card("Ac"), Assign::Stratum), 0);
         assert_eq!(assign_card(&fl, &cards, card("2s"), Assign::Stratum), 5);
+    }
+
+    /// a flop tree with 5 turn x 2 river cards, solved without river averages (plan B's precomputation)
+    fn v3_tree() -> Tree {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 5, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        build_tree(&cfg, &board("Ks 7d 2c"))
+    }
+
+    fn solve_b<'t>(tree: &'t Tree, ranges: &[Vec<f32>; 2], iters: u32) -> Solver<'t> {
+        let mut s = Solver::with_options(tree, ranges, SolverOptions { no_average_from: 2, ..Default::default() });
+        for _ in 0..iters {
+            s.iterate();
+        }
+        s.finalize_avg();
+        s
+    }
+
+    /// a decision node's street, investments, actor, reach, actions (kind, amount) and hands / weights / frequencies
+    type DecisionFields<'a> = (u8, [u32; 2], u8, u32, Vec<(u8, u32)>, &'a [u16], &'a [u8], &'a [u8]);
+
+    /// the fields of a decision node that v2 and v3 write alike (not the child codes)
+    fn decision_fields(n: &FileNode) -> DecisionFields<'_> {
+        (n.street, n.inv.map(f32::to_bits), n.actor, n.reach.to_bits(), n.edges.iter().map(|e| (e.kind, e.amount.to_bits())).collect(), &n.hands, &n.weight, &n.freq)
+    }
+
+    /// (3-3-5) `TSP1` v3 written and read back: the flop / turn decision nodes are v2's, no river node, every river
+    /// start holds both reach ranges (u16 to within half a step, the combos quantized to 0 left out), and the file
+    /// pairs with the tree (`match_tree`)
+    #[test]
+    fn v3_round_trip() {
+        let tree = v3_tree();
+        let mut s = solve_b(&tree, &ranges(), 40);
+        let ev = s.evaluate();
+        let starts = s.river_starts().unwrap();
+        assert_eq!(starts.len(), tree.nodes.iter().filter(|n| is_river_start(n)).count());
+        let f2 = parse_tsp1(&export(&tree, &ev, 0.0)).unwrap();
+        let bytes = export_v3(&tree, &ev, &starts, 0.0);
+        let f3 = parse_tsp1(&bytes).unwrap();
+        assert_eq!((f2.version, f3.version), (2, 3));
+        assert_eq!((&f3.board, f3.pot, f3.stack), (&tree.board, tree.cfg.pot, tree.cfg.stack));
+        assert!(f3.nodes.iter().all(|n| n.street < 2), "no river node");
+        let d2: Vec<_> = f2.nodes.iter().filter(|n| n.kind == 0).map(decision_fields).collect();
+        let d3: Vec<_> = f3.nodes.iter().filter(|n| n.kind == 0).map(decision_fields).collect();
+        assert!(d2.len() > 50);
+        assert!(d2 == d3, "the decision nodes are v2's");
+        // v2 has no river start: its edges there are "not stored"
+        let to_start = |f: &Tsp1| f.nodes.iter().flat_map(|n| &n.edges).filter(|e| e.code >= 0 && f.nodes[e.code as usize].kind == 2).count();
+        assert_eq!(to_start(&f3), starts.len());
+        assert_eq!(to_start(&f2), 0);
+        let map = match_tree(&tree, &f3).unwrap();
+        let mut widest = 0;
+        for rs in &starts {
+            let fnode = &f3.nodes[map[rs.node as usize].expect("every river start is written at min_reach 0")];
+            assert_eq!((fnode.kind, fnode.street, fnode.actor, fnode.reach.to_bits()), (2, 1, 255, rs.reach.to_bits()));
+            assert_eq!(fnode.inv, tree.nodes[rs.node as usize].inv);
+            let fr = fnode.ranges.as_ref().unwrap();
+            for p in 0..2 {
+                let (want, got) = (&rs.ranges[p], &fr[p]);
+                let scale = want.iter().copied().fold(0f32, f32::max);
+                assert_eq!(got.scale.to_bits(), scale.to_bits());
+                let dense = got.dense();
+                for h in 0..NC {
+                    assert!((dense[h] - want[h]).abs() <= scale * (0.5 / RANGE_Q + 1e-6), "start {} player {} combo {}: {} vs {}", rs.node, p, h, dense[h], want[h]);
+                    assert_eq!(got.hands.contains(&(h as u16)), (want[h] / scale * RANGE_Q).round() >= 1.0);
+                }
+                assert_eq!(QRange::new(&dense), *got, "stable when written again");
+                widest = widest.max(got.hands.len());
+            }
+        }
+        assert!(widest > 100, "{}", widest);
+        // truncated or with a river start in a v2 file: refused
+        assert!(parse_tsp1(&bytes[..bytes.len() - 1]).is_err());
+        let mut v2 = bytes.clone();
+        v2[4] = 2;
+        assert!(parse_tsp1(&v2).is_err());
+    }
+
+    /// (3-3-5) v3's `min_reach` is the reach given the dealt cards: a turn line played often enough on its card stays,
+    /// though its share of the whole deal (the v2 measure) is smaller
+    #[test]
+    fn v3_min_reach_is_conditional_on_the_cards() {
+        let tree = v3_tree();
+        let mut s = solve_b(&tree, &ranges(), 40);
+        let ev = s.evaluate();
+        let starts = s.river_starts().unwrap();
+        let min = 0.05;
+        let f2 = parse_tsp1(&export(&tree, &ev, min)).unwrap();
+        let f3 = parse_tsp1(&export_v3(&tree, &ev, &starts, min)).unwrap();
+        let map = match_tree(&tree, &f3).unwrap();
+        let cond = |i: usize| match &tree.nodes[i].kind {
+            PKind::Decision { .. } => ev[i].as_ref().map(|e| e.reach / tree.nodes[i].chance_p),
+            _ => starts.iter().find(|x| x.node as usize == i).map(|x| x.cond_reach),
+        };
+        let (mut kept, mut cut) = (0, 0);
+        for (i, n) in tree.nodes.iter().enumerate() {
+            if n.street == 2 || !(matches!(n.kind, PKind::Decision { .. }) || is_river_start(n)) {
+                continue;
+            }
+            match map[i] {
+                Some(_) => {
+                    assert!(cond(i).unwrap() >= min, "node {} kept below the threshold", i);
+                    kept += 1;
+                }
+                // a node left out under a written parent is below the threshold
+                None if (0..i).any(|p| map[p].is_some() && matches!(&tree.nodes[p].kind, PKind::Decision { children, .. } | PKind::Chance { children, .. } if children.contains(&(i as u32)))) => {
+                    assert!(cond(i).unwrap_or(0.0) < min, "node {} left out above the threshold", i);
+                    cut += 1;
+                }
+                None => {}
+            }
+        }
+        assert!(kept > 20 && cut > 5, "{} kept, {} cut", kept, cut);
+        let turn = |f: &Tsp1| f.nodes.iter().filter(|n| n.kind == 0 && n.street == 1).count();
+        assert!(turn(&f3) > turn(&f2), "v3 {} turn nodes, v2 {}", turn(&f3), turn(&f2));
+    }
+
+    /// the starting ranges of the web test's `TSP1` v3 file: few combos, mixed weights
+    fn fixture_ranges() -> [Vec<f32>; 2] {
+        let mut r = [vec![0f32; NC], vec![0f32; NC]];
+        for h in 0..NC {
+            if h % 53 == 0 {
+                r[0][h] = (h % 4 + 1) as f32 / 4.0;
+            }
+            if h % 59 == 3 {
+                r[1][h] = (h % 3 + 1) as f32 / 3.0;
+            }
+        }
+        r
+    }
+
+    /// (3-3-5) the small `TSP1` v3 file read by the web tests (`web/src/lib/__tests__/fixtures/tsp1-v3.bin`) and what
+    /// they expect of it (`tsp1-v3.json`, from this reader): both must be what this code writes now.  After a deliberate
+    /// format change, rewrite them with `TESSERA_WRITE_FIXTURES=1 cargo test --release v3_fixture`.
+    #[test]
+    fn v3_fixture_for_the_web_tests() {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![], vec![0.5], vec![0.5]], raise_sizes: [false; 3], allow_allin: false, turn_cards: 2, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Qs Jd 6s"));
+        let mut s = solve_b(&tree, &fixture_ranges(), 50);
+        let ev = s.evaluate();
+        let starts = s.river_starts().unwrap();
+        let bytes = export_v3(&tree, &ev, &starts, 0.0);
+        let f = parse_tsp1(&bytes).unwrap();
+        let mut boards: Vec<Vec<u8>> = vec![f.board.clone(); f.nodes.len()];
+        for (i, n) in f.nodes.iter().enumerate() {
+            for e in n.edges.iter().filter(|e| e.code >= 0) {
+                let mut b = boards[i].clone();
+                if n.kind == 1 {
+                    b.push(e.kind);
+                }
+                boards[e.code as usize] = b;
+            }
+        }
+        let num = |x: f64| format!("{}", (x * 1e6).round() / 1e6);
+        let mut dec = Vec::new();
+        let mut rs = Vec::new();
+        for (i, n) in f.nodes.iter().enumerate() {
+            if n.kind == 0 {
+                let w: f64 = n.weight.iter().map(|&x| x as f64 / 255.0).sum();
+                dec.push(format!("{{\"id\":{},\"street\":{},\"actor\":{},\"n\":{},\"weightSum\":{}}}", i, n.street, n.actor, n.hands.len(), num(w)));
+            }
+            if let Some(r) = &n.ranges {
+                let dense = [r[0].dense(), r[1].dense()];
+                // a river card that removes combos of OOP's range: a card of its heaviest combo
+                let top = r[0].hands[(0..r[0].q.len()).max_by_key(|&j| r[0].q[j]).unwrap()];
+                let card = ct().cards[top as usize].0;
+                let dealt = [zero_card(&dense[0], card), zero_card(&dense[1], card)];
+                let sum = |v: &[f32]| v.iter().map(|&x| x as f64).sum::<f64>();
+                let cnt = |v: &[f32]| v.iter().filter(|&&x| x > 0.0).count();
+                rs.push(format!(
+                    "{{\"id\":{},\"inv\":[{},{}],\"reach\":{},\"board\":{:?},\"n\":[{},{}],\"sum\":[{},{}],\"card\":{},\"dealtN\":[{},{}],\"dealtSum\":[{},{}]}}",
+                    i,
+                    n.inv[0],
+                    n.inv[1],
+                    num(n.reach as f64),
+                    boards[i],
+                    r[0].hands.len(),
+                    r[1].hands.len(),
+                    num(sum(&dense[0])),
+                    num(sum(&dense[1])),
+                    card,
+                    cnt(&dealt[0]),
+                    cnt(&dealt[1]),
+                    num(sum(&dealt[0])),
+                    num(sum(&dealt[1]))
+                ));
+            }
+        }
+        let json = format!("{{\n\"version\":3,\"board\":{:?},\"pot\":{},\"stack\":{},\"nodes\":{},\n\"decisions\":[\n{}\n],\n\"riverStarts\":[\n{}\n]\n}}\n", f.board, f.pot, f.stack, f.nodes.len(), dec.join(",\n"), rs.join(",\n"));
+        assert!(rs.len() == 6 && dec.len() == 10, "{} river starts, {} decisions", rs.len(), dec.len());
+        assert!(bytes.len() < 8000, "{} bytes", bytes.len());
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/src/lib/__tests__/fixtures");
+        let (bin, js) = (dir.join("tsp1-v3.bin"), dir.join("tsp1-v3.json"));
+        if std::env::var_os("TESSERA_WRITE_FIXTURES").is_some() {
+            std::fs::write(&bin, &bytes).unwrap();
+            std::fs::write(&js, &json).unwrap();
+        }
+        assert!(std::fs::read(&bin).ok().as_deref() == Some(&bytes[..]), "{} is not what the writer makes now", bin.display());
+        assert_eq!(std::fs::read_to_string(&js).unwrap_or_default(), json, "{}", js.display());
     }
 }
