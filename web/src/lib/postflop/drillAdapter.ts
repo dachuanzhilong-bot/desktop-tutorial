@@ -19,7 +19,8 @@ import { COMBOS, classOfCards } from "./combos";
 import type { PfFlop, PfNode } from "./decode";
 import type { PfIndex, PfScenario } from "./loader";
 import { advance, buildPostQuestion, pathSteps, pickCombo, pickSpotNode, spotCandidates } from "./practice";
-import type { PEnd, PStep } from "./practice";
+import type { PAdvance, PEnd, PStep } from "./practice";
+import { riverCards } from "./river";
 import { contextAt, labelEdge } from "./replay";
 import type { EdgeLabel, NodeContext } from "./replay";
 import type { PostConfig } from "./types";
@@ -68,6 +69,11 @@ export function createPostflopDrill(opts: {
   index: () => Promise<PfIndex>;
   /** a flop's solution (lib/postflop/loader.ts loadFlop) */
   flop: (scenario: string, flop: number) => Promise<PfFlop>;
+  /**
+   * a v3 flop's river, solved on the device (lib/postflop/river.ts RiverLayer.open): `flop` with the river of `card`
+   * grafted under river start `node`, and the river's first node. Without it a hand stops at a river start ("unsolved").
+   */
+  river?: (flop: PfFlop, node: number, card: number) => Promise<{ flop: PfFlop; root: number }>;
 }): PostflopDrill {
   const { config, repo, rnd } = opts;
   const now = opts.now ?? Date.now;
@@ -77,6 +83,58 @@ export function createPostflopDrill(opts: {
   let sessionId = "";
 
   const question = (flop: PfFlop, nodeId: number | null, combo: number) => (nodeId !== null ? buildPostQuestion(flop, nodeId, combo, rnd, config.rng) : null);
+
+  /**
+   * `advance`, going on through the river of a v3 flop: at a river start a live card is dealt and its river opened
+   * (solved on the device or read from the cache). Returns the flop with the rivers opened on the way.
+   */
+  async function play(flop: PfFlop, start: number, hero: number, used: number[], combo: number): Promise<{ flop: PfFlop; out: PAdvance }> {
+    let f = flop;
+    let id = start;
+    let cards = used;
+    const steps: PStep[] = [];
+    for (;;) {
+      const out = advance(f, id, hero, cards, combo, rnd);
+      steps.push(...out.steps);
+      cards = [...cards, ...out.steps.flatMap((s) => (s.card !== null ? [s.card] : []))];
+      const at = f.nodes[out.lastNode];
+      if (out.ended !== "unsolved" || !at?.riverStart || !opts.river) return { flop: f, out: { ...out, steps } };
+      const live = riverCards(f, at.id).filter((c) => !cards.includes(c));
+      if (!live.length) return { flop: f, out: { ...out, steps } };
+      const card = live[Math.floor(rnd() * live.length)];
+      let opened: { flop: PfFlop; root: number };
+      try {
+        opened = await opts.river(f, at.id, card);
+      } catch {
+        return { flop: f, out: { ...out, steps } };
+      }
+      f = opened.flop;
+      steps.push({ nodeId: at.id, edgeIndex: f.nodes[at.id].edges.findIndex((e) => e.kind === card), actor: -1, toNode: opened.root, label: null, card });
+      cards = [...cards, card];
+      id = opened.root;
+    }
+  }
+
+  /** a spot on the river of a v3 flop: a random live card at river start `start`, then a decision of its river by reach */
+  async function riverSpot(flop: PfFlop, start: number, hero: number | null): Promise<{ flop: PfFlop; nodeId: number } | null> {
+    const cards = riverCards(flop, start);
+    let opened: { flop: PfFlop; root: number };
+    try {
+      opened = await opts.river!(flop, start, cards[Math.floor(rnd() * cards.length)]);
+    } catch {
+      return null;
+    }
+    const f = opened.flop;
+    const ids: number[] = [];
+    const walk = (id: number) => {
+      const n = f.nodes[id];
+      if (n.type === "decision" && n.data && (hero === null || n.actor === hero)) ids.push(id);
+      for (const e of n.edges) if (e.code >= 0) walk(e.code);
+    };
+    walk(opened.root);
+    if (!ids.length) return null;
+    return { flop: f, nodeId: ids[weightedPick(ids.map((id) => Math.sqrt(f.nodes[id].reach)), rnd)] };
+  }
 
   async function start(): Promise<PostflopRound | null> {
     let index: PfIndex;
@@ -88,12 +146,19 @@ export function createPostflopDrill(opts: {
     sc = index.scenarios.find((s) => s.id === config.scenario);
     for (let tries = 0; tries < 10; tries++) {
       const flopIdx = config.flop ?? Math.floor(rnd() * index.flops.length);
-      const flop = await opts.flop(config.scenario, flopIdx);
+      let flop = await opts.flop(config.scenario, flopIdx);
       const hero = (config.hero ?? (rnd() < 0.5 ? 0 : 1)) as 0 | 1;
       if (config.kind === "spot") {
         const nodes = spotCandidates(flop, { hero: config.hero === null ? null : hero, streets: config.streets });
-        if (!nodes.length) continue;
-        const nodeId = pickSpotNode(flop, nodes, 0.5, rnd);
+        // a v3 flop has no river node: its river starts stand for the river spots (the river is solved once one is picked)
+        const starts = flop.version === 3 && opts.river && config.streets.includes(2) ? flop.nodes.filter((n) => n.riverStart && n.reach >= 0.01).map((n) => n.id) : [];
+        if (!nodes.length && !starts.length) continue;
+        let nodeId = pickSpotNode(flop, [...nodes, ...starts], 0.5, rnd);
+        if (flop.nodes[nodeId].riverStart) {
+          const spot = await riverSpot(flop, nodeId, config.hero === null ? null : hero);
+          if (!spot) continue;
+          ({ flop, nodeId } = spot);
+        }
         const node = flop.nodes[nodeId];
         // spaced repetition by position: the item of (scenario, flop + line, combo)
         const ref = postflopRef(config.scenario, flop, nodeId);
@@ -104,8 +169,9 @@ export function createPostflopDrill(opts: {
       const first = flop.nodes.find((n) => n.type === "decision" && n.actor === hero && n.street === 0 && n.data)!;
       const combo = throughCombo(first, flop.board, config.heroClass, rnd);
       const used = [...flop.board, COMBOS[combo].c1, COMBOS[combo].c2];
-      const out = advance(flop, 0, hero, used, combo, rnd);
-      return { flop, flopIdx, hero, combo, steps: out.steps, q: question(flop, out.heroNode, combo), ended: out.ended, lastNode: out.lastNode };
+      const played = await play(flop, 0, hero, used, combo);
+      const out = played.out;
+      return { flop: played.flop, flopIdx, hero, combo, steps: out.steps, q: question(played.flop, out.heroNode, combo), ended: out.ended, lastNode: out.lastNode };
     }
     return null;
   }
@@ -128,8 +194,8 @@ export function createPostflopDrill(opts: {
       const heroCards = [COMBOS[r.combo].c1, COMBOS[r.combo].c2];
       // the board so far (cards already dealt) must not be redealt
       const ctx = contextAt(r.flop, a.nextNode);
-      const out = advance(r.flop, a.nextNode, r.hero, [...ctx.board, ...heroCards], r.combo, rnd);
-      return { ...r, steps: out.steps, q: question(r.flop, out.heroNode, r.combo), ended: out.ended, lastNode: out.lastNode };
+      const { flop, out } = await play(r.flop, a.nextNode, r.hero, [...ctx.board, ...heroCards], r.combo);
+      return { ...r, flop, steps: out.steps, q: question(flop, out.heroNode, r.combo), ended: out.ended, lastNode: out.lastNode };
     },
 
     shortcuts(r) {

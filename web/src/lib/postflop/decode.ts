@@ -169,10 +169,10 @@ export function boardAt(flop: PfFlop, nodeId: number): number[] {
   return [...flop.board, ...cards];
 }
 
-/** a v3 range, 1326 wide */
+/** a v3 range, 1326 wide; in f32 arithmetic as the solver reads it (`QRange::dense`), so the device solves the same numbers */
 export function denseRange(r: PfRange): Float32Array {
   const out = new Float32Array(NC);
-  for (let j = 0; j < r.hands.length; j++) out[r.hands[j]] = (r.q[j] / RANGE_Q) * r.scale;
+  for (let j = 0; j < r.hands.length; j++) out[r.hands[j]] = Math.fround(Math.fround(r.q[j] / RANGE_Q) * r.scale);
   return out;
 }
 

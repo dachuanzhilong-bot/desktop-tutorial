@@ -31,6 +31,7 @@
 `SrsItem`: `box`(0–5)、`due`、`seen`、`lapses`、`lastGrade`、`updated`。
 ボックス間隔は 0 / 10分 / 1日 / 3日 / 7日 / 21日。ミスで box 0 に戻る。
 
+- 端末で解いたリバー（REFACTOR_PLAN 3-3-6、[14 §11](14-postflop-all-cards.md)）は、利用者の記録とは**別の IndexedDB `tessera-river` v1** に置く（`web/src/lib/postflop/riverStore.ts`）。ストア `rivers`（キー `key`、索引 `ts`）、行は `{ key, v: 1, bytes: TSP1 のバイト列, ts: 最後に使った時刻 }`。キーは `river|<フロップのファイルのビルド ID>|<局面キー>|n<反復数>|in<入力の前処理の版>`。捨てても再計算するだけのキャッシュで、書き出し・同期・`tessera` の版には入らない。上限 120 行（1 行 約 10〜60 KB）、超えたら最後に使った時刻が古い順に消す。`v` が無い・違う、`bytes` が `TSP1` でない行は読まず、先に消す（`postflop.river.test.ts`）。
 - 設定（言語・テーマ等）は `localStorage["tessera.settings.v1"]`。起動前スクリプトでちらつきを防ぐ。
 - IndexedDBが使えない環境（プライベートモード等）は `MemoryRepo` にフォールバック。
 - 書き出し/読み込み: JSON（`ExportBlob`）。読み込みは `ts:pos:hand` で重複排除、SRSは新しい方を採用。局面キーの無い記録（下の「古い形式の記録」）は取り込まず、除いた件数を画面に出す。
