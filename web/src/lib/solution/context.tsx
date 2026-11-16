@@ -1,6 +1,8 @@
 "use client";
 import { createContext, ReactNode, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useSettings } from "../settings";
+import { NO_RAKE_KEY } from "./rake";
+import { depthOf, rakeOf } from "./catalog";
 import { DEFAULT_DEPTH, DEPTHS, solutionId, SolutionStore } from "./loader";
 import type { NodeSolution } from "./types";
 
@@ -11,12 +13,28 @@ interface Ctx {
   retry: () => void;
   /** depth the user selected (store.manifest.stack may lag behind while it loads) */
   depth: number;
+  /** rake the user selected (`rakeKey`; it only counts where the depth has a solution with it, see `solutionId`) */
+  rake: string;
   loading: boolean;
   setDepth: (d: number) => void;
-  /** any depth's solution (cached) */
-  getStore: (depth: number) => Promise<SolutionStore>;
+  setRake: (rake: string) => void;
+  /** select a solution by its id (its depth and rake), e.g. the one a list of questions was made from */
+  setSolution: (id: string) => void;
+  /** any depth's solution (cached); without `rake`, the solution without rake */
+  getStore: (depth: number, rake?: string) => Promise<SolutionStore>;
 }
-const SolutionContext = createContext<Ctx>({ store: null, error: null, retry: () => {}, depth: DEFAULT_DEPTH, loading: false, setDepth: () => {}, getStore: () => Promise.reject(new Error("no provider")) });
+const SolutionContext = createContext<Ctx>({
+  store: null,
+  error: null,
+  retry: () => {},
+  depth: DEFAULT_DEPTH,
+  rake: NO_RAKE_KEY,
+  loading: false,
+  setDepth: () => {},
+  setRake: () => {},
+  setSolution: () => {},
+  getStore: () => Promise.reject(new Error("no provider")),
+});
 
 export function SolutionProvider({ children }: { children: ReactNode }) {
   const { settings, set, ready } = useSettings();
@@ -26,20 +44,23 @@ export function SolutionProvider({ children }: { children: ReactNode }) {
   /** outcome of the latest request, tagged with the request it answers */
   const [outcome, setOutcome] = useState<{ key: string; error: string | null } | null>(null);
   const [attempt, setAttempt] = useState(0);
-  const key = `${depth}#${attempt}`;
-  const cache = useRef(new Map<number, Promise<SolutionStore>>());
+  const rake = settings.rake;
+  const key = `${solutionId(depth, rake)}#${attempt}`;
+  /** by solution id */
+  const cache = useRef(new Map<string, Promise<SolutionStore>>());
 
-  const getStore = useCallback((d: number) => {
-    let p = cache.current.get(d);
+  const getStore = useCallback((d: number, r?: string) => {
+    const id = solutionId(d, r);
+    let p = cache.current.get(id);
     if (!p) {
       // the first decision (where Study and most practice start) is decoded before the store is handed out,
       // so screens render once with data instead of once empty and again when it arrives
-      p = SolutionStore.open(solutionId(d)).then(async (s) => {
+      p = SolutionStore.open(id).then(async (s) => {
         await s.node(0).catch(() => {});
         return s;
       });
-      p.catch(() => cache.current.delete(d));
-      cache.current.set(d, p);
+      p.catch(() => cache.current.delete(id));
+      cache.current.set(id, p);
     }
     return p;
   }, []);
@@ -47,7 +68,7 @@ export function SolutionProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (!ready) return;
     let alive = true;
-    getStore(depth)
+    getStore(depth, rake)
       .then((s) => {
         if (!alive) return;
         // a non-urgent update: React renders the (large) screens in short slices, so input stays responsive
@@ -60,15 +81,20 @@ export function SolutionProvider({ children }: { children: ReactNode }) {
     return () => {
       alive = false;
     };
-  }, [ready, depth, key, getStore]);
-  // a new depth / retry makes the previous outcome stale: loading again, no error shown
+  }, [ready, depth, rake, key, getStore]);
+  // a new depth / rake / retry makes the previous outcome stale: loading again, no error shown
   const current = outcome?.key === key ? outcome : null;
   const loading = !current;
   const error = current?.error ?? null;
 
   const retry = useCallback(() => setAttempt((a) => a + 1), []);
   const setDepth = useCallback((d: number) => set({ depth: d }), [set]);
-  const value = useMemo(() => ({ store, error, retry, depth, loading, setDepth, getStore }), [store, error, retry, depth, loading, setDepth, getStore]);
+  const setRake = useCallback((r: string) => set({ rake: r }), [set]);
+  const setSolution = useCallback((id: string) => set({ depth: depthOf(id), rake: rakeOf(id) }), [set]);
+  const value = useMemo(
+    () => ({ store, error, retry, depth, rake, loading, setDepth, setRake, setSolution, getStore }),
+    [store, error, retry, depth, rake, loading, setDepth, setRake, setSolution, getStore],
+  );
   return <SolutionContext.Provider value={value}>{children}</SolutionContext.Provider>;
 }
 

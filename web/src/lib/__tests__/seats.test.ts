@@ -9,6 +9,7 @@ import { allSeats, bbSeat, buttonSeat, postflopRank, sbSeat, seatNames, seatSpot
 import { actionLabel, BB_SEAT, history, initialState, lineText, rfiNode, SB_SEAT, SEATS, spotType, stateAt } from "../solution/tree";
 import { ActionKind, Terminal } from "../solution/types";
 import type { ActionMeta, Manifest, NodeMeta } from "../solution/types";
+import { NO_RAKE } from "../solution/rake";
 import { loadManifest } from "./helpers";
 
 const { Fold, Call, Raise, AllIn } = ActionKind;
@@ -33,7 +34,7 @@ function fakeManifest(players: string[], spec: [actor: number, actions: A[]][]):
         nodes[a.child].parentAction = i;
       }
     });
-  return { format: 1, id: `fake-${players.length}`, players, stack: 100, blinds: [0.5, 1], info: {}, chunks: [], nodes };
+  return { format: 1, id: `fake-${players.length}`, players, stack: 100, blinds: [0.5, 1], rake: NO_RAKE, info: {}, chunks: [], nodes };
 }
 
 describe("seat names: the last two seats are the blinds, named from the back (BB, SB, BTN, CO, HJ, LJ), UTG first from six seats", () => {

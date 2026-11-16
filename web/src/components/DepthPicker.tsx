@@ -2,8 +2,9 @@
 import { DEPTHS } from "@/lib/solution/loader";
 import { useSolutionStore } from "@/lib/solution/context";
 import { useSettings } from "@/lib/settings";
+import { RakePicker } from "./RakePicker";
 
-/** effective stack of the preflop solution (20 / 40 / 60 / 100 / 200 bb) */
+/** effective stack of the preflop solution (20 / 40 / 60 / 100 / 200 bb), and its rake where there is a choice */
 export function DepthPicker({ className = "" }: { className?: string }) {
   const { t } = useSettings();
   const { depth, setDepth, loading } = useSolutionStore();
@@ -21,6 +22,8 @@ export function DepthPicker({ className = "" }: { className?: string }) {
         ))}
       </div>
       <p className="mt-1 text-xs text-muted">{t("depth.hint")}</p>
+      {/* only where the depth has solutions with two or more rakes (none today) */}
+      <RakePicker className="mt-3" />
     </div>
   );
 }

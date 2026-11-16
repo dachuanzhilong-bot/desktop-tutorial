@@ -3,7 +3,8 @@ import { createContext, ReactNode, useCallback, useContext, useEffect, useMemo, 
 import { en } from "../i18n/en";
 import { ja, Key } from "../i18n/ja";
 import { DEPTHS, nearestDepth } from "../solution/loader";
-import { bool, int, LocalSchema, num, pick, readLocal, upgrade, writeLocal } from "../storage/local";
+import { NO_RAKE_KEY } from "../solution/rake";
+import { bool, int, LocalSchema, num, pick, readLocal, str, upgrade, writeLocal } from "../storage/local";
 import { BASE } from "../util/base";
 import { setHapticsEnabled } from "../util/haptics";
 
@@ -23,6 +24,9 @@ export interface Settings {
   dailyGoal: number;
   /** effective stack (bb) of the preflop solution shown in Study / Practice: 20, 40, 60, 100 or 200 */
   depth: number;
+  /** rake of the preflop solution (`rakeKey`, lib/solution/rake.ts; "0" = no rake). Only a depth with solutions of
+   *  two or more rakes offers the choice; elsewhere the depth's solution without rake is used (REFACTOR_PLAN 3-2) */
+  rake: string;
   onboarded: boolean;
 }
 
@@ -37,6 +41,7 @@ export const DEFAULT_SETTINGS: Settings = {
   haptics: true,
   dailyGoal: 30,
   depth: 100,
+  rake: NO_RAKE_KEY,
   onboarded: false,
 };
 
@@ -70,6 +75,8 @@ export const SETTINGS_SCHEMA: LocalSchema<Settings> = {
       haptics: bool(d.haptics, D.haptics),
       dailyGoal: int(d.dailyGoal, D.dailyGoal, 1, 1000),
       depth: (DEPTHS as readonly number[]).includes(depth) ? depth : nearestDepth(depth),
+      // added with REFACTOR_PLAN 3-2 (no version bump: settings stored before have no `rake`, which reads as no rake)
+      rake: str(d.rake, D.rake, 32),
       onboarded: bool(d.onboarded, D.onboarded),
     };
   },

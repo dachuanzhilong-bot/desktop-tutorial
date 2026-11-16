@@ -72,9 +72,9 @@ export function Setup({
   initialFlop?: number;
 }) {
   const { t } = useSettings();
-  const { depth } = useSolutionStore();
+  const { depth, rake } = useSolutionStore();
   // the seats of the selected solution's table (its number of players is in the catalog, no manifest needed)
-  const seats = useMemo(() => seatNames(solutionEntry(solutionId(depth))?.players ?? SEATS.length), [depth]);
+  const seats = useMemo(() => seatNames(solutionEntry(solutionId(depth, rake))?.players ?? SEATS.length), [depth, rake]);
   const [mode, setMode] = useState<"spot" | "hand" | "postSpot" | "post">(initialMode ?? "spot");
   const [flopFixed, setFlopFixed] = useState<number | null>(initialFlop ?? null);
   const [flopNames, setFlopNames] = useState<string[]>([]);
