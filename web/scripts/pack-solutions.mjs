@@ -17,11 +17,20 @@ mkdirSync(dst, { recursive: true });
  *   game     "cash" – the preflop solver makes cash games only (no ICM or antes); the manifest has no field for it yet
  *   players  number of seats (manifest.players: the seat names)
  *   stack    effective stack in bb (manifest.stack)
+ *   rake     the rake it was solved with (manifest.rake, REFACTOR_PLAN 3-2: {pct, cap}); only when the manifest has one,
+ *            so a solution without rake gets the entry it had before rake existed
  */
 function catalogEntry(manifest) {
   if (!Array.isArray(manifest.players) || !manifest.players.length) throw new Error(`manifest ${manifest.id}: no players`);
   if (typeof manifest.stack !== "number" || !(manifest.stack > 0)) throw new Error(`manifest ${manifest.id}: no stack`);
-  return { game: "cash", players: manifest.players.length, stack: manifest.stack };
+  const entry = { game: "cash", players: manifest.players.length, stack: manifest.stack };
+  if (manifest.rake !== undefined) {
+    const { pct, cap } = manifest.rake;
+    if (!(typeof pct === "number" && pct > 0 && pct < 100) || !(cap === null || (typeof cap === "number" && cap >= 0)))
+      throw new Error(`manifest ${manifest.id}: bad rake ${JSON.stringify(manifest.rake)}`);
+    entry.rake = { pct, cap };
+  }
+  return entry;
 }
 
 const index = { version: 1, solutions: [] };

@@ -1,3 +1,4 @@
+import type { Rake } from "./rake";
 /** Action kinds as exported by the solver. */
 export enum ActionKind {
   Fold = 0,
@@ -46,6 +47,8 @@ export interface Manifest {
   players: string[];
   stack: number;
   blinds: [number, number];
+  /** the rake it was solved with (REFACTOR_PLAN 3-2; manifests without the field: no rake) */
+  rake: Rake;
   info: Record<string, unknown>;
   chunks: string[];
   nodes: NodeMeta[];

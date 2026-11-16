@@ -5,6 +5,8 @@
 //!   [0] pot  [1] stack  [2] raise_mult  [3] allin_ratio  [4] allow_allin
 //!   [5..8) raise_sizes (flop, turn, river)  [8] turn_cards  [9] river_cards  [10] flop_runouts  [11] seed
 //!   then for each street: n, followed by n pot fractions
+//!   then, optionally (REFACTOR_PLAN 3-2): rake_pct (% of the pot), rake_cap (bb; Infinity = no cap).  A config that
+//!   ends after the bet sizes (every caller before 3-2) has no rake, as before.
 use crate::postflop::*;
 use std::cell::RefCell;
 use std::mem::ManuallyDrop;
@@ -33,6 +35,13 @@ pub fn config_from_f32(c: &[f32]) -> Result<Config, String> {
         let v = c.get(i..i + n).ok_or("config truncated")?;
         cfg.bets[street] = v.to_vec();
         i += n;
+    }
+    if let Some([pct, cap, ..]) = c.get(i..) {
+        if !((0.0..100.0).contains(pct) && *cap >= 0.0) {
+            return Err("rake must be 0 <= pct < 100 and cap >= 0".into());
+        }
+        cfg.rake_pct = *pct;
+        cfg.rake_cap = *cap;
     }
     if !(cfg.pot > 0.0 && cfg.stack > 0.0) {
         return Err("pot and stack must be positive".into());
@@ -471,6 +480,49 @@ mod tests {
         assert_eq!(c.bets[2], vec![0.5, 1.0]);
         assert!(!c.allow_allin);
         assert!(config_from_f32(&[1.0, 2.0]).is_err());
+    }
+
+    /// REFACTOR_PLAN 3-2: the rake is two optional values after the bet sizes; without them there is no rake, as for
+    /// every caller before
+    #[test]
+    fn config_takes_an_optional_rake_at_the_end() {
+        let base = cfg_vec(10.0, 90.0, &[0.33, 0.75], &[0.66], &[0.5, 1.0]);
+        let c = config_from_f32(&base).unwrap();
+        assert_eq!((c.rake_pct, c.rake_cap), (0.0, crate::rake::NO_CAP));
+        let mut one = base.clone();
+        one.push(5.0); // one stray value: ignored, as before
+        assert_eq!(config_from_f32(&one).unwrap().rake_pct, 0.0);
+        let mut raked = base.clone();
+        raked.extend_from_slice(&[5.0, 3.0]);
+        let c = config_from_f32(&raked).unwrap();
+        assert_eq!((c.rake_pct, c.rake_cap, c.bets[2].clone()), (5.0, 3.0, vec![0.5, 1.0]));
+        let mut uncapped = base.clone();
+        uncapped.extend_from_slice(&[5.0, f32::INFINITY]);
+        assert_eq!(config_from_f32(&uncapped).unwrap().rake_cap, f32::INFINITY);
+        for bad in [[-1.0, 3.0], [100.0, 3.0], [5.0, -1.0], [f32::NAN, 3.0]] {
+            let mut v = base.clone();
+            v.extend_from_slice(&bad);
+            assert!(config_from_f32(&v).is_err(), "{:?}", bad);
+        }
+    }
+
+    /// a raked river session pays the rake: the root values add up to the pot minus the rake of the pot the line
+    /// ends with (5% of every pot, at most 1bb here)
+    #[test]
+    fn a_session_with_rake_pays_it() {
+        let mut v = cfg_vec(10.0, 1000.0, &[], &[], &[0.75]);
+        v.extend_from_slice(&[5.0, 1.0]);
+        let cfg = config_from_f32(&v).unwrap();
+        let board: Vec<u8> = "Ah 8d 7c 2s 3d".split(' ').map(card).collect();
+        let mut oop = NUTS.to_vec();
+        oop.extend_from_slice(AIR);
+        let mut s = Session::new(cfg, board, [range(&oop), range(QQ)]).unwrap();
+        s.run(300);
+        s.solver.finalize_avg();
+        let vals = s.solver.root_values();
+        let sum = vals[0] + vals[1];
+        // every terminal pays between 0.5bb (5% of the 10bb pot, check-check / bet-fold) and the 1bb cap
+        assert!(sum > 10.0 - 1.0 - 1e-3 && sum < 10.0 - 0.5 + 1e-3, "root values {:?}", vals);
     }
 
     const NUTS: &[(&str, &str)] = &[("Ad", "Ac"), ("Ad", "As"), ("Ac", "As")];

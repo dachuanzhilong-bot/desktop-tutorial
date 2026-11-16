@@ -175,7 +175,8 @@ impl RiverWalk {
         // values and regrets, children first
         for i in (0..n).rev() {
             let node = &tree.nodes[i];
-            let pot_total = tree.cfg.pot + node.inv[0] + node.inv[1];
+            // what a terminal pays out (the pot minus the rake, as the general walk pays it)
+            let pot_total = tree.cfg.pot_paid(node.inv);
             let mut v = std::mem::take(&mut self.val[i]);
             match &node.kind {
                 PKind::Fold { winner } => {
