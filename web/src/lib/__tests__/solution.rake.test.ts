@@ -11,7 +11,7 @@ import { gunzipSync } from "node:zlib";
 import { describe, expect, it } from "vitest";
 import { DEFAULT_SETTINGS, SETTINGS_SCHEMA } from "../settings";
 import { upgrade } from "../storage/local";
-import { DEPTHS, depthOf, IndexEntry, makeCatalog, rakeChoices, rakeOf, rakeOptions, solutionEntry, solutionId, SOLUTIONS } from "../solution/catalog";
+import { DEPTHS, depthOf, IndexEntry, makeCatalog, rakeChoices, rakeOf, rakeOptions, solutionEntry, solutionId, solutionIdWithRake, SOLUTIONS } from "../solution/catalog";
 import { parseManifest, RawManifest } from "../solution/decode";
 import { NO_RAKE, NO_RAKE_KEY, rakeKey, readRake } from "../solution/rake";
 
@@ -65,8 +65,8 @@ describe("the shipped catalog: every solution is without rake, under its old id"
 
   it("a rake setting the data does not have falls back to the solution without rake", () => {
     for (const d of DEPTHS) {
-      expect(solutionId(d, "5/3")).toBe(solutionId(d));
-      expect(solutionId(d, NO_RAKE_KEY)).toBe(solutionId(d));
+      expect(solutionIdWithRake(d, "5/3")).toBe(solutionId(d));
+      expect(solutionIdWithRake(d, NO_RAKE_KEY)).toBe(solutionId(d));
     }
   });
 });

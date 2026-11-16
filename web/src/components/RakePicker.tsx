@@ -1,5 +1,5 @@
 "use client";
-import { rakeChoices, rakeOf, solutionId } from "@/lib/solution/catalog";
+import { rakeChoices, rakeOf, solutionIdWithRake } from "@/lib/solution/catalog";
 import { useSolutionStore } from "@/lib/solution/context";
 import { rakeKey } from "@/lib/solution/rake";
 import { useSettings } from "@/lib/settings";
@@ -14,7 +14,7 @@ export function RakePicker({ className = "" }: { className?: string }) {
   const choices = rakeChoices(depth);
   if (choices.length < 2) return null;
   // the rake of the solution in use (a rake the depth does not have falls back to its solution without rake)
-  const current = rakeOf(solutionId(depth, rake));
+  const current = rakeOf(solutionIdWithRake(depth, rake));
   return (
     <div className={className}>
       <p className="mb-1 text-sm font-semibold text-muted" id="rake-label">

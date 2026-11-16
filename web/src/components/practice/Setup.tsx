@@ -7,7 +7,7 @@ import { HAND_FILTERS, HandFilterId } from "@/lib/poker/hands";
 import { ReviewCard } from "@/components/practice/ReviewCard";
 import { useSettings } from "@/lib/settings";
 import { ApproxNote } from "@/components/ApproxNote";
-import { solutionEntry, solutionId } from "@/lib/solution/catalog";
+import { solutionEntry, solutionIdWithRake } from "@/lib/solution/catalog";
 import { useSolutionStore } from "@/lib/solution/context";
 import { seatNames } from "@/lib/solution/seats";
 import { SEATS } from "@/lib/solution/tree";
@@ -74,7 +74,7 @@ export function Setup({
   const { t } = useSettings();
   const { depth, rake } = useSolutionStore();
   // the seats of the selected solution's table (its number of players is in the catalog, no manifest needed)
-  const seats = useMemo(() => seatNames(solutionEntry(solutionId(depth, rake))?.players ?? SEATS.length), [depth, rake]);
+  const seats = useMemo(() => seatNames(solutionEntry(solutionIdWithRake(depth, rake))?.players ?? SEATS.length), [depth, rake]);
   const [mode, setMode] = useState<"spot" | "hand" | "postSpot" | "post">(initialMode ?? "spot");
   const [flopFixed, setFlopFixed] = useState<number | null>(initialFlop ?? null);
   const [flopNames, setFlopNames] = useState<string[]>([]);

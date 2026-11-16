@@ -136,9 +136,12 @@ export const solutionEntry = (id: string | undefined): SolutionEntry | undefined
 /** whether `id` names a shipped preflop solution */
 export const isPreflopSolution = (id: string | undefined): boolean => solutionEntry(id) !== undefined;
 
-/** the id of the solution at a shipped depth (a depth that is not shipped gets the nearest one's), with the rake
- *  `rake` (`rakeKey`; default: no rake) when that depth has a solution with it */
-export const solutionId = (depth: number, rake?: string): string => CATALOG.solutionId(depth, rake);
+/** the id of the solution at a shipped depth without rake; a depth that is not shipped gets the nearest one's */
+export const solutionId = (depth: number): string => CATALOG.solutionId(depth);
+
+/** the id of the solution at a shipped depth (a depth that is not shipped gets the nearest one's) with the rake
+ *  `rake` (`rakeKey`) when that depth has a solution with it, else the one without rake */
+export const solutionIdWithRake = (depth: number, rake: string): string => CATALOG.solutionId(depth, rake);
 
 /** the rakes the shipped solutions at a depth were solved with (the picker shows when there are two or more) */
 export const rakeOptions = (depth: number): Rake[] => CATALOG.rakeOptions(depth);

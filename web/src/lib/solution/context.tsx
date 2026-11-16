@@ -2,8 +2,8 @@
 import { createContext, ReactNode, startTransition, useCallback, useContext, useEffect, useMemo, useRef, useState } from "react";
 import { useSettings } from "../settings";
 import { NO_RAKE_KEY } from "./rake";
-import { depthOf, rakeOf } from "./catalog";
-import { DEFAULT_DEPTH, DEPTHS, solutionId, SolutionStore } from "./loader";
+import { depthOf, rakeOf, solutionIdWithRake } from "./catalog";
+import { DEFAULT_DEPTH, DEPTHS, SolutionStore } from "./loader";
 import type { NodeSolution } from "./types";
 
 interface Ctx {
@@ -45,12 +45,12 @@ export function SolutionProvider({ children }: { children: ReactNode }) {
   const [outcome, setOutcome] = useState<{ key: string; error: string | null } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const rake = settings.rake;
-  const key = `${solutionId(depth, rake)}#${attempt}`;
+  const key = `${solutionIdWithRake(depth, rake)}#${attempt}`;
   /** by solution id */
   const cache = useRef(new Map<string, Promise<SolutionStore>>());
 
   const getStore = useCallback((d: number, r?: string) => {
-    const id = solutionId(d, r);
+    const id = solutionIdWithRake(d, r ?? NO_RAKE_KEY);
     let p = cache.current.get(id);
     if (!p) {
       // the first decision (where Study and most practice start) is decoded before the store is handed out,
