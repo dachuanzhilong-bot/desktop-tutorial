@@ -641,6 +641,10 @@ pub struct Solver<'a> {
     /// nodes of this street and later play their current strategy where the average would be used, even if they
     /// keep one (`set_current_strategy_from`; 3 = never)
     current_from: u8,
+    /// `set_br_forbidden`: per node, the actions a best response may not choose (bit `a`); empty = none
+    br_forbid: Vec<u64>,
+    /// `evaluate_upstream`: `evaluate` fills the nodes of the streets before this one only (3 = all)
+    eval_below: u8,
     extra: HashMap<u64, Strength>,
     z0: f64,
     /// the training walk of a river tree (`river.rs`, REFACTOR_PLAN 3-3-4); `None` for other trees
@@ -796,6 +800,8 @@ impl<'a> Solver<'a> {
             avg_on_demand_from: opts.avg_on_demand_from,
             tremble: opts.tremble,
             current_from: 3,
+            br_forbid: Vec::new(),
+            eval_below: 3,
             extra: HashMap::new(),
             z0,
             river,
@@ -828,6 +834,8 @@ impl<'a> Solver<'a> {
             threads,
             current_from: self.current_from,
             tremble: self.tremble,
+            br_forbid: &self.br_forbid,
+            eval_below: self.eval_below,
         };
         let mut part = Part { sh: &sh, base: 0, regret: &mut self.regret, ssum: &mut self.ssum, ev, extra: &mut self.extra, fork: threads > 1 };
         part.walk(ni, r0, r1, mode, want_mass)
@@ -979,14 +987,40 @@ impl<'a> Solver<'a> {
     /// `p` included (a locked node plays its lock, so `p` may deviate only where it is not locked).  `base` is
     /// `root_values()` of the same state.  `exploitability_by_player` calls this for both players.
     pub fn best_response_gain(&mut self, p: usize, base: [f32; 2]) -> f32 {
+        self.best_response_delta(p, base).max(0.0)
+    }
+
+    /// `best_response_gain` without the clamp at 0 (rounding only: below 0 by no more than that)
+    pub fn best_response_delta(&mut self, p: usize, base: [f32; 2]) -> f32 {
         let res = self.run(Mode::Br(p), None, true);
         let br = self.value(&res, p)[p];
-        (br - base[p]).max(0.0)
+        br - base[p]
+    }
+
+    /// Take actions away from a best response (`best_response_gain` / `best_response_delta`): `forbid[node]` has bit `a`
+    /// set when the player who best-responds at the decision node may not choose its action `a` (the strategies of
+    /// the other nodes, and of this node when it is locked, are not changed).  At such a node the best response may
+    /// still play the node's average strategy `avg[node]` (which can play an action it may not choose), so it never
+    /// does worse than the strategies do.  A node whose actions are all forbidden forbids none.  Empty (the default)
+    /// forbids nothing.  Measures the best response within some lines (`docs/14` §11-9).
+    pub fn set_br_forbidden(&mut self, forbid: Vec<u64>) {
+        assert!(forbid.is_empty() || forbid.len() == self.tree.nodes.len(), "one entry per tree node");
+        self.br_forbid = forbid;
     }
 
     pub fn evaluate(&mut self) -> Vec<Option<NodeEval>> {
         let mut ev: Vec<Option<NodeEval>> = vec![None; self.tree.nodes.len()];
         self.run(Mode::Eval, Some(&mut ev), true);
+        ev
+    }
+
+    /// `evaluate` for the flop and turn nodes only (what a TSP1 v3 file holds, `dealt_nodes`): the river nodes of a
+    /// 49 x 48 tree keep averages, and their evaluations would not fit in memory.  The flop and turn entries are
+    /// those of `evaluate`.
+    pub fn evaluate_upstream(&mut self) -> Vec<Option<NodeEval>> {
+        self.eval_below = 2;
+        let ev = self.evaluate();
+        self.eval_below = 3;
         ev
     }
 
@@ -1095,6 +1129,10 @@ struct Shared<'w> {
     current_from: u8,
     /// `SolverOptions::tremble`
     tremble: f32,
+    /// `Solver::set_br_forbidden`
+    br_forbid: &'w [u64],
+    /// `Solver::evaluate_upstream`
+    eval_below: u8,
 }
 
 /// What a walk writes, for the nodes `base..base + regret.len()`: the whole tree, or one subtree that a thread
@@ -1333,6 +1371,14 @@ impl<'w> Part<'w> {
                 let mut m_o = if need_mass { vec![0f32; NC] } else { Vec::new() };
                 let mut child_p: Vec<Vec<f32>> = Vec::with_capacity(na);
                 let mut best: Option<Vec<f32>> = None;
+                // the actions a best response may not choose (`Solver::set_br_forbidden`); never all of them.  With some
+                // forbidden it may still play the node's average strategy: `mix` is that strategy's value
+                let forbid = match sh.br_forbid.get(ni).copied().unwrap_or(0) & ((1u64 << na) - 1) {
+                    f if f == (1u64 << na) - 1 => 0,
+                    f => f,
+                };
+                let own_avg: Option<&[f32]> = if forbid != 0 { sh.avg.get(ni).filter(|a| a.len() == na * NC).map(|a| a.as_slice()) } else { None };
+                let mut mix: Option<Vec<f32>> = own_avg.map(|_| vec![0f32; NC]);
                 for a in 0..na {
                     let new_rp: Vec<f32> = (0..NC).map(|h| rp[h] * sigma[a * NC + h]).collect();
                     let res = if p == 0 { self.walk(children[a] as usize, &new_rp, ro, mode, want_mass) } else { self.walk(children[a] as usize, ro, &new_rp, mode, want_mass) };
@@ -1350,8 +1396,15 @@ impl<'w> Part<'w> {
                     match mode {
                         Mode::Br(bp) if bp == p && !locked => {
                             let b = best.get_or_insert_with(|| vec![f32::MIN; NC]);
-                            for h in 0..NC {
-                                b[h] = b[h].max(res.v[p][h]);
+                            if forbid >> a & 1 == 0 {
+                                for h in 0..NC {
+                                    b[h] = b[h].max(res.v[p][h]);
+                                }
+                            }
+                            if let (Some(m), Some(own)) = (mix.as_mut(), own_avg) {
+                                for h in 0..NC {
+                                    m[h] += own[a * NC + h] * res.v[p][h];
+                                }
                             }
                         }
                         _ => {
@@ -1362,7 +1415,12 @@ impl<'w> Part<'w> {
                     }
                     child_p.push(res.v[p].clone());
                 }
-                if let Some(b) = best {
+                if let Some(mut b) = best {
+                    if let Some(m) = &mix {
+                        for h in 0..NC {
+                            b[h] = b[h].max(m[h]);
+                        }
+                    }
                     cfv_p = b;
                 }
                 let mut cfv_p_chosen: Option<Vec<f32>> = None;
@@ -1403,7 +1461,7 @@ impl<'w> Part<'w> {
                             }
                         }
                     }
-                    Mode::Eval if self.ev.is_some() && has_avg => {
+                    Mode::Eval if self.ev.is_some() && has_avg && node.street < sh.eval_below => {
                         let mut e = NodeEval { player: p as u8, weight: rp.to_vec(), freq: sigma.clone(), ..Default::default() };
                         e.ev = vec![0f32; na * NC];
                         for a in 0..na {
@@ -1651,8 +1709,11 @@ impl QRange {
     }
 }
 
-fn write_tsp1(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32, starts: Option<&[RiverStart]>) -> (Vec<u8>, Vec<u32>) {
-    // keep decision nodes that are played, chance nodes that lead to something kept, (v3) river starts that are played
+/// The nodes a `TSP1` file keeps (`min_reach`, as `export` / `export_v3` read it): the decision nodes that are played
+/// (the reach given the dealt cards in v3, `starts` is `Some`), the chance nodes that lead to something kept, and
+/// (v3) the river starts that are played.  A node below a node that is not kept is not kept either, and the terminal
+/// nodes are never kept.  These are the lines the app "deals"; `docs/14` §11-9 defines G2 within them.
+pub fn dealt_nodes(tree: &Tree, ev: &[Option<NodeEval>], starts: Option<&[RiverStart]>, min_reach: f32) -> Vec<bool> {
     let n = tree.nodes.len();
     let start_of: HashMap<usize, &RiverStart> = starts.map(|s| s.iter().map(|x| (x.node as usize, x)).collect()).unwrap_or_default();
     struct Mark<'m> {
@@ -1697,6 +1758,14 @@ fn write_tsp1(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32, starts: Opti
     }
     let mut keep = vec![false; n];
     mark(&Mark { t: tree, ev, min: min_reach, starts: starts.map(|_| &start_of) }, 0, &mut keep);
+    keep
+}
+
+fn write_tsp1(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32, starts: Option<&[RiverStart]>) -> (Vec<u8>, Vec<u32>) {
+    // keep decision nodes that are played, chance nodes that lead to something kept, (v3) river starts that are played
+    let n = tree.nodes.len();
+    let start_of: HashMap<usize, &RiverStart> = starts.map(|s| s.iter().map(|x| (x.node as usize, x)).collect()).unwrap_or_default();
+    let keep = dealt_nodes(tree, ev, starts, min_reach);
 
     let mut order = Vec::new();
     let mut id = vec![-1i32; n];
