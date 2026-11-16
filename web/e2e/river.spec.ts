@@ -16,7 +16,7 @@ const FIXTURE = gzipSync(readFileSync(resolve("src/lib/__tests__/fixtures/tsp1-v
 const CARD = "Kh";
 /** the time limit of the plan: from the card to the river on screen, CPU 4x slower */
 const LIMIT_MS = 5000;
-/** RIVER_THROTTLE=1 measures the same without the slow-down (for docs/14 §11) */
+/** RIVER_THROTTLE=1 measures the same without the slow-down (for docs/14 §12) */
 const THROTTLE = Number(process.env.RIVER_THROTTLE ?? 4);
 
 test.beforeEach(async ({ context }, info) => {
@@ -82,7 +82,7 @@ test("a river of a v3 flop opens offline, CPU 4x slower within 5 s, and is solve
   await page.reload();
   await toRiverStart(page);
 
-  // the first river: solved on the device (worker start, module, 3,000 iterations, export, the chart), timed with the CPU slowed
+  // the first river: solved on the device (worker start, module, RIVER_ITERATIONS (1,000) iterations, export, the chart), timed with the CPU slowed
   const cdp = await throttle(context, page, THROTTLE);
   const t0 = Date.now();
   await riverCard(page).click();

@@ -65,7 +65,8 @@ describe("versioned localStorage values", () => {
 describe("settings schema", () => {
   it("upgrades a Phase 1–8 settings object (no version) keeping the user's choices", () => {
     const v1 = { lang: "en", theme: "light", palette: "cvd", pattern: true, labels: false, deck4: false, textScale: 1.15, haptics: false, dailyGoal: 50, depth: 40, onboarded: true };
-    expect(upgrade(SETTINGS_SCHEMA, v1)).toEqual(v1);
+    // every choice kept; `rake` (REFACTOR_PLAN 3-2) did not exist then and reads as no rake
+    expect(upgrade(SETTINGS_SCHEMA, v1)).toEqual({ ...v1, rake: "0" });
   });
   it("schema 3 turns the chart patterns on once (old default off); a later 'off' is kept", () => {
     expect(upgrade(SETTINGS_SCHEMA, { pattern: false })!.pattern).toBe(true);

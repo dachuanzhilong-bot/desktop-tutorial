@@ -12,7 +12,6 @@ import { DEFAULT_FILTER } from "@/lib/practice/sampler";
 import type { PracticeFilter } from "@/lib/practice/sampler";
 import { getRepo } from "@/lib/storage/idb";
 import { useSolutionStore } from "@/lib/solution/context";
-import { depthOf } from "@/lib/solution/loader";
 import type { SolutionStore } from "@/lib/solution/loader";
 import { SPOT_TYPES, SpotType } from "@/lib/solution/types";
 
@@ -60,7 +59,7 @@ export default function PracticePage() {
   const [run, setRun] = useState(0);
   const [initial, setInitial] = useState<Preset | null>(null);
   const [pending, setPending] = useState<PracticeSet | null>(null);
-  const { setDepth } = useSolutionStore();
+  const { setSolution } = useSolutionStore();
   useImmersive(config !== null);
   useEffect(() => {
     // the URL hash (presets, question lists from Analyze) is only known in the browser, after hydration
@@ -72,18 +71,18 @@ export default function PracticePage() {
       .getMeta<PracticeSet>(`practiceSet:${preset.set}`)
       .then((s) => {
         if (s?.items.length) {
-          setDepth(depthOf(s.solution));
+          setSolution(s.solution);
           setPending(s);
         } else setInitial({ ...preset, set: undefined });
       })
       .catch(() => setInitial({ ...preset, set: undefined }));
-  }, [setDepth]);
+  }, [setSolution]);
 
   // the setup screen needs no solution data: it is part of the static HTML and painted at once.
   // A preset from the URL (read after hydration) remounts it with those values.
   const shown = initial ?? NO_PRESET;
   if (!config && !pending && !shown.set)
-    return <Setup key={presetKey(shown)} initial={shown.filter} initialMode={shown.mode} initialScenario={shown.scenario} initialFlop={shown.flop} onStart={(c) => setConfig(c)} onReview={(s) => { setDepth(depthOf(s.solution)); setPending(s); }} />;
+    return <Setup key={presetKey(shown)} initial={shown.filter} initialMode={shown.mode} initialScenario={shown.scenario} initialFlop={shown.flop} onStart={(c) => setConfig(c)} onReview={(s) => { setSolution(s.solution); setPending(s); }} />;
 
   return (
     // every practice animation follows the OS "reduce motion" setting

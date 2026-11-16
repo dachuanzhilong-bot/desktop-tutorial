@@ -5,7 +5,7 @@ use crate::engine::*;
 use crate::equity::EquityTables;
 
 fn push(nodes: &mut Vec<Node>, kind: Kind, inv: [f32; MAXP], aggressor: Option<usize>) -> usize {
-    nodes.push(Node { kind, inv, aggressor });
+    nodes.push(Node { kind, inv, aggressor, rake: 0.0 });
     nodes.len() - 1
 }
 

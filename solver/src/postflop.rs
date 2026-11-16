@@ -7,7 +7,8 @@
 //! * river showdowns are O(n): hands sorted by strength + prefix sums, with exact card removal
 //!
 //! Payoffs are "share of the final pot minus chips put in postflop"; the initial pot `pot` therefore
-//! belongs to nobody, and `v0 + v1 = pot` at every terminal (constant sum).
+//! belongs to nobody, and `v0 + v1 = pot` at every terminal (constant sum).  With rake (`Config::rake_pct`,
+//! REFACTOR_PLAN 3-2) the rake of each terminal leaves the pot first: `v0 + v1 = pot - rake` (`Config::pot_paid`).
 use crate::engine::regret_match;
 use crate::eval::eval7;
 use crate::river::{self, RiverWalk};
@@ -207,6 +208,21 @@ pub struct Config {
     /// fixed number of sampled run-outs used to value an all-in on the flop
     pub flop_runouts: usize,
     pub seed: u64,
+    /// rake in % of the pot at every terminal (they have all seen the flop; REFACTOR_PLAN 3-2, `rake.rs`); 0 = no rake
+    pub rake_pct: f32,
+    /// at most this many bb of rake (`rake::NO_CAP` = no cap)
+    pub rake_cap: f32,
+}
+
+impl Config {
+    /// The pot a terminal with investments `inv` pays out: the pot before the flop, both investments, minus the rake
+    /// of the pot the winner takes (the pot before the flop plus what both matched; a bet nobody called goes back to
+    /// the bettor and is not raked).  Without rake it is `pot + inv0 + inv1`, bit for bit (`x - 0.0 == x`).
+    #[inline]
+    pub fn pot_paid(&self, inv: [f32; 2]) -> f32 {
+        let total = self.pot + inv[0] + inv[1];
+        total - crate::rake::amount(self.pot + 2.0 * inv[0].min(inv[1]), self.rake_pct, self.rake_cap)
+    }
 }
 
 impl Default for Config {
@@ -223,6 +239,8 @@ impl Default for Config {
             river_cards: 2,
             flop_runouts: 120,
             seed: 7,
+            rake_pct: 0.0,
+            rake_cap: crate::rake::NO_CAP,
         }
     }
 }
@@ -550,11 +568,21 @@ pub struct SolverOptions {
     /// stored `avg` (REFACTOR_PLAN 3-3-3: the river average of a 49 x 48 tree, `na x 1,326` per node, would
     /// not fit in memory; its `ssum` on the support does).  3 (default) = `finalize_avg` fills every node.
     pub avg_on_demand_from: u8,
+    /// Training with a tremble on the flop and turn (`docs/14` §8-6; 0 (default) = none, the solver as it was).
+    /// While training, an unlocked flop / turn decision node whose regret-matched strategy is `sigma` plays
+    /// `sigma' = (1 - tremble) sigma + tremble u` (`tremble_strategy`: `u` uniform over check / call and
+    /// bet / raise): the reach passed down and the value passed up are those of `sigma'`, so every line is
+    /// reached by a slice of each player's whole range in every iteration and its strategies are trained
+    /// against real ranges.  The regrets compare each action with `sigma` (the part the player chooses), and
+    /// the strategy sums add `sigma`, so `avg` is the average of the chosen part: the strategy with the tremble
+    /// taken off.  River nodes never tremble, and `exploitability` / `root_values` / `evaluate` play the
+    /// averages as they are, without a tremble.
+    pub tremble: f32,
 }
 
 impl Default for SolverOptions {
     fn default() -> Self {
-        SolverOptions { no_average_from: 3, threads: 1, avg_on_demand_from: 3 }
+        SolverOptions { no_average_from: 3, threads: 1, avg_on_demand_from: 3, tremble: 0.0 }
     }
 }
 
@@ -608,9 +636,15 @@ pub struct Solver<'a> {
     threads: usize,
     /// `SolverOptions::avg_on_demand_from`
     avg_on_demand_from: u8,
+    /// `SolverOptions::tremble`
+    tremble: f32,
     /// nodes of this street and later play their current strategy where the average would be used, even if they
     /// keep one (`set_current_strategy_from`; 3 = never)
     current_from: u8,
+    /// `set_br_forbidden`: per node, the actions a best response may not choose (bit `a`); empty = none
+    br_forbid: Vec<u64>,
+    /// `evaluate_upstream`: `evaluate` fills the nodes of the streets before this one only (3 = all)
+    eval_below: u8,
     extra: HashMap<u64, Strength>,
     z0: f64,
     /// the training walk of a river tree (`river.rs`, REFACTOR_PLAN 3-3-4); `None` for other trees
@@ -695,6 +729,18 @@ pub fn pair_mass(board: &[u8], r0: &[f32], r1: &[f32]) -> f64 {
 
 /// A strategy (`na * NC`) as `Solver::lock_node` plays it: each hand's row with the negative entries set to 0, divided
 /// by its sum (uniform when the sum is about 0).
+/// `sigma` (`na * NC`, the actions `acts`) with a tremble: for every hand `(1 - eps) sigma + eps u`, `u` uniform
+/// over the actions that keep the hand going (check / call and bet / raise; not fold, not all-in).
+pub fn tremble_strategy(sigma: &mut [f32], acts: &[ActInfo], eps: f32) {
+    let going = acts.iter().filter(|a| a.kind == 1 || a.kind == 2).count();
+    for (a, act) in acts.iter().enumerate() {
+        let add = if act.kind == 1 || act.kind == 2 { eps / going as f32 } else { 0.0 };
+        for x in &mut sigma[a * NC..(a + 1) * NC] {
+            *x = (1.0 - eps) * *x + add;
+        }
+    }
+}
+
 pub fn normalize_strategy(strategy: Vec<f32>, na: usize) -> Vec<f32> {
     let mut s = strategy;
     for h in 0..NC {
@@ -752,7 +798,10 @@ impl<'a> Solver<'a> {
             subtree_end,
             threads,
             avg_on_demand_from: opts.avg_on_demand_from,
+            tremble: opts.tremble,
             current_from: 3,
+            br_forbid: Vec::new(),
+            eval_below: 3,
             extra: HashMap::new(),
             z0,
             river,
@@ -767,6 +816,11 @@ impl<'a> Solver<'a> {
     /// Walk the whole tree from the root with the starting ranges.
     fn run(&mut self, mode: Mode, ev: Option<&mut [Option<NodeEval>]>, want_mass: bool) -> Res {
         let (r0, r1) = (self.prior[0].clone(), self.prior[1].clone());
+        self.run_from(0, &r0, &r1, mode, ev, want_mass)
+    }
+
+    /// Walk the subtree of node `ni` with the reaches `r0`, `r1` (the root with the starting ranges: `run`).
+    fn run_from(&mut self, ni: usize, r0: &[f32], r1: &[f32], mode: Mode, ev: Option<&mut [Option<NodeEval>]>, want_mass: bool) -> Res {
         let threads = if cfg!(target_arch = "wasm32") { 1 } else { self.threads };
         let sh = Shared {
             tree: self.tree,
@@ -779,9 +833,12 @@ impl<'a> Solver<'a> {
             z0: self.z0,
             threads,
             current_from: self.current_from,
+            tremble: self.tremble,
+            br_forbid: &self.br_forbid,
+            eval_below: self.eval_below,
         };
         let mut part = Part { sh: &sh, base: 0, regret: &mut self.regret, ssum: &mut self.ssum, ev, extra: &mut self.extra, fork: threads > 1 };
-        part.walk(0, &r0, &r1, mode, want_mass)
+        part.walk(ni, r0, r1, mode, want_mass)
     }
 
     /// does this node keep a strategy average (see `SolverOptions::no_average_from`)
@@ -915,19 +972,55 @@ impl<'a> Solver<'a> {
 
     /// Sum of both best-response gains in chips (0 at equilibrium).
     pub fn exploitability(&mut self) -> f32 {
+        let g = self.exploitability_by_player();
+        g[0] + g[1]
+    }
+
+    /// The best-response gain of each player in chips (OOP, IP): what that player wins more than under the
+    /// average strategies by best-responding alone.  `exploitability` is their sum.
+    pub fn exploitability_by_player(&mut self) -> [f32; 2] {
         let base = self.root_values();
-        let mut gain = 0f32;
-        for p in 0..2 {
-            let res = self.run(Mode::Br(p), None, true);
-            let br = self.value(&res, p)[p];
-            gain += (br - base[p]).max(0.0);
-        }
-        gain
+        [self.best_response_gain(0, base), self.best_response_gain(1, base)]
+    }
+
+    /// The best-response gain of player `p` alone (chips) against the others as they are now, the locked nodes of
+    /// `p` included (a locked node plays its lock, so `p` may deviate only where it is not locked).  `base` is
+    /// `root_values()` of the same state.  `exploitability_by_player` calls this for both players.
+    pub fn best_response_gain(&mut self, p: usize, base: [f32; 2]) -> f32 {
+        self.best_response_delta(p, base).max(0.0)
+    }
+
+    /// `best_response_gain` without the clamp at 0 (rounding only: below 0 by no more than that)
+    pub fn best_response_delta(&mut self, p: usize, base: [f32; 2]) -> f32 {
+        let res = self.run(Mode::Br(p), None, true);
+        let br = self.value(&res, p)[p];
+        br - base[p]
+    }
+
+    /// Take actions away from a best response (`best_response_gain` / `best_response_delta`): `forbid[node]` has bit `a`
+    /// set when the player who best-responds at the decision node may not choose its action `a` (the strategies of
+    /// the other nodes, and of this node when it is locked, are not changed).  At such a node the best response may
+    /// still play the node's average strategy `avg[node]` (which can play an action it may not choose), so it never
+    /// does worse than the strategies do.  A node whose actions are all forbidden forbids none.  Empty (the default)
+    /// forbids nothing.  Measures the best response within some lines (`docs/14` §11-9).
+    pub fn set_br_forbidden(&mut self, forbid: Vec<u64>) {
+        assert!(forbid.is_empty() || forbid.len() == self.tree.nodes.len(), "one entry per tree node");
+        self.br_forbid = forbid;
     }
 
     pub fn evaluate(&mut self) -> Vec<Option<NodeEval>> {
         let mut ev: Vec<Option<NodeEval>> = vec![None; self.tree.nodes.len()];
         self.run(Mode::Eval, Some(&mut ev), true);
+        ev
+    }
+
+    /// `evaluate` for the flop and turn nodes only (what a TSP1 v3 file holds, `dealt_nodes`): the river nodes of a
+    /// 49 x 48 tree keep averages, and their evaluations would not fit in memory.  The flop and turn entries are
+    /// those of `evaluate`.
+    pub fn evaluate_upstream(&mut self) -> Vec<Option<NodeEval>> {
+        self.eval_below = 2;
+        let ev = self.evaluate();
+        self.eval_below = 3;
         ev
     }
 
@@ -1034,6 +1127,12 @@ struct Shared<'w> {
     threads: usize,
     /// `Solver::set_current_strategy_from`
     current_from: u8,
+    /// `SolverOptions::tremble`
+    tremble: f32,
+    /// `Solver::set_br_forbidden`
+    br_forbid: &'w [u64],
+    /// `Solver::evaluate_upstream`
+    eval_below: u8,
 }
 
 /// What a walk writes, for the nodes `base..base + regret.len()`: the whole tree, or one subtree that a thread
@@ -1163,7 +1262,8 @@ impl<'w> Part<'w> {
         let sh: &'w Shared<'w> = self.sh;
         let tree: &'w Tree = sh.tree;
         let node = &tree.nodes[ni];
-        let pot_total = tree.cfg.pot + node.inv[0] + node.inv[1];
+        // what a terminal pays out (the pot minus the rake; not used at other nodes)
+        let pot_total = tree.cfg.pot_paid(node.inv);
         let need_mass = want_mass || !matches!(mode, Mode::Train(_));
         match &node.kind {
             PKind::Fold { winner } => {
@@ -1236,7 +1336,7 @@ impl<'w> Part<'w> {
                 }
                 acc
             }
-            PKind::Decision { player, children, .. } => {
+            PKind::Decision { player, acts, children } => {
                 let p = *player as usize;
                 let o = 1 - p;
                 let na = children.len();
@@ -1259,12 +1359,26 @@ impl<'w> Part<'w> {
                         _ => sigma.copy_from_slice(&sh.avg[ni]),
                     }
                 }
+                // training with a tremble (`SolverOptions::tremble`): the node plays `sigma'`; `chosen` keeps `sigma`
+                let mut chosen: Option<Vec<f32>> = None;
+                if sh.tremble > 0.0 && node.street < 2 && !locked && matches!(mode, Mode::Train(_)) {
+                    chosen = Some(sigma.clone());
+                    tremble_strategy(&mut sigma, acts, sh.tremble);
+                }
                 let mut cfv_p = vec![0f32; NC];
                 let mut cfv_o = vec![0f32; NC];
                 let mut m_p = if need_mass { vec![0f32; NC] } else { Vec::new() };
                 let mut m_o = if need_mass { vec![0f32; NC] } else { Vec::new() };
                 let mut child_p: Vec<Vec<f32>> = Vec::with_capacity(na);
                 let mut best: Option<Vec<f32>> = None;
+                // the actions a best response may not choose (`Solver::set_br_forbidden`); never all of them.  With some
+                // forbidden it may still play the node's average strategy: `mix` is that strategy's value
+                let forbid = match sh.br_forbid.get(ni).copied().unwrap_or(0) & ((1u64 << na) - 1) {
+                    f if f == (1u64 << na) - 1 => 0,
+                    f => f,
+                };
+                let own_avg: Option<&[f32]> = if forbid != 0 { sh.avg.get(ni).filter(|a| a.len() == na * NC).map(|a| a.as_slice()) } else { None };
+                let mut mix: Option<Vec<f32>> = own_avg.map(|_| vec![0f32; NC]);
                 for a in 0..na {
                     let new_rp: Vec<f32> = (0..NC).map(|h| rp[h] * sigma[a * NC + h]).collect();
                     let res = if p == 0 { self.walk(children[a] as usize, &new_rp, ro, mode, want_mass) } else { self.walk(children[a] as usize, ro, &new_rp, mode, want_mass) };
@@ -1282,8 +1396,15 @@ impl<'w> Part<'w> {
                     match mode {
                         Mode::Br(bp) if bp == p && !locked => {
                             let b = best.get_or_insert_with(|| vec![f32::MIN; NC]);
-                            for h in 0..NC {
-                                b[h] = b[h].max(res.v[p][h]);
+                            if forbid >> a & 1 == 0 {
+                                for h in 0..NC {
+                                    b[h] = b[h].max(res.v[p][h]);
+                                }
+                            }
+                            if let (Some(m), Some(own)) = (mix.as_mut(), own_avg) {
+                                for h in 0..NC {
+                                    m[h] += own[a * NC + h] * res.v[p][h];
+                                }
                             }
                         }
                         _ => {
@@ -1294,20 +1415,40 @@ impl<'w> Part<'w> {
                     }
                     child_p.push(res.v[p].clone());
                 }
-                if let Some(b) = best {
+                if let Some(mut b) = best {
+                    if let Some(m) = &mix {
+                        for h in 0..NC {
+                            b[h] = b[h].max(m[h]);
+                        }
+                    }
                     cfv_p = b;
                 }
+                let mut cfv_p_chosen: Option<Vec<f32>> = None;
                 match mode {
                     Mode::Train(_) if locked => {}
                     Mode::Train(t) => {
                         // the support only: elsewhere the reach is 0 (see `Solver`)
                         let k = sup.len();
+                        if let Some(chosen) = &chosen {
+                            // the regrets against the chosen strategy's own value (the tremble is not the
+                            // player's to change), and the average of the chosen strategy
+                            let mut base = vec![0f32; NC];
+                            for a in 0..na {
+                                for &h in sup {
+                                    let h = h as usize;
+                                    base[h] += chosen[a * NC + h] * child_p[a][h];
+                                }
+                            }
+                            cfv_p_chosen = Some(base);
+                            sigma.copy_from_slice(chosen);
+                        }
+                        let cfv_own: &[f32] = cfv_p_chosen.as_deref().unwrap_or(&cfv_p);
                         let regret = &mut self.regret[li];
                         for a in 0..na {
                             for (j, &h) in sup.iter().enumerate() {
                                 let h = h as usize;
                                 let i = a * k + j;
-                                regret[i] = (regret[i] + child_p[a][h] - cfv_p[h]).max(0.0);
+                                regret[i] = (regret[i] + child_p[a][h] - cfv_own[h]).max(0.0);
                             }
                         }
                         if has_avg {
@@ -1320,7 +1461,7 @@ impl<'w> Part<'w> {
                             }
                         }
                     }
-                    Mode::Eval if self.ev.is_some() && has_avg => {
+                    Mode::Eval if self.ev.is_some() && has_avg && node.street < sh.eval_below => {
                         let mut e = NodeEval { player: p as u8, weight: rp.to_vec(), freq: sigma.clone(), ..Default::default() };
                         e.ev = vec![0f32; na * NC];
                         for a in 0..na {
@@ -1568,8 +1709,11 @@ impl QRange {
     }
 }
 
-fn write_tsp1(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32, starts: Option<&[RiverStart]>) -> (Vec<u8>, Vec<u32>) {
-    // keep decision nodes that are played, chance nodes that lead to something kept, (v3) river starts that are played
+/// The nodes a `TSP1` file keeps (`min_reach`, as `export` / `export_v3` read it): the decision nodes that are played
+/// (the reach given the dealt cards in v3, `starts` is `Some`), the chance nodes that lead to something kept, and
+/// (v3) the river starts that are played.  A node below a node that is not kept is not kept either, and the terminal
+/// nodes are never kept.  These are the lines the app "deals"; `docs/14` §11-9 defines G2 within them.
+pub fn dealt_nodes(tree: &Tree, ev: &[Option<NodeEval>], starts: Option<&[RiverStart]>, min_reach: f32) -> Vec<bool> {
     let n = tree.nodes.len();
     let start_of: HashMap<usize, &RiverStart> = starts.map(|s| s.iter().map(|x| (x.node as usize, x)).collect()).unwrap_or_default();
     struct Mark<'m> {
@@ -1614,6 +1758,14 @@ fn write_tsp1(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32, starts: Opti
     }
     let mut keep = vec![false; n];
     mark(&Mark { t: tree, ev, min: min_reach, starts: starts.map(|_| &start_of) }, 0, &mut keep);
+    keep
+}
+
+fn write_tsp1(tree: &Tree, ev: &[Option<NodeEval>], min_reach: f32, starts: Option<&[RiverStart]>) -> (Vec<u8>, Vec<u32>) {
+    // keep decision nodes that are played, chance nodes that lead to something kept, (v3) river starts that are played
+    let n = tree.nodes.len();
+    let start_of: HashMap<usize, &RiverStart> = starts.map(|s| s.iter().map(|x| (x.node as usize, x)).collect()).unwrap_or_default();
+    let keep = dealt_nodes(tree, ev, starts, min_reach);
 
     let mut order = Vec::new();
     let mut id = vec![-1i32; n];
@@ -2388,6 +2540,94 @@ mod tests {
         assert_river_walk_matches(&tree, &ranges, SolverOptions::default(), 200, &locks);
         // no strategy average on the river (plan B's precomputation): the current strategies are compared
         assert_river_walk_matches(&tree, &ranges, SolverOptions { no_average_from: 2, ..Default::default() }, 200, &locks[..1]);
+    }
+
+    /// REFACTOR_PLAN 3-2: at every terminal of `tree` (fold, showdown, all-in run-outs), walked with partial ranges,
+    /// the two players' payouts (value + what they put in postflop, weighted by their reach) add up to the pot minus
+    /// the rake, per unit of the pairs of hands that meet there; the rake is `pct`% of the pot the winner takes (the
+    /// pot before the flop + what both matched), at most `cap`.  Returns the number of terminals of each kind (fold,
+    /// showdown, all-in) and how many of the raked ones are at the cap.
+    fn assert_payouts_add_up(tree: &Tree, pct: f32, cap: f32) -> ([usize; 3], usize) {
+        let ranges = mixed_ranges(3);
+        let mut s = Solver::new(tree, &ranges);
+        let (mut seen, mut capped) = ([0usize; 3], 0);
+        for (i, node) in tree.nodes.iter().enumerate() {
+            let kind = match node.kind {
+                PKind::Fold { .. } => 0,
+                PKind::Showdown { .. } => 1,
+                PKind::AllIn { .. } => 2,
+                _ => continue,
+            };
+            seen[kind] += 1;
+            let pot = tree.cfg.pot + node.inv[0] + node.inv[1];
+            let raked = tree.cfg.pot + 2.0 * node.inv[0].min(node.inv[1]);
+            let rake = (raked * pct / 100.0).min(cap);
+            if rake == cap {
+                capped += 1;
+            }
+            let bm = mask_of(&node.board);
+            let r: Vec<Vec<f32>> = ranges.iter().map(|r| (0..NC).map(|h| if blocked(bm, h) { 0.0 } else { r[h] }).collect()).collect();
+            let res = s.run_from(i, &r[0], &r[1], Mode::Eval, None, true);
+            let mass: Vec<f64> = (0..2).map(|p| (0..NC).map(|h| r[p][h] as f64 * res.m[p][h] as f64).sum()).collect();
+            assert!(mass[0] > 1.0 && (mass[0] - mass[1]).abs() < 1e-4 * mass[0], "node {}: pair mass {:?}", i, mass);
+            let paid: f64 = (0..2).map(|p| (0..NC).map(|h| r[p][h] as f64 * (res.v[p][h] + node.inv[p] * res.m[p][h]) as f64).sum::<f64>()).sum();
+            let want = (pot - rake) as f64 * mass[0];
+            assert!((paid - want).abs() < 1e-4 * pot as f64 * mass[0], "node {} ({:?}): payouts {} vs (pot {} - rake {}) x {}", i, kind, paid / mass[0], pot, rake, mass[0]);
+        }
+        (seen, capped)
+    }
+
+    #[test]
+    fn payouts_add_up_to_the_pot_minus_the_rake_at_every_terminal() {
+        // flop: raises, all-ins on every street (flop all-ins over sampled run-outs), folds to an uncalled bet
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 2, river_cards: 2, flop_runouts: 24, rake_pct: 5.0, rake_cap: 2.0, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let (seen, capped) = assert_payouts_add_up(&tree, 5.0, 2.0);
+        assert!(seen.iter().all(|&n| n > 0) && capped > 0 && capped < seen.iter().sum::<usize>(), "terminals {:?}, {} at the cap", seen, capped);
+        // a fold to a bet pays the rake of the pot before the bet (the bet goes back), not of the pot with it
+        let fold = tree.nodes.iter().find(|n| matches!(n.kind, PKind::Fold { .. }) && n.inv[0] == 0.0 && n.inv[1] > 0.0).expect("a fold to a flop bet");
+        assert_eq!(tree.cfg.pot_paid(fold.inv), 6.0 + fold.inv[1] - 0.3);
+        // the river alone (the tree the device solves; its walk is checked against this one below), no cap
+        let cfg = Config { pot: 10.0, stack: 40.0, bets: [vec![], vec![], vec![0.5, 1.0]], raise_sizes: [false, false, true], allow_allin: true, rake_pct: 4.5, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ah 8d 7c 2s 3d"));
+        let (seen, capped) = assert_payouts_add_up(&tree, 4.5, crate::rake::NO_CAP);
+        assert!(seen[0] > 0 && seen[1] > 0 && capped == 0, "terminals {:?}", seen);
+        // the turn: all-ins over every river card
+        let cfg = Config { pot: 8.0, stack: 20.0, bets: [vec![], vec![0.5], vec![0.75]], raise_sizes: [false; 3], allow_allin: true, river_cards: 3, rake_pct: 10.0, rake_cap: 3.0, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 9h 5h 2d"));
+        let (seen, _) = assert_payouts_add_up(&tree, 10.0, 3.0);
+        assert!(seen.iter().all(|&n| n > 0), "terminals {:?}", seen);
+    }
+
+    /// without rake every terminal pays out the whole pot, bit for bit as before rake existed
+    #[test]
+    fn no_rake_pays_the_whole_pot() {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 2, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        for n in &tree.nodes {
+            let old = tree.cfg.pot + n.inv[0] + n.inv[1];
+            assert_eq!(tree.cfg.pot_paid(n.inv).to_bits(), old.to_bits());
+        }
+        let (seen, _) = assert_payouts_add_up(&tree, 0.0, crate::rake::NO_CAP);
+        assert!(seen.iter().all(|&n| n > 0));
+    }
+
+    /// the river walk (the device's solve) pays the same rake as the general walk: the same bits
+    #[test]
+    fn river_walk_matches_the_general_walk_with_rake() {
+        let cfg = Config { pot: 10.0, stack: 40.0, bets: [vec![], vec![], vec![0.5, 1.0]], raise_sizes: [false, false, true], allow_allin: true, rake_pct: 5.0, rake_cap: 2.0, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ah 8d 7c 2s 3d"));
+        assert_river_walk_matches(&tree, &mixed_ranges(1), SolverOptions::default(), 300, &[]);
+        // and the rake changes the solution (else the comparison would not show that both walks pay it)
+        let solve = |c: &Config| {
+            let t = build_tree(c, &board("Ah 8d 7c 2s 3d"));
+            let mut s = Solver::new(&t, &mixed_ranges(1));
+            for _ in 0..100 {
+                s.iterate();
+            }
+            s.regret.iter().flatten().map(|x| x.to_bits()).collect::<Vec<u32>>()
+        };
+        assert_ne!(solve(&cfg), solve(&Config { rake_pct: 0.0, ..cfg.clone() }));
     }
 
     #[test]

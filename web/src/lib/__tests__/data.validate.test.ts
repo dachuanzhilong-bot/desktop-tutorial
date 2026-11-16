@@ -18,6 +18,8 @@ import { decodeFlop } from "../postflop/decode";
 import { decodeChunk, parseManifest } from "../solution/decode";
 import { flopBuild } from "../postflop/loader";
 import { DEPTHS, solutionBuild, solutionId } from "../solution/loader";
+import { SOLUTIONS } from "../solution/catalog";
+import { rakeKey } from "../solution/rake";
 import { applyAction, initialState, stateAt as stateAtNode } from "../solution/tree";
 import { ActionKind } from "../solution/types";
 import type { Manifest, NodeSolution, PublicState } from "../solution/types";
@@ -193,6 +195,18 @@ describe("build IDs of the solution data", () => {
     expect(build).toMatch(/^[0-9a-f]{12}$/);
     expect(build).toBe(buildOf(names.map((f) => path.join(dir, id, f))));
     expect(solutionBuild(id), "the loader asks for this build").toBe(build);
+  });
+
+  it("every solution's rake in the catalog is its manifest's, and no two share a table, a depth and a rake (REFACTOR_PLAN 3-2)", () => {
+    const seen = new Set<string>();
+    for (const s of SOLUTIONS) {
+      const m = parseManifest(JSON.parse(gunzipSync(readFileSync(path.join(dir, s.id, "manifest.json.gz"))).toString("utf8")));
+      expect(m.id).toBe(s.id);
+      expect(s.rake, s.id).toEqual(m.rake);
+      const key = `${s.game}/${s.players}/${s.stack}/${rakeKey(s.rake)}`;
+      expect(seen.has(key), key).toBe(false);
+      seen.add(key);
+    }
   });
 
   it("no two solutions share a build", () => {

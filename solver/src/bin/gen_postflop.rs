@@ -193,7 +193,7 @@ fn write_atomic(path: &str, bytes: &[u8]) {
 /// `index.json`: the flops, the scenarios that were run (with their ranges and settings) and the stats
 /// (`(scenario index, flop index, stats JSON)`, in any order)
 #[allow(clippy::too_many_arguments)] // the run's settings, as main has them
-fn index_json(n_flops: usize, only: &str, ranges: &[[Vec<f32>; 2]], iters: u32, turn_cards: usize, river_cards: usize, pre_of: &[String], stats: &[(usize, usize, String)]) -> String {
+fn index_json(n_flops: usize, only: &str, ranges: &[[Vec<f32>; 2]], iters: u32, turn_cards: usize, river_cards: usize, rake: &str, pre_of: &[String], stats: &[(usize, usize, String)]) -> String {
     let mut idx = String::from("{\"format\":1,\"flops\":[");
     for (i, f) in FLOPS.iter().take(n_flops.min(FLOPS.len())).enumerate() {
         if i > 0 {
@@ -213,8 +213,8 @@ fn index_json(n_flops: usize, only: &str, ranges: &[[Vec<f32>; 2]], iters: u32, 
         first = false;
         let stat = |r: &Vec<f32>| r.iter().sum::<f32>() / 13.26;
         idx.push_str(&format!(
-            "{{\"id\":\"{}\",\"title\":\"{}\",\"pot\":{},\"stack\":{},\"oop\":\"{}\",\"ip\":\"{}\",\"oopPct\":{:.2},\"ipPct\":{:.2},\"iterations\":{},\"turnCards\":{},\"riverCards\":{},\"pre\":{}}}",
-            sc.id, sc.title, sc.pot, sc.stack, sc.oop_seat, sc.ip_seat, stat(&ranges[i][0]), stat(&ranges[i][1]), iters, turn_cards, river_cards, pre_of[i]
+            "{{\"id\":\"{}\",\"title\":\"{}\",\"pot\":{},\"stack\":{},\"oop\":\"{}\",\"ip\":\"{}\",\"oopPct\":{:.2},\"ipPct\":{:.2},\"iterations\":{},\"turnCards\":{},\"riverCards\":{}{},\"pre\":{}}}",
+            sc.id, sc.title, sc.pot, sc.stack, sc.oop_seat, sc.ip_seat, stat(&ranges[i][0]), stat(&ranges[i][1]), iters, turn_cards, river_cards, rake, pre_of[i]
         ));
     }
     idx.push_str("],\"stats\":{");
@@ -278,6 +278,10 @@ fn main() {
     assert!(!all_cards || no_average_from >= 2, "--all-cards writes the flop and turn averages: --no-average-from must be at least 2");
     // threads inside one flop (see the top of the file: N x M threads with --threads N, keep it <= the cores)
     let solve_threads: usize = arg(&args, "--solve-threads", SolverOptions::default().threads).max(1);
+    // rake (REFACTOR_PLAN 3-2): `--rake-pct 5 --rake-cap 3` = 5% of every pot (all terminals have seen the flop), at
+    // most 3bb; written to every scenario of index.json as "rake" (left out without rake: the index made before)
+    let (rake_pct, rake_cap) = tessera_solver::rake::from_args(&args);
+    let rake_field = tessera_solver::rake::json(rake_pct, rake_cap).map(|r| format!(",\"rake\":{}", r)).unwrap_or_default();
 
     let sol = solution_io::load(&pre).expect("preflop solution");
     let (seats, pre_stack, blinds) = manifest_table(&pre);
@@ -324,7 +328,7 @@ fn main() {
         .collect();
     let write_index = || {
         let _guard = index_lock.lock().unwrap();
-        let idx = index_json(n_flops, &only, &ranges, iters, turn_cards, river_cards, &pre_of, &stats_on_disk(&out, &indexed));
+        let idx = index_json(n_flops, &only, &ranges, iters, turn_cards, river_cards, &rake_field, &pre_of, &stats_on_disk(&out, &indexed));
         write_atomic(&format!("{}/index.json", out), idx.as_bytes());
     };
     if all_cards {
@@ -348,7 +352,7 @@ fn main() {
                     continue;
                 }
                 let board: Vec<u8> = FLOPS[fi].split_whitespace().map(card).collect();
-                let cfg = Config { pot: sc.pot, stack: sc.stack, turn_cards, river_cards, flop_runouts, seed: 11 + fi as u64, ..Config::default() };
+                let cfg = Config { pot: sc.pot, stack: sc.stack, turn_cards, river_cards, flop_runouts, seed: 11 + fi as u64, rake_pct, rake_cap, ..Config::default() };
                 let t = Instant::now();
                 let tree = build_tree(&cfg, &board);
                 let mut solver = Solver::with_options(&tree, &ranges[si], SolverOptions { no_average_from, threads: solve_threads, ..Default::default() });
@@ -409,7 +413,7 @@ fn main() {
     if all_cards {
         write_index();
     } else {
-        let idx = index_json(n_flops, &only, &ranges, iters, turn_cards, river_cards, &pre_of, &stats_log.lock().unwrap());
+        let idx = index_json(n_flops, &only, &ranges, iters, turn_cards, river_cards, &rake_field, &pre_of, &stats_log.lock().unwrap());
         std::fs::write(format!("{}/index.json", out), idx).unwrap();
     }
     eprintln!("done in {:.0}s", t0.elapsed().as_secs_f32());

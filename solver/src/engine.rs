@@ -13,6 +13,8 @@
 //!     u_x(a,b) = pot * s(a,b) - inv_x,   u_y(b,a) = pot * (1 - s(a,b)) - inv_y
 //!     where s is the pot share (raw equity for all-in, a realisation model otherwise).
 //!     The two "class" matrices hold `P * s` for each side so a showdown is two mat-vecs.
+//!   * A node's `rake` leaves the pot before it is paid out (`pot - rake` replaces `pot` above), so the
+//!     payouts add up to `pot - rake` (REFACTOR_PLAN 3-2; 0 everywhere but the preflop showdowns with rake).
 //!
 //! Multi-player CFR has no Nash guarantee, but is zero-sum overall and behaves
 //! well in practice (see docs/07-preflop-model.md).  For two players this is
@@ -50,6 +52,8 @@ pub struct Node {
     pub inv: [f32; MAXP],
     /// the player whose bet / raise is being answered (display only)
     pub aggressor: Option<usize>,
+    /// chips the house takes from the pot at this terminal (`rake::amount`); 0 at decision nodes and without rake
+    pub rake: f32,
 }
 
 impl Node {
@@ -287,11 +291,22 @@ impl<'g> Solver<'g> {
         ev
     }
 
+    /// The values (net chips, `n * k`) of terminal `ni` when every player can hold every hand (all reaches 1), as
+    /// `walk` computes them there.  For tests of the payoffs (the rake tests in `preflop.rs`).
+    #[cfg(test)]
+    pub(crate) fn terminal_values(&self, ni: usize) -> Vec<f32> {
+        let st = self.fresh_state();
+        let mut out = vec![0f32; self.g.n_players * self.g.k];
+        self.terminal(ni, &st, &mut out);
+        out
+    }
+
     fn terminal(&self, ni: usize, st: &State, out: &mut [f32]) {
         let g = self.g;
         let (n, k) = (g.n_players, g.k);
         let node = &g.nodes[ni];
-        let pot = node.pot();
+        // the pot the players share; `x - 0.0 == x`, so without rake every value is the same as before, bit for bit
+        let pot = node.pot() - node.rake;
         // out[q][h] = -inv_q * prod_{q' != q} m_q'[h]  (the "everybody else" payoff)
         let mut prod_except = [0f32; MAXP];
         for h in 0..k {

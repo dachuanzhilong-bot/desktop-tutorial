@@ -137,33 +137,33 @@ pub fn build(spec: &IcmSpec, t: &EquityTables) -> IcmGame {
     let mut info: Vec<NodeInfo> = Vec::new();
     let zero = [0f32; MAXP];
     let mut push = |nodes: &mut Vec<Node>, kind: Kind, aggressor: Option<usize>| {
-        nodes.push(Node { kind, inv: zero, aggressor });
+        nodes.push(Node { kind, inv: zero, aggressor, rake: 0.0 });
         nodes.len() - 1
     };
 
     // responses to player j's jam, from player c on
     fn respond(nodes: &mut Vec<Node>, info: &mut Vec<NodeInfo>, n: usize, j: usize, c: usize, unc: &dyn Fn(usize) -> [f32; MAXP], sd: &dyn Fn(usize, usize) -> ([f32; MAXP], [f32; MAXP])) -> usize {
         if c == n {
-            nodes.push(Node { kind: Kind::Const { vals: unc(j) }, inv: [0f32; MAXP], aggressor: Some(j) });
+            nodes.push(Node { kind: Kind::Const { vals: unc(j) }, inv: [0f32; MAXP], aggressor: Some(j), rake: 0.0 });
             return nodes.len() - 1;
         }
         let idx = nodes.len();
-        nodes.push(Node { kind: Kind::Const { vals: [0f32; MAXP] }, inv: [0f32; MAXP], aggressor: Some(j) });
+        nodes.push(Node { kind: Kind::Const { vals: [0f32; MAXP] }, inv: [0f32; MAXP], aggressor: Some(j), rake: 0.0 });
         info.push(NodeInfo { node: idx, player: c, facing: Some(j) });
         let fold = respond(nodes, info, n, j, c + 1, unc, sd);
         let (vx, vy) = sd(j, c);
-        nodes.push(Node { kind: Kind::Icm { x: j, y: c, class: 0, vx, vy }, inv: [0f32; MAXP], aggressor: Some(j) });
+        nodes.push(Node { kind: Kind::Icm { x: j, y: c, class: 0, vx, vy }, inv: [0f32; MAXP], aggressor: Some(j), rake: 0.0 });
         let call = nodes.len() - 1;
         nodes[idx].kind = Kind::Decision { player: c, children: vec![fold, call] };
         idx
     }
     fn open(nodes: &mut Vec<Node>, info: &mut Vec<NodeInfo>, n: usize, i: usize, unc: &dyn Fn(usize) -> [f32; MAXP], sd: &dyn Fn(usize, usize) -> ([f32; MAXP], [f32; MAXP])) -> usize {
         if i == n - 1 {
-            nodes.push(Node { kind: Kind::Const { vals: unc(n - 1) }, inv: [0f32; MAXP], aggressor: None });
+            nodes.push(Node { kind: Kind::Const { vals: unc(n - 1) }, inv: [0f32; MAXP], aggressor: None, rake: 0.0 });
             return nodes.len() - 1;
         }
         let idx = nodes.len();
-        nodes.push(Node { kind: Kind::Const { vals: [0f32; MAXP] }, inv: [0f32; MAXP], aggressor: None });
+        nodes.push(Node { kind: Kind::Const { vals: [0f32; MAXP] }, inv: [0f32; MAXP], aggressor: None, rake: 0.0 });
         info.push(NodeInfo { node: idx, player: i, facing: None });
         let fold = open(nodes, info, n, i + 1, unc, sd);
         let jam = respond(nodes, info, n, i, i + 1, unc, sd);

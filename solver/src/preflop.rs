@@ -89,6 +89,10 @@ pub struct Config {
     /// at stacks up to this many bb a player may also jam (re-shove) over an open instead of the normal 3-bet
     pub shove_3bet_max: f32,
     pub real: Realization,
+    /// rake in % of the pot of a hand that sees the flop (REFACTOR_PLAN 3-2, `rake.rs`); 0 = no rake
+    pub rake_pct: f32,
+    /// at most this many bb of rake (`rake::NO_CAP` = no cap)
+    pub rake_cap: f32,
 }
 
 impl Default for Config {
@@ -105,6 +109,8 @@ impl Default for Config {
             open_jam_max: 25.0,
             shove_3bet_max: 45.0,
             real: Realization::default(),
+            rake_pct: 0.0,
+            rake_cap: crate::rake::NO_CAP,
         }
     }
 }
@@ -196,7 +202,10 @@ impl<'a> Builder<'a> {
     }
 
     fn terminal(&mut self, kind: Kind, st: &St, tt: u8) -> usize {
-        self.nodes.push(Node { kind, inv: pad_inv(&st.inv), aggressor: None });
+        // no flop, no drop: a hand everybody folds to pays no rake; a flop (even one valued by the EQR model) or an
+        // all-in pays it on the whole pot (the folded players' dead money included)
+        let rake = if tt == 0 { 0.0 } else { crate::rake::amount(st.inv.iter().sum(), self.cfg.rake_pct, self.cfg.rake_cap) };
+        self.nodes.push(Node { kind, inv: pad_inv(&st.inv), aggressor: None, rake });
         self.meta.push(NodeMeta::default());
         self.term_type.push(tt);
         self.nodes.len() - 1
@@ -307,7 +316,7 @@ impl<'a> Builder<'a> {
             acts.push((kind, size, n));
         }
         let idx = self.nodes.len();
-        self.nodes.push(Node { kind: Kind::Fold { winner: 0 }, inv: pad_inv(&st.inv), aggressor: st.last_raiser });
+        self.nodes.push(Node { kind: Kind::Fold { winner: 0 }, inv: pad_inv(&st.inv), aggressor: st.last_raiser, rake: 0.0 });
         self.meta.push(NodeMeta {
             actions: acts.iter().map(|(k, t, _)| (*k as u8, *t)).collect(),
             call_real,
@@ -568,14 +577,16 @@ pub fn export(
         }
     }
 
-    // manifest
+    // manifest (`rake` only with rake: without it, it is the manifest made before rake existed, docs/03)
     let mut js = String::new();
+    let rake = crate::rake::json(pf.cfg.rake_pct, pf.cfg.rake_cap).map(|r| format!(",\"rake\":{}", r)).unwrap_or_default();
     let _ = write!(
         js,
-        "{{\"format\":1,\"id\":\"{}\",\"players\":[{}],\"stack\":{},\"blinds\":[0.5,1],\"info\":{},\"chunks\":[{}],\"nodes\":[",
+        "{{\"format\":1,\"id\":\"{}\",\"players\":[{}],\"stack\":{},\"blinds\":[0.5,1]{},\"info\":{},\"chunks\":[{}],\"nodes\":[",
         id,
         POS.iter().map(|p| format!("\"{}\"", p)).collect::<Vec<_>>().join(","),
         pf.cfg.stack,
+        rake,
         info,
         chunk_names.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(",")
     );
@@ -671,8 +682,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn sizing_table() {
-        let cfg = Config::default();
+    fn sizing_table() {        let cfg = Config::default();
         let t = EquityTables { eq: vec![0.5; 169 * 169], n: vec![1.0; 169 * 169], samples: 0 };
         let pf = build_preflop(&cfg, &t);
         // UTG open 2.5, then HJ 3-bet (IP) to 7.5, UTG 4-bet to 17.5, jam
@@ -685,6 +695,78 @@ mod tests {
         assert_eq!(pf.meta[n].actions.last().unwrap(), &(2u8, 11.0));
         // every showdown is heads-up, tree is finite and non-trivial
         assert!(pf.game.nodes.len() > 1000);
+    }
+
+    /// Equity tables in which every pair of classes can meet with its full combo count (so the blocker matrix is the
+    /// prior, `P[a][b] = prior[b]`, and the two contestants' views of a pair carry the same weight) and the lower
+    /// class number wins 70% (so the all-in shares of the two sides add up to 1 as in the real table).
+    fn toy_tables() -> EquityTables {
+        let k = NUM_CLASSES;
+        let mut eq = vec![0.5f32; k * k];
+        let mut n = vec![0f32; k * k];
+        for a in 0..k {
+            for c in 0..k {
+                n[a * k + c] = (class_count(a) * class_count(c)) as f32;
+                eq[a * k + c] = match a.cmp(&c) {
+                    std::cmp::Ordering::Less => 0.7,
+                    std::cmp::Ordering::Greater => 0.3,
+                    std::cmp::Ordering::Equal => 0.5,
+                };
+            }
+        }
+        EquityTables { eq, n, samples: 0 }
+    }
+
+    /// REFACTOR_PLAN 3-2: at every terminal of the preflop tree the players' payouts (net result + what they put in,
+    /// averaged over the hands they can hold) add up to the pot minus the rake; the rake is x% of the pot, at most
+    /// y bb, at the terminals that see a flop (heads-up, three-way, all-in) and 0 where everybody folds.
+    #[test]
+    fn payouts_add_up_to_the_pot_minus_the_rake_at_every_terminal() {
+        let t = toy_tables();
+        for (pct, cap) in [(5.0f32, 3.0f32), (10.0, crate::rake::NO_CAP)] {
+            let cfg = Config { rake_pct: pct, rake_cap: cap, ..Config::default() };
+            let pf = build_preflop(&cfg, &t);
+            let g = &pf.game;
+            let s = Solver::new(g);
+            let k = g.k;
+            // terminals per type (0 fold, 1 flop, 2 all-in, 3 three-way flop), raked terminals with the cap / below it
+            let mut seen = [0usize; 4];
+            let (mut capped, mut below) = (0, 0);
+            for (i, node) in g.nodes.iter().enumerate() {
+                if matches!(node.kind, Kind::Decision { .. }) {
+                    assert_eq!(node.rake, 0.0);
+                    continue;
+                }
+                let tt = pf.term_type[i] as usize;
+                let pot = node.pot();
+                let want = if tt == 0 { 0.0 } else { (pot * pct / 100.0).min(cap) };
+                assert_eq!(node.rake, want, "node {} type {} pot {}", i, tt, pot);
+                seen[tt] += 1;
+                if tt != 0 {
+                    if want == cap {
+                        capped += 1;
+                    } else {
+                        below += 1;
+                    }
+                }
+                let out = s.terminal_values(i);
+                let paid: f64 = (0..g.n_players)
+                    .map(|q| (0..k).map(|h| g.prior[q][h] as f64 * (out[q * k + h] + node.inv[q]) as f64).sum::<f64>())
+                    .sum();
+                let tol = 1e-4 * pot as f64;
+                assert!((paid - (pot - want) as f64).abs() < tol, "node {} type {}: payouts {} for a pot of {} with rake {}", i, tt, paid, pot, want);
+            }
+            assert!(seen.iter().all(|&n| n > 0), "every kind of terminal: {:?}", seen);
+            assert!(below > 0 && (capped > 0 || !cap.is_finite()), "below the cap {}, at the cap {}", below, capped);
+        }
+    }
+
+    /// without rake every node keeps rake 0.0 (the payoffs, hence the solution, are those made before rake existed)
+    #[test]
+    fn no_rake_by_default() {
+        let t = toy_tables();
+        let pf = build_preflop(&Config::default(), &t);
+        assert!(pf.game.nodes.iter().all(|n| n.rake.to_bits() == 0f32.to_bits()));
     }
 }
 

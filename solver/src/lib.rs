@@ -9,6 +9,7 @@
 //! * `river`   – the training walk of a river tree on the supports (REFACTOR_PLAN 3-3-4)
 //! * `measure` – exploitability of a shipped postflop file over every turn / river card
 //! * `allcards` – one flop over every card: checkpoints, full-card values, the river re-solved (REFACTOR_PLAN 3-3-3)
+//! * `rake`    – the rake of a pot: x% of it, at most y bb, none without a flop (REFACTOR_PLAN 3-2)
 //! * `icm`     – ICM push/fold for up to nine players
 //! * `games`   – tiny reference games (Kuhn, clairvoyant half street, push/fold)
 // The numerical kernels walk several parallel arrays (hands x actions) with one index;
@@ -26,6 +27,7 @@ pub mod icm;
 pub mod measure;
 pub mod postflop;
 pub mod preflop;
+pub mod rake;
 mod river;
 pub mod rng;
 pub mod solution_io;

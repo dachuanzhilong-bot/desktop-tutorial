@@ -1,4 +1,5 @@
 import { NUM_CLASSES } from "../poker/hands";
+import { readRake } from "./rake";
 import type { Manifest, NodeMeta, NodeSolution, ActionMeta } from "./types";
 
 const K = NUM_CLASSES;
@@ -10,6 +11,8 @@ export interface RawManifest {
   players: string[];
   stack: number;
   blinds: [number, number];
+  /** only in a solution with rake (REFACTOR_PLAN 3-2): {"pct":5,"cap":3}, cap null = no cap */
+  rake?: unknown;
   info?: Record<string, unknown>;
   chunks: string[];
   /** [actor, reach, chunk, actions[[kind, to, child, term]]] */
@@ -44,6 +47,7 @@ export function parseManifest(raw: RawManifest): Manifest {
     players: raw.players,
     stack: raw.stack,
     blinds: raw.blinds,
+    rake: readRake(raw.rake),
     info: raw.info ?? {},
     chunks: raw.chunks,
     nodes,

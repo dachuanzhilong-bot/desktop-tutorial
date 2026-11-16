@@ -1,5 +1,5 @@
 /**
- * The river of a `TSP1` v3 flop, solved on the device (REFACTOR_PLAN 3-3-6, docs/14 §11).
+ * The river of a `TSP1` v3 flop, solved on the device (REFACTOR_PLAN 3-3-6, docs/14 §12).
  *
  * A v3 file has no river node: at every river start (the chance node that deals the river) it holds both players'
  * reach ranges (docs/03 "ポストフロップ: TSP1 v3"). When a river card is chosen there, this layer solves that river with
@@ -23,10 +23,11 @@ import { resolvePostflopKey, ROOT_KEY } from "./positionKey";
 import { stepsTo } from "./replay";
 
 /**
- * Iterations of one river solve on the device. Provisional: 3,000 until REFACTOR_PLAN 3-3-4 decides N from the
- * production run of 3-3-3 (docs/14 §9-5). The cache key holds it, so results of another N are not reused.
+ * Iterations of one river solve on the device: 1,000 (REFACTOR_PLAN 3-3-4, docs/14 §9-5: the smallest measured N that
+ * meets G2', 0.5576%; about 0.94 s on a phone-class CPU). If the 3 flop measurement of 3-3-7 finds a flop above 1.0%, N
+ * goes up here (one place). The cache key holds it, so results of another N are not reused.
  */
-export const RIVER_ITERATIONS = 3000;
+export const RIVER_ITERATIONS = 1000;
 
 /**
  * Version of the step "ranges read from the file -> the ranges the river is solved from" (`riverSolveInput`). It is the

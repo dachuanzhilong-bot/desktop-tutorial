@@ -22,6 +22,7 @@ import { saveDraft } from "@/lib/solve/draft";
 import { newId } from "@/lib/util/id";
 import { timeSlicer } from "@/lib/util/yield";
 import { depthOf, nearestDepth } from "@/lib/solution/loader";
+import { rakeOf } from "@/lib/solution/catalog";
 import type { SolutionStore } from "@/lib/solution/loader";
 import { useSolutionStore } from "@/lib/solution/context";
 import { actionLabel, fmtBB, stateAt } from "@/lib/solution/tree";
@@ -135,7 +136,7 @@ function Analyze({ store }: { store: SolutionStore }) {
           if ("reason" in n) skip(n.reason);
           else {
             const eff = effectiveStack(n);
-            const src = eff >= MIN_STACK && eff <= MAX_STACK ? await getStore(nearestDepth(eff)).catch(() => store) : store;
+            const src = eff >= MIN_STACK && eff <= MAX_STACK ? await getStore(nearestDepth(eff), rakeOf(store.manifest.id)).catch(() => store) : store;
             batch.push({ id: n.id, site: todo[i].site, ts: n.ts, importedAt: Date.now(), hand: n, analysis: await analyzeHand(src, n) });
           }
         } catch (e) {
@@ -378,7 +379,7 @@ function useManifestOf(solution: string): Manifest | null {
   const [m, setM] = useState<Manifest | null>(null);
   useEffect(() => {
     let alive = true;
-    getStore(depthOf(solution))
+    getStore(depthOf(solution), rakeOf(solution))
       .then((s) => alive && setM(s.manifest))
       .catch(() => {});
     return () => {

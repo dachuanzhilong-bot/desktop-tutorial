@@ -16,7 +16,7 @@ import type { StudySources } from "@/lib/storage/mistakes";
 import { loadFlop, PF_INDEX } from "@/lib/postflop/loader";
 import { riverLayer } from "@/lib/postflop/riverSolver";
 import { useSolutionStore } from "@/lib/solution/context";
-import { depthOf } from "@/lib/solution/loader";
+import { depthOf, rakeOf } from "@/lib/solution/catalog";
 import type { IcmLogEntry } from "@/lib/storage/icmLog";
 import { emptyStats, loadStats, statsHeatmap, statsMistakes, statsSeries, statsStreak, statsSummary, statsToday, statsWeakSpots } from "@/lib/storage/statsCache";
 import type { StatsCache } from "@/lib/storage/statsCache";
@@ -69,7 +69,7 @@ export default function StatsPage() {
   const sources = useMemo<StudySources>(
     () => ({
       manifest: async (id) => {
-        const m = (await getStore(depthOf(id))).manifest;
+        const m = (await getStore(depthOf(id), rakeOf(id))).manifest;
         if (m.id !== id) throw new Error(`no solution ${id}`);
         return m;
       },
