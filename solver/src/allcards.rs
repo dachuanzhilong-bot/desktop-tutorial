@@ -979,6 +979,141 @@ pub fn resolve_river_eps(s: &mut Solver, up: &Upstream, eps: f32, plan: &Plan, c
     Ok((Some(ResolveValues { river_only, full, full_by_player }), info))
 }
 
+// ------------------------------------------------------------------ where the exploitability sits
+
+/// The gain of a best response that may deviate in the subtree of one flop decision node (`breakdown`).
+#[derive(Clone, Debug)]
+pub struct NodeGain {
+    pub node: u32,
+    /// 0 OOP, 1 IP: the player who decides at `node` and who best-responds
+    pub player: u8,
+    /// the actions from the root to `node` (`f` fold, `c` check / call, `b<amount>` bet / raise, `a` all-in), `-` apart
+    pub path: String,
+    /// chips
+    pub gain: f32,
+}
+
+/// Where the exploitability of a re-solved tree (`resolve_river`) sits, by the nodes a best response may deviate at
+/// (the player's other flop and turn nodes keep their strategies; chips).  `river` is the river alone (what
+/// `ResolveValues::river_only` sums), `turn` the river and the player's turn nodes, `full` everything.  The
+/// differences between them are what the flop and turn decisions add.  `flop_nodes` frees the river and the subtree
+/// of one flop decision node of the player at a time (a gain of a deviation that starts there or later: the gains of
+/// different nodes overlap, so they do not add up to `full`).
+#[derive(Clone, Debug)]
+pub struct Breakdown {
+    pub river: [f32; 2],
+    pub turn: [f32; 2],
+    pub full: [f32; 2],
+    pub flop_nodes: Vec<NodeGain>,
+}
+
+fn act_label(a: &ActInfo) -> String {
+    match a.kind {
+        0 => "f".into(),
+        1 => "c".into(),
+        2 => format!("b{}", a.amount),
+        _ => "a".into(),
+    }
+}
+
+/// The flop decision nodes with the actions that lead to them from the root: (node, player, path).
+fn flop_decisions(tree: &Tree) -> Vec<(usize, u8, String)> {
+    let mut is_child = vec![false; tree.nodes.len()];
+    for n in &tree.nodes {
+        if let PKind::Decision { children, .. } | PKind::Chance { children, .. } = &n.kind {
+            for &c in children {
+                is_child[c as usize] = true;
+            }
+        }
+    }
+    let mut out = Vec::new();
+    let mut stack: Vec<(usize, Vec<String>)> = (0..tree.nodes.len()).filter(|&i| !is_child[i]).map(|i| (i, Vec::new())).collect();
+    while let Some((i, path)) = stack.pop() {
+        let n = &tree.nodes[i];
+        if let (PKind::Decision { player, acts, children }, 0) = (&n.kind, n.street) {
+            out.push((i, *player, path.join("-")));
+            for (a, &c) in acts.iter().zip(children) {
+                let mut p = path.clone();
+                p.push(act_label(a));
+                stack.push((c as usize, p));
+            }
+        }
+    }
+    out.sort_by_key(|(i, _, _)| *i);
+    out
+}
+
+/// the nodes of the subtree of `root` (including it)
+fn subtree(tree: &Tree, root: usize) -> Vec<usize> {
+    let mut out = Vec::new();
+    let mut stack = vec![root];
+    while let Some(i) = stack.pop() {
+        out.push(i);
+        if let PKind::Decision { children, .. } | PKind::Chance { children, .. } = &tree.nodes[i].kind {
+            stack.extend(children.iter().map(|&c| c as usize));
+        }
+    }
+    out
+}
+
+/// Measure where the exploitability of `s` sits (`Breakdown`).  `s` is a solver right after `resolve_river` /
+/// `resolve_river_eps`: the flop and turn nodes' `avg` hold the strategies they were locked to, the locks are removed,
+/// and the river averages are kept.  The locks are removed again at the end.  One best response is about as slow as
+/// the exploitability's (a few tens of seconds at 49 x 48), and there are 6 + (the player's flop decision nodes).
+pub fn breakdown(s: &mut Solver, log: &mut dyn FnMut(&str)) -> Result<Breakdown, String> {
+    let tree = s.tree;
+    let ups: Vec<(usize, usize)> = upstream_nodes(tree).collect();
+    for &(i, na) in &ups {
+        if s.avg.get(i).map(|a| a.len()) != Some(na * NC) {
+            return Err(format!("node {} has no strategy in `avg` (run it right after the re-solve)", i));
+        }
+    }
+    let street_player = |i: usize| match &tree.nodes[i].kind {
+        PKind::Decision { player, .. } => (tree.nodes[i].street, *player as usize),
+        _ => unreachable!("upstream nodes are decision nodes"),
+    };
+    // lock every flop / turn node to its strategy, except those `free` returns true for
+    fn relock(s: &mut Solver, ups: &[(usize, usize)], free: &dyn Fn(usize) -> bool) -> Result<(), String> {
+        for &(i, _) in ups {
+            if free(i) {
+                s.unlock_node(i);
+            } else {
+                let st = s.avg[i].clone();
+                s.lock_node(i, st)?;
+            }
+        }
+        Ok(())
+    }
+    let t0 = Instant::now();
+    let base = s.root_values();
+    let mut measure = |s: &mut Solver, p: usize, what: &str, free: &dyn Fn(usize) -> bool| -> Result<f32, String> {
+        relock(s, &ups, free)?;
+        let g = s.best_response_gain(p, base);
+        log(&format!("[{:.0}s] breakdown: player {} {}: {:.5} chips", t0.elapsed().as_secs_f32(), p, what, g));
+        Ok(g)
+    };
+    let (mut river, mut turn, mut full) = ([0f32; 2], [0f32; 2], [0f32; 2]);
+    for p in 0..2 {
+        river[p] = measure(s, p, "river", &|_| false)?;
+        turn[p] = measure(s, p, "river + turn", &|i| street_player(i) == (1, p))?;
+        full[p] = measure(s, p, "everywhere", &|i| street_player(i).1 == p)?;
+    }
+    let mut flop_nodes = Vec::new();
+    for (node, player, path) in flop_decisions(tree) {
+        let mut in_subtree = vec![false; tree.nodes.len()];
+        for i in subtree(tree, node) {
+            in_subtree[i] = true;
+        }
+        let p = player as usize;
+        let gain = measure(s, p, &format!("from node {} ({})", node, path), &|i| in_subtree[i] && street_player(i).1 == p)?;
+        flop_nodes.push(NodeGain { node: node as u32, player, path, gain });
+    }
+    for &(i, _) in &ups {
+        s.unlock_node(i);
+    }
+    Ok(Breakdown { river, turn, full, flop_nodes })
+}
+
 // ------------------------------------------------------------------ memory
 
 /// the process's peak resident set in bytes (VmHWM of /proc/self/status; `None` where there is none)
@@ -1389,6 +1524,52 @@ mod tests {
         assert_eq!((v4.full.to_bits(), v4.river_only.to_bits()), (v.full.to_bits(), v.river_only.to_bits()));
         assert_eq!(bits(&r4.regret), bits(&r.regret));
         std::fs::remove_dir_all(&dir).unwrap();
+    }
+
+    /// `breakdown`: the gains nest (river alone <= + turn <= everywhere), `river` and `full` are the values of the
+    /// re-solve, the subtree of the first flop node of a player holds all of that player's flop and turn nodes, and the
+    /// locks are gone afterwards
+    #[test]
+    fn the_breakdown_nests_and_ends_at_the_full_value() {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 5, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let ranges = mixed_ranges(9);
+        let mut a = solve(&tree, &ranges, on_demand(1), 60);
+        a.finalize_avg();
+        let up = Upstream { tree: tree_fingerprint(&a), tag: String::new(), nodes: upstream_of(&a), crc: 7 };
+        let plan = Plan::new(40, 0.5, 0);
+        let mut r = Solver::with_options(&tree, &ranges, on_demand(2));
+        // a solver that has not been re-solved has no flop / turn strategies to hold: an error, not a wrong number
+        assert!(breakdown(&mut Solver::with_options(&tree, &ranges, on_demand(2)), &mut |_| {}).is_err());
+        let (v, _) = resolve_river(&mut r, &up, &plan, None, None, &mut |_| {}).unwrap();
+        let v = v.unwrap();
+        let before = r.exploitability_by_player();
+        let b = breakdown(&mut r, &mut |_| {}).unwrap();
+        let close = |x: f32, y: f32| (x - y).abs() <= 1e-4 * (1.0 + x.abs().max(y.abs()));
+        for p in 0..2 {
+            assert!(b.river[p] >= 0.0);
+            assert!(b.river[p] <= b.turn[p] + 1e-5 && b.turn[p] <= b.full[p] + 1e-5, "player {}: {:?} {:?} {:?}", p, b.river, b.turn, b.full);
+            assert!(close(b.full[p], v.full_by_player[p]), "player {}: {} vs {}", p, b.full[p], v.full_by_player[p]);
+        }
+        assert!(close(b.river[0] + b.river[1], v.river_only), "{:?} vs {}", b.river, v.river_only);
+        // the flop decision nodes: the root (OOP, empty path), each with a gain between the river alone and everywhere
+        let flop_decisions = tree.nodes.iter().filter(|n| n.street == 0 && matches!(n.kind, PKind::Decision { .. })).count();
+        assert_eq!(b.flop_nodes.len(), flop_decisions);
+        assert!(b.flop_nodes.len() >= 4);
+        let root = b.flop_nodes.iter().find(|g| g.path.is_empty()).expect("the root");
+        assert_eq!(root.player, 0);
+        assert!(close(root.gain, b.full[0]), "the root's subtree holds all of OOP's nodes: {} vs {}", root.gain, b.full[0]);
+        for g in &b.flop_nodes {
+            let p = g.player as usize;
+            assert!(g.gain >= b.river[p] - 1e-4 && g.gain <= b.full[p] + 1e-4, "{:?} {:?} {:?}", g, b.river, b.full);
+        }
+        // the paths tell the actions: a node below a check has a path starting with `c`, below the bet `b..`
+        assert!(b.flop_nodes.iter().any(|g| g.path == "c") && b.flop_nodes.iter().any(|g| g.path.starts_with('b')));
+        // no lock is left behind, so the exploitability is what it was
+        for (i, _) in upstream_nodes(&tree) {
+            assert!(r.locked_strategy(i).is_none());
+        }
+        assert_eq!(r.exploitability_by_player().map(f32::to_bits), before.map(f32::to_bits));
     }
 
     /// `resolve_river_eps`: eps 0 is `resolve_river` bit for bit; with eps > 0 the rivers are solved against the trembling
