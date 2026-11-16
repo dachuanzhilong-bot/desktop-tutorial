@@ -596,7 +596,8 @@ impl<'a> FullBr<'a> {
     fn walk(&mut self, ni: usize, board: &[u8], hp: &[u16], r0: &[f32], r1: &[f32], mode: Mode) -> Res {
         let tree: &'a Tree = self.tree;
         let node = &tree.nodes[ni];
-        let pot_total = tree.cfg.pot + node.inv[0] + node.inv[1];
+        // what a terminal pays out (the pot minus the rake, as `postflop.rs` pays it)
+        let pot_total = tree.cfg.pot_paid(node.inv);
         let rs = [r0, r1];
         match &node.kind {
             PKind::Fold { winner } => {
@@ -943,6 +944,21 @@ mod tests {
         let got = FullBr::new(&tree, &s.avg, &s.prior, Assign::Nearest).exploitability();
         assert!(close(got.pct, want), "{} vs {}", got.pct, want);
         assert!(want > 0.05, "the test needs an unconverged strategy: {}", want);
+    }
+
+    /// REFACTOR_PLAN 3-2: with rake the measure pays the same terminals as the solver (turn start, every river, bets
+    /// and all-ins), so it still equals `Solver::exploitability`, and the base values add up to less than the pot
+    #[test]
+    fn all_cards_tree_with_rake_matches_in_sample() {
+        let cfg = Config { pot: 8.0, stack: 20.0, bets: [vec![], vec![0.5], vec![0.75]], raise_sizes: [false; 3], allow_allin: true, river_cards: 48, rake_pct: 5.0, rake_cap: 1.5, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 9h 5h 2d"));
+        let mut s = solve(&tree, 40);
+        let want = 100.0 * s.exploitability() / cfg.pot;
+        let got = FullBr::new(&tree, &s.avg, &s.prior, Assign::Nearest).exploitability();
+        assert!(close(got.pct, want), "{} vs {}", got.pct, want);
+        // every terminal pays 5% of its pot (0.4bb for the 8bb pot) up to 1.5bb
+        let sum = got.base[0] + got.base[1];
+        assert!(sum < cfg.pot - 0.4 + 1e-3 && sum > cfg.pot - 1.5 - 1e-3, "base {:?}", got.base);
     }
 
     /// same from the flop: every turn and river card, flop all-ins over all 1,176 run-outs

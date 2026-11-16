@@ -1,8 +1,9 @@
 //! Generates a 6-max preflop solution (default 100bb) consumed by the web app.
 //!
 //!   cargo run --release --bin gen_preflop -- --stack 40 --out out/cash6max-40bb
+//!   cargo run --release --bin gen_preflop -- --rake-pct 5 --rake-cap 3      (-> out/cash6max-100bb-r5c3)
 use std::time::Instant;
-use tessera_solver::{equity, preflop::*};
+use tessera_solver::{equity, preflop::*, rake};
 
 fn arg<T: std::str::FromStr>(args: &[String], name: &str, default: T) -> T {
     args.iter()
@@ -24,7 +25,10 @@ fn main() {
     let iters: u32 = arg(&args, "--iters", 2000);
     let samples: u32 = arg(&args, "--eq-samples", 60_000);
     let threads: usize = arg(&args, "--threads", std::thread::available_parallelism().map(|n| n.get()).unwrap_or(4));
-    let out_default = format!("out/cash6max-{}bb", arg(&args, "--stack", 100.0f32).round() as i64);
+    // rake (REFACTOR_PLAN 3-2): `--rake-pct 5 --rake-cap 3` = 5% of the pot of a hand that sees the flop, at most 3bb.
+    // It is part of the id (`cash6max-100bb-r5c3`); without it the id and the output are those made before rake existed.
+    let (rake_pct, rake_cap) = rake::from_args(&args);
+    let out_default = format!("out/cash6max-{}bb{}", arg(&args, "--stack", 100.0f32).round() as i64, rake::id_suffix(rake_pct, rake_cap));
     let out: String = arg(&args, "--out", out_default);
     let seed: u64 = arg(&args, "--seed", 20260101);
     let log_every: u32 = arg(&args, "--log-every", 250);
@@ -38,7 +42,9 @@ fn main() {
     cfg.stack = arg(&args, "--stack", cfg.stack);
     cfg.open_jam_max = arg(&args, "--open-jam-max", cfg.open_jam_max);
     cfg.shove_3bet_max = arg(&args, "--shove-3bet-max", cfg.shove_3bet_max);
-    let id = format!("cash6max-{}bb", cfg.stack.round() as i64);
+    cfg.rake_pct = rake_pct;
+    cfg.rake_cap = rake_cap;
+    let id = format!("cash6max-{}bb{}", cfg.stack.round() as i64, rake::id_suffix(rake_pct, rake_cap));
     cfg.real.ip_mean = arg(&args, "--ip-mean", cfg.real.ip_mean);
     cfg.real.ip_slope = arg(&args, "--ip-slope", cfg.real.ip_slope);
     cfg.real.oop_mean = arg(&args, "--oop-mean", cfg.real.oop_mean);
