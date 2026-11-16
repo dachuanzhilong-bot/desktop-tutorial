@@ -125,8 +125,24 @@ pub fn tree_fingerprint_of(tree: &Tree, ranges: &[Vec<f32>; 2]) -> u64 {
 }
 
 fn fingerprint(t: &Tree, prior: &[Vec<f32>; 2], supports: &[Vec<u16>], support_of: &[u32]) -> u64 {
+    fingerprint_of_text(t, &format!("{:?}", t.cfg), prior, supports, support_of)
+}
+
+/// What `Config`'s `{:?}` printed before it got the rake fields (REFACTOR_PLAN 3-2), for a configuration without
+/// rake; `None` for one with rake (there was no such file).
+fn config_text_before_rake(cfg: &Config) -> Option<String> {
+    format!("{:?}", cfg).strip_suffix(", rake_pct: 0.0, rake_cap: inf }").map(|head| format!("{} }}", head))
+}
+
+/// `fingerprint` of a tree without rake as it was computed before the rake fields: the `upstream.tsup` files written
+/// then (the measurements of `docs/14` §11-8) stay readable.  `None` for a tree with rake.
+fn legacy_fingerprint(t: &Tree, prior: &[Vec<f32>; 2], supports: &[Vec<u16>], support_of: &[u32]) -> Option<u64> {
+    config_text_before_rake(&t.cfg).map(|text| fingerprint_of_text(t, &text, prior, supports, support_of))
+}
+
+fn fingerprint_of_text(t: &Tree, cfg_text: &str, prior: &[Vec<f32>; 2], supports: &[Vec<u16>], support_of: &[u32]) -> u64 {
     let mut h = Fnv::new();
-    h.bytes(format!("{:?}", t.cfg).as_bytes());
+    h.bytes(cfg_text.as_bytes());
     h.bytes(&t.board);
     h.u64(t.nodes.len() as u64);
     for (i, n) in t.nodes.iter().enumerate() {
@@ -728,7 +744,7 @@ impl Upstream {
 
 /// Lock every flop and turn decision node of `s` to the strategies of `up` (from a solver of the same tree and ranges).
 pub fn lock_upstream(s: &mut Solver, up: &Upstream) -> Result<(), String> {
-    if up.tree != tree_fingerprint(s) {
+    if up.tree != tree_fingerprint(s) && Some(up.tree) != legacy_fingerprint(s.tree, &s.prior, &s.supports, &s.support_of) {
         return Err("the upstream strategies belong to another tree / scenario / ranges".into());
     }
     let want: Vec<(usize, usize)> = upstream_nodes(s.tree).collect();
@@ -747,7 +763,9 @@ pub fn lock_upstream(s: &mut Solver, up: &Upstream) -> Result<(), String> {
 /// The flop / turn strategies of `up`, checked against `tree` (fingerprint, node ids, action counts) and normalized as
 /// `Solver::lock_node` plays them, by node.
 fn upstream_strategies(tree: &Tree, ranges: &[Vec<f32>; 2], up: &Upstream) -> Result<HashMap<usize, Vec<f32>>, String> {
-    if up.tree != tree_fingerprint_of(tree, ranges) {
+    let prior = starting_prior(tree, ranges);
+    let (supports, support_of) = decision_supports(tree, &prior);
+    if up.tree != fingerprint(tree, &prior, &supports, &support_of) && Some(up.tree) != legacy_fingerprint(tree, &prior, &supports, &support_of) {
         return Err("the upstream strategies belong to another tree / scenario / ranges".into());
     }
     let want: Vec<(usize, usize)> = upstream_nodes(tree).collect();
@@ -1056,6 +1074,19 @@ fn subtree(tree: &Tree, root: usize) -> Vec<usize> {
     out
 }
 
+/// lock every flop / turn node of `ups` to its strategy `avg`, except those `free` returns true for
+fn relock(s: &mut Solver, ups: &[(usize, usize)], free: &dyn Fn(usize) -> bool) -> Result<(), String> {
+    for &(i, _) in ups {
+        if free(i) {
+            s.unlock_node(i);
+        } else {
+            let st = s.avg[i].clone();
+            s.lock_node(i, st)?;
+        }
+    }
+    Ok(())
+}
+
 /// Measure where the exploitability of `s` sits (`Breakdown`).  `s` is a solver right after `resolve_river` /
 /// `resolve_river_eps`: the flop and turn nodes' `avg` hold the strategies they were locked to, the locks are removed,
 /// and the river averages are kept.  The locks are removed again at the end.  One best response is about as slow as
@@ -1072,18 +1103,6 @@ pub fn breakdown(s: &mut Solver, log: &mut dyn FnMut(&str)) -> Result<Breakdown,
         PKind::Decision { player, .. } => (tree.nodes[i].street, *player as usize),
         _ => unreachable!("upstream nodes are decision nodes"),
     };
-    // lock every flop / turn node to its strategy, except those `free` returns true for
-    fn relock(s: &mut Solver, ups: &[(usize, usize)], free: &dyn Fn(usize) -> bool) -> Result<(), String> {
-        for &(i, _) in ups {
-            if free(i) {
-                s.unlock_node(i);
-            } else {
-                let st = s.avg[i].clone();
-                s.lock_node(i, st)?;
-            }
-        }
-        Ok(())
-    }
     let t0 = Instant::now();
     let base = s.root_values();
     let mut measure = |s: &mut Solver, p: usize, what: &str, free: &dyn Fn(usize) -> bool| -> Result<f32, String> {
@@ -1112,6 +1131,105 @@ pub fn breakdown(s: &mut Solver, log: &mut dyn FnMut(&str)) -> Result<Breakdown,
         s.unlock_node(i);
     }
     Ok(Breakdown { river, turn, full, flop_nodes })
+}
+
+// ------------------------------------------------------------------ the best response within the dealt lines
+
+/// The best-response gains of a re-solved tree when the best response may deviate only within the lines the app
+/// deals (`docs/14` §11-9).  chips, OOP / IP.
+///
+/// A line is dealt when the TSP1 v3 file keeps it (`dealt_nodes`: reach given the dealt cards >= `min_reach`, and
+/// every line above it dealt).  The best response may deviate at the player's dealt flop / turn nodes and at the
+/// river, and may not choose an action that leaves the dealt lines (a node that is not dealt, a river start that is
+/// not dealt, but it may still play the node's strategy, which can enter such a line); the player's strategy at the
+/// nodes that are not dealt, and the other player's everywhere, are as they are.  `river` / `turn` / `full` are as in
+/// `Breakdown` (the river alone, + the dealt turn nodes, + the dealt flop nodes); `full_raw` is `full` without the
+/// clamp at 0 (below 0 by rounding only).
+#[derive(Clone, Debug)]
+pub struct DealtGain {
+    pub river: [f32; 2],
+    pub turn: [f32; 2],
+    pub full: [f32; 2],
+    pub full_raw: [f32; 2],
+    /// the flop and turn decision nodes, and how many of them are dealt
+    pub upstream_decisions: usize,
+    pub dealt_decisions: usize,
+    /// the probability that a pair of hands plays into a line that is not dealt, from a dealt node (the lines the
+    /// app does not show, as a share of all hands)
+    pub undealt_reach: f64,
+}
+
+/// the probability of the line of `node` (a decision node's reach, a river start's, the sum of a chance node's cards)
+fn line_reach(tree: &Tree, ev: &[Option<NodeEval>], starts: &HashMap<usize, &RiverStart>, node: usize) -> f64 {
+    let n = &tree.nodes[node];
+    match &n.kind {
+        PKind::Decision { .. } => ev[node].as_ref().map_or(0.0, |e| e.reach as f64),
+        PKind::Chance { .. } if is_river_start(n) => starts.get(&node).map_or(0.0, |s| s.reach as f64),
+        PKind::Chance { children, .. } => children.iter().map(|&c| line_reach(tree, ev, starts, c as usize)).sum(),
+        _ => 0.0,
+    }
+}
+
+/// Measure the best response within the dealt lines (`DealtGain`).  `s` is a solver right after `resolve_river` /
+/// `resolve_river_eps`, as for `breakdown` (the flop / turn nodes' `avg` hold the strategies they were locked to,
+/// the locks are removed).  Takes the evaluation of the flop and turn nodes (`Solver::evaluate_upstream`) and six
+/// best responses.  The locks and the forbidden actions are removed at the end.
+pub fn dealt_breakdown(s: &mut Solver, min_reach: f32, log: &mut dyn FnMut(&str)) -> Result<DealtGain, String> {
+    let tree = s.tree;
+    let ups: Vec<(usize, usize)> = upstream_nodes(tree).collect();
+    for &(i, na) in &ups {
+        if s.avg.get(i).map(|a| a.len()) != Some(na * NC) {
+            return Err(format!("node {} has no strategy in `avg` (run it right after the re-solve)", i));
+        }
+    }
+    let t0 = Instant::now();
+    let ev = s.evaluate_upstream();
+    let starts = s.river_starts()?;
+    let start_of: HashMap<usize, &RiverStart> = starts.iter().map(|x| (x.node as usize, x)).collect();
+    let dealt = dealt_nodes(tree, &ev, Some(&starts), min_reach);
+    // the actions that leave the dealt lines, per node
+    let mut forbid = vec![0u64; tree.nodes.len()];
+    let mut undealt_reach = 0f64;
+    for &(i, _) in &ups {
+        if !dealt[i] {
+            continue;
+        }
+        let PKind::Decision { children, .. } = &tree.nodes[i].kind else { unreachable!("upstream nodes are decision nodes") };
+        for (a, &c) in children.iter().enumerate() {
+            let c = c as usize;
+            let leaves = matches!(tree.nodes[c].kind, PKind::Decision { .. } | PKind::Chance { .. }) && !dealt[c];
+            if leaves {
+                forbid[i] |= 1 << a;
+                undealt_reach += line_reach(tree, &ev, &start_of, c);
+            }
+        }
+    }
+    let dealt_decisions = ups.iter().filter(|&&(i, _)| dealt[i]).count();
+    log(&format!("[{:.0}s] dealt lines: {} of {} flop / turn nodes; {:.5} of the hands leave them", t0.elapsed().as_secs_f32(), dealt_decisions, ups.len(), undealt_reach));
+    let street_player = |i: usize| match &tree.nodes[i].kind {
+        PKind::Decision { player, .. } => (tree.nodes[i].street, *player as usize),
+        _ => unreachable!("upstream nodes are decision nodes"),
+    };
+    let base = s.root_values();
+    s.set_br_forbidden(forbid);
+    let mut measure = |s: &mut Solver, p: usize, what: &str, free: &dyn Fn(usize) -> bool| -> Result<f32, String> {
+        relock(s, &ups, free)?;
+        let g = s.best_response_delta(p, base);
+        log(&format!("[{:.0}s] dealt: player {} {}: {:.5} chips", t0.elapsed().as_secs_f32(), p, what, g));
+        Ok(g)
+    };
+    let (mut river, mut turn, mut full, mut full_raw) = ([0f32; 2], [0f32; 2], [0f32; 2], [0f32; 2]);
+    for p in 0..2 {
+        river[p] = measure(s, p, "river", &|_| false)?.max(0.0);
+        turn[p] = measure(s, p, "river + dealt turn", &|i| dealt[i] && street_player(i) == (1, p))?.max(0.0);
+        full_raw[p] = measure(s, p, "everywhere dealt", &|i| dealt[i] && street_player(i).1 == p)?;
+        full[p] = full_raw[p].max(0.0);
+    }
+    s.set_br_forbidden(Vec::new());
+    for &(i, _) in &ups {
+        s.unlock_node(i);
+    }
+    Ok(DealtGain { river, turn, full, full_raw, upstream_decisions: ups.len(), dealt_decisions, undealt_reach })
 }
 
 // ------------------------------------------------------------------ memory
@@ -1570,6 +1688,82 @@ mod tests {
             assert!(r.locked_strategy(i).is_none());
         }
         assert_eq!(r.exploitability_by_player().map(f32::to_bits), before.map(f32::to_bits));
+    }
+
+    /// `dealt_breakdown`: with every line dealt (`min_reach` 0) it is `breakdown`, bit for bit; the more lines are left
+    /// out (a larger `min_reach`) the smaller the gains; `set_br_forbidden` with every action forbidden forbids none; no
+    /// lock or forbidden action is left behind
+    #[test]
+    fn the_dealt_gain_shrinks_with_the_lines_left_out() {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 5, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let ranges = mixed_ranges(9);
+        let mut a = solve(&tree, &ranges, on_demand(1), 60);
+        a.finalize_avg();
+        let up = Upstream { tree: tree_fingerprint(&a), tag: String::new(), nodes: upstream_of(&a), crc: 7 };
+        let plan = Plan::new(40, 0.5, 0);
+        let mut r = Solver::with_options(&tree, &ranges, on_demand(2));
+        assert!(dealt_breakdown(&mut Solver::with_options(&tree, &ranges, on_demand(2)), 0.0, &mut |_| {}).is_err());
+        resolve_river(&mut r, &up, &plan, None, None, &mut |_| {}).unwrap().0.unwrap();
+        let before = r.exploitability_by_player();
+        let b = breakdown(&mut r, &mut |_| {}).unwrap();
+        // every line dealt: the breakdown's values (the same walks, nothing forbidden)
+        let all = dealt_breakdown(&mut r, 0.0, &mut |_| {}).unwrap();
+        assert_eq!(all.dealt_decisions, all.upstream_decisions);
+        assert_eq!(all.undealt_reach, 0.0);
+        let bits2 = |x: [f32; 2]| x.map(f32::to_bits);
+        assert_eq!(bits2(all.river), bits2(b.river));
+        assert_eq!(bits2(all.turn), bits2(b.turn));
+        assert_eq!(bits2(all.full), bits2(b.full));
+        // lines left out: fewer nodes, a smaller gain each time (a line below a line that is left out is left out too)
+        let mut last = all.clone();
+        let mut some_left_out = false;
+        for min in [0.01f32, 0.03, 0.1, 0.3] {
+            let g = dealt_breakdown(&mut r, min, &mut |_| {}).unwrap();
+            assert!(g.dealt_decisions <= last.dealt_decisions && g.dealt_decisions >= 1, "{} -> {}", last.dealt_decisions, g.dealt_decisions);
+            some_left_out |= g.dealt_decisions < g.upstream_decisions;
+            for p in 0..2 {
+                assert!(g.river[p] <= g.turn[p] + 1e-5 && g.turn[p] <= g.full[p] + 1e-5, "min {} player {}: {:?} {:?} {:?}", min, p, g.river, g.turn, g.full);
+                assert!(g.full[p] <= last.full[p] + 1e-4 * (1.0 + last.full[p]), "min {} player {}: {} after {}", min, p, g.full[p], last.full[p]);
+                assert!(g.full[p] >= 0.0 && g.full_raw[p] <= g.full[p] + 1e-6 && g.full_raw[p] >= -1e-4, "min {} player {}: {:?}", min, p, g);
+            }
+            last = g;
+        }
+        assert!(some_left_out, "no threshold left a line out: the test checks nothing");
+        // no lock and no forbidden action is left behind
+        for (i, _) in upstream_nodes(&tree) {
+            assert!(r.locked_strategy(i).is_none());
+        }
+        assert_eq!(r.exploitability_by_player().map(f32::to_bits), before.map(f32::to_bits));
+        // a node whose every action is forbidden forbids none
+        r.set_br_forbidden(vec![u64::MAX; tree.nodes.len()]);
+        assert_eq!(r.exploitability_by_player().map(f32::to_bits), before.map(f32::to_bits));
+        r.set_br_forbidden(Vec::new());
+    }
+
+    /// the upstream files of before the rake fields (REFACTOR_PLAN 3-2) of a tree without rake are still read; a tree
+    /// with rake never had one
+    #[test]
+    fn an_upstream_from_before_the_rake_fields_is_still_read() {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 5, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let ranges = mixed_ranges(9);
+        let mut a = solve(&tree, &ranges, on_demand(1), 20);
+        a.finalize_avg();
+        // what `Config` printed then: the same without the two rake fields
+        assert!(format!("{:?}", tree.cfg).ends_with(", rake_pct: 0.0, rake_cap: inf }"), "{:?}", tree.cfg);
+        let old = legacy_fingerprint(&tree, &a.prior, &a.supports, &a.support_of).expect("a tree without rake");
+        assert_ne!(old, tree_fingerprint(&a));
+        let up = Upstream { tree: old, tag: String::new(), nodes: upstream_of(&a), crc: 0 };
+        let mut r = Solver::with_options(&tree, &ranges, on_demand(2));
+        lock_upstream(&mut r, &up).unwrap();
+        assert!(upstream_strategies(&tree, &ranges, &up).is_ok());
+        // the file of another scenario is still refused
+        let other = Upstream { tree: old ^ 1, ..up };
+        assert!(upstream_strategies(&tree, &ranges, &other).is_err());
+        // with rake there is no old fingerprint
+        let raked = build_tree(&Config { rake_pct: 5.0, rake_cap: 3.0, ..cfg.clone() }, &board("Ks 7d 2c"));
+        assert!(legacy_fingerprint(&raked, &a.prior, &a.supports, &a.support_of).is_none());
     }
 
     /// `resolve_river_eps`: eps 0 is `resolve_river` bit for bit; with eps > 0 the rivers are solved against the trembling
