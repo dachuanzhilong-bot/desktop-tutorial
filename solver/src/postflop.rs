@@ -972,13 +972,16 @@ impl<'a> Solver<'a> {
     /// average strategies by best-responding alone.  `exploitability` is their sum.
     pub fn exploitability_by_player(&mut self) -> [f32; 2] {
         let base = self.root_values();
-        let mut gain = [0f32; 2];
-        for p in 0..2 {
-            let res = self.run(Mode::Br(p), None, true);
-            let br = self.value(&res, p)[p];
-            gain[p] = (br - base[p]).max(0.0);
-        }
-        gain
+        [self.best_response_gain(0, base), self.best_response_gain(1, base)]
+    }
+
+    /// The best-response gain of player `p` alone (chips) against the others as they are now, the locked nodes of
+    /// `p` included (a locked node plays its lock, so `p` may deviate only where it is not locked).  `base` is
+    /// `root_values()` of the same state.  `exploitability_by_player` calls this for both players.
+    pub fn best_response_gain(&mut self, p: usize, base: [f32; 2]) -> f32 {
+        let res = self.run(Mode::Br(p), None, true);
+        let br = self.value(&res, p)[p];
+        (br - base[p]).max(0.0)
     }
 
     pub fn evaluate(&mut self) -> Vec<Option<NodeEval>> {
