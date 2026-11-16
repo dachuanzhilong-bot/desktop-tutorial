@@ -568,11 +568,21 @@ pub struct SolverOptions {
     /// stored `avg` (REFACTOR_PLAN 3-3-3: the river average of a 49 x 48 tree, `na x 1,326` per node, would
     /// not fit in memory; its `ssum` on the support does).  3 (default) = `finalize_avg` fills every node.
     pub avg_on_demand_from: u8,
+    /// Training with a tremble on the flop and turn (`docs/14` §8-6; 0 (default) = none, the solver as it was).
+    /// While training, an unlocked flop / turn decision node whose regret-matched strategy is `sigma` plays
+    /// `sigma' = (1 - tremble) sigma + tremble u` (`tremble_strategy`: `u` uniform over check / call and
+    /// bet / raise): the reach passed down and the value passed up are those of `sigma'`, so every line is
+    /// reached by a slice of each player's whole range in every iteration and its strategies are trained
+    /// against real ranges.  The regrets compare each action with `sigma` (the part the player chooses), and
+    /// the strategy sums add `sigma`, so `avg` is the average of the chosen part: the strategy with the tremble
+    /// taken off.  River nodes never tremble, and `exploitability` / `root_values` / `evaluate` play the
+    /// averages as they are, without a tremble.
+    pub tremble: f32,
 }
 
 impl Default for SolverOptions {
     fn default() -> Self {
-        SolverOptions { no_average_from: 3, threads: 1, avg_on_demand_from: 3 }
+        SolverOptions { no_average_from: 3, threads: 1, avg_on_demand_from: 3, tremble: 0.0 }
     }
 }
 
@@ -626,6 +636,8 @@ pub struct Solver<'a> {
     threads: usize,
     /// `SolverOptions::avg_on_demand_from`
     avg_on_demand_from: u8,
+    /// `SolverOptions::tremble`
+    tremble: f32,
     /// nodes of this street and later play their current strategy where the average would be used, even if they
     /// keep one (`set_current_strategy_from`; 3 = never)
     current_from: u8,
@@ -713,6 +725,18 @@ pub fn pair_mass(board: &[u8], r0: &[f32], r1: &[f32]) -> f64 {
 
 /// A strategy (`na * NC`) as `Solver::lock_node` plays it: each hand's row with the negative entries set to 0, divided
 /// by its sum (uniform when the sum is about 0).
+/// `sigma` (`na * NC`, the actions `acts`) with a tremble: for every hand `(1 - eps) sigma + eps u`, `u` uniform
+/// over the actions that keep the hand going (check / call and bet / raise; not fold, not all-in).
+pub fn tremble_strategy(sigma: &mut [f32], acts: &[ActInfo], eps: f32) {
+    let going = acts.iter().filter(|a| a.kind == 1 || a.kind == 2).count();
+    for (a, act) in acts.iter().enumerate() {
+        let add = if act.kind == 1 || act.kind == 2 { eps / going as f32 } else { 0.0 };
+        for x in &mut sigma[a * NC..(a + 1) * NC] {
+            *x = (1.0 - eps) * *x + add;
+        }
+    }
+}
+
 pub fn normalize_strategy(strategy: Vec<f32>, na: usize) -> Vec<f32> {
     let mut s = strategy;
     for h in 0..NC {
@@ -770,6 +794,7 @@ impl<'a> Solver<'a> {
             subtree_end,
             threads,
             avg_on_demand_from: opts.avg_on_demand_from,
+            tremble: opts.tremble,
             current_from: 3,
             extra: HashMap::new(),
             z0,
@@ -802,6 +827,7 @@ impl<'a> Solver<'a> {
             z0: self.z0,
             threads,
             current_from: self.current_from,
+            tremble: self.tremble,
         };
         let mut part = Part { sh: &sh, base: 0, regret: &mut self.regret, ssum: &mut self.ssum, ev, extra: &mut self.extra, fork: threads > 1 };
         part.walk(ni, r0, r1, mode, want_mass)
@@ -938,12 +964,19 @@ impl<'a> Solver<'a> {
 
     /// Sum of both best-response gains in chips (0 at equilibrium).
     pub fn exploitability(&mut self) -> f32 {
+        let g = self.exploitability_by_player();
+        g[0] + g[1]
+    }
+
+    /// The best-response gain of each player in chips (OOP, IP): what that player wins more than under the
+    /// average strategies by best-responding alone.  `exploitability` is their sum.
+    pub fn exploitability_by_player(&mut self) -> [f32; 2] {
         let base = self.root_values();
-        let mut gain = 0f32;
+        let mut gain = [0f32; 2];
         for p in 0..2 {
             let res = self.run(Mode::Br(p), None, true);
             let br = self.value(&res, p)[p];
-            gain += (br - base[p]).max(0.0);
+            gain[p] = (br - base[p]).max(0.0);
         }
         gain
     }
@@ -1057,6 +1090,8 @@ struct Shared<'w> {
     threads: usize,
     /// `Solver::set_current_strategy_from`
     current_from: u8,
+    /// `SolverOptions::tremble`
+    tremble: f32,
 }
 
 /// What a walk writes, for the nodes `base..base + regret.len()`: the whole tree, or one subtree that a thread
@@ -1260,7 +1295,7 @@ impl<'w> Part<'w> {
                 }
                 acc
             }
-            PKind::Decision { player, children, .. } => {
+            PKind::Decision { player, acts, children } => {
                 let p = *player as usize;
                 let o = 1 - p;
                 let na = children.len();
@@ -1282,6 +1317,12 @@ impl<'w> Part<'w> {
                         _ if sh.avg.get(ni).is_none_or(|a| a.is_empty()) => average_strategy(&self.regret[li], &self.ssum[li], na, sup, &mut sigma),
                         _ => sigma.copy_from_slice(&sh.avg[ni]),
                     }
+                }
+                // training with a tremble (`SolverOptions::tremble`): the node plays `sigma'`; `chosen` keeps `sigma`
+                let mut chosen: Option<Vec<f32>> = None;
+                if sh.tremble > 0.0 && node.street < 2 && !locked && matches!(mode, Mode::Train(_)) {
+                    chosen = Some(sigma.clone());
+                    tremble_strategy(&mut sigma, acts, sh.tremble);
                 }
                 let mut cfv_p = vec![0f32; NC];
                 let mut cfv_o = vec![0f32; NC];
@@ -1321,17 +1362,32 @@ impl<'w> Part<'w> {
                 if let Some(b) = best {
                     cfv_p = b;
                 }
+                let mut cfv_p_chosen: Option<Vec<f32>> = None;
                 match mode {
                     Mode::Train(_) if locked => {}
                     Mode::Train(t) => {
                         // the support only: elsewhere the reach is 0 (see `Solver`)
                         let k = sup.len();
+                        if let Some(chosen) = &chosen {
+                            // the regrets against the chosen strategy's own value (the tremble is not the
+                            // player's to change), and the average of the chosen strategy
+                            let mut base = vec![0f32; NC];
+                            for a in 0..na {
+                                for &h in sup {
+                                    let h = h as usize;
+                                    base[h] += chosen[a * NC + h] * child_p[a][h];
+                                }
+                            }
+                            cfv_p_chosen = Some(base);
+                            sigma.copy_from_slice(chosen);
+                        }
+                        let cfv_own: &[f32] = cfv_p_chosen.as_deref().unwrap_or(&cfv_p);
                         let regret = &mut self.regret[li];
                         for a in 0..na {
                             for (j, &h) in sup.iter().enumerate() {
                                 let h = h as usize;
                                 let i = a * k + j;
-                                regret[i] = (regret[i] + child_p[a][h] - cfv_p[h]).max(0.0);
+                                regret[i] = (regret[i] + child_p[a][h] - cfv_own[h]).max(0.0);
                             }
                         }
                         if has_avg {
