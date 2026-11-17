@@ -64,7 +64,7 @@ fn main() {
     let train: Option<Vec<String>> = arg(&args, "--train").map(|t| t.split(',').map(|x| x.to_string()).collect());
     // `--fit ratio`: the measured ratio s / e as the factor; default `calibrated`: the factors that give the measured shares
     let fit_ratio = arg(&args, "--fit").as_deref() == Some("ratio");
-    // how much the smooth part counts against a class's own data: w0 = shrink times the mean class weight (`build_table`)
+    // how thin the data of a class must be to be pulled to its neighbours (times the mean class weight)
     let shrink: f64 = arg(&args, "--shrink").and_then(|v| v.parse().ok()).unwrap_or(0.5);
     let mut fits: Vec<ScenarioFit> = Vec::new();
     let mut accs: Vec<(String, f32, bool, ClassAcc)> = Vec::new();
@@ -168,7 +168,7 @@ fn main() {
     }
     if let Some(p) = table_out {
         let note = format!(
-            "tessera EQR table: R = 1 + k(SPR) m by role (OOP / IP), aggressor and hand class (REFACTOR_PLAN 3-1, docs/07 section 2)\nfrom the solved flops {} (`gen_eqr`: realised share of the initial pot / raw equity, calibrated through the model's own share formula, a smooth fit on strength / suited / pair, each class moved towards its own data by the weight the data have; shrink {})",
+            "tessera EQR table: R = 1 + k(SPR) m by role (OOP / IP), aggressor and hand class (REFACTOR_PLAN 3-1, docs/07 section 2)\nfrom the solved flops {} (`gen_eqr`: realised share of the initial pot / raw equity, calibrated through the model's own share formula, thin classes pulled to their neighbours of the same kind and strength; shrink {})",
             fits.iter().map(|f| format!("{} ({} aggressor)", f.name, if f.ip_aggr { "IP" } else { "OOP" })).collect::<Vec<_>>().join(", "),
             shrink
         );
