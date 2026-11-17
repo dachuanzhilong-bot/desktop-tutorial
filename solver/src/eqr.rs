@@ -365,11 +365,60 @@ pub struct ScenarioFit {
 pub const M_MIN: f32 = -0.7;
 pub const M_MAX: f32 = 1.5;
 
+/// The features of a hand class that the table's smooth part is fitted on: a constant, the strength (centred), suited, pair and
+/// pair times strength.
+fn class_features(c: usize, strength: &[f64]) -> [f64; 5] {
+    let (_, _, suited, pair) = crate::cards::class_info(c);
+    let s = strength[c] - 0.5;
+    [1.0, s, if suited { 1.0 } else { 0.0 }, if pair { 1.0 } else { 0.0 }, if pair { s } else { 0.0 }]
+}
+
+/// Solves the (ridge-regularised) weighted least squares `y ~ features` by the normal equations; `None` when the system is singular.
+fn weighted_fit(rows: &[([f64; 5], f64, f64)]) -> Option<[f64; 5]> {
+    const N: usize = 5;
+    let mut a = [[0f64; N + 1]; N];
+    for (x, y, w) in rows {
+        for i in 0..N {
+            for j in 0..N {
+                a[i][j] += w * x[i] * x[j];
+            }
+            a[i][N] += w * x[i] * y;
+        }
+    }
+    // the ridge keeps a feature the data do not move (no pair observed, say) at zero
+    for (i, row) in a.iter_mut().enumerate() {
+        row[i] += 0.05;
+    }
+    for col in 0..N {
+        let piv = (col..N).max_by(|&p, &q| a[p][col].abs().partial_cmp(&a[q][col].abs()).unwrap())?;
+        if a[piv][col].abs() < 1e-12 {
+            return None;
+        }
+        a.swap(col, piv);
+        for r in 0..N {
+            if r != col {
+                let f = a[r][col] / a[col][col];
+                for k in col..=N {
+                    a[r][k] -= f * a[col][k];
+                }
+            }
+        }
+    }
+    let mut b = [0f64; N];
+    for i in 0..N {
+        b[i] = a[i][N] / a[i][i];
+    }
+    Some(b)
+}
+
 /// The table from the fits of several scenarios: for each role and aggressor, the weighted mean of `m = (R - 1) / k` of the
-/// scenarios in which that role is (or is not) the aggressor.  A class the data hold thinly is pulled to its neighbours (`shrink`
-/// times the mean class weight is half way), a class the data do not hold at all takes them: the neighbours are the observed
-/// classes of the same kind (pair / suited / offsuit) whose strength (`class_strength`) is closest, so no value is ever
-/// extrapolated beyond what was observed.
+/// scenarios in which that role is (or is not) the aggressor, class by class (`obs`, with the weight `wsum` the data hold it with).
+///
+/// A class is noisy where the data hold it thinly (and what is in a range is partly what looked good: the selection bias), so the
+/// table is a smooth part plus a correction the data have earned: the smooth part is the weighted least squares fit of `obs` on
+/// the class features (strength, suited, pair; `class_features`) and gives every class a value, observed or not, without
+/// extrapolating anything but a line; the class moves from it towards `obs` by `wsum / (wsum + w0)`, `w0` = `shrink` times the mean
+/// class weight.
 pub fn build_table(fits: &[ScenarioFit], strength: &[f64], shrink: f64, note: String) -> Result<EqrTable, String> {
     let mut m: [[Vec<f32>; 2]; 2] = [[vec![0.0; 169], vec![0.0; 169]], [vec![0.0; 169], vec![0.0; 169]]];
     for role in 0..2usize {
@@ -394,42 +443,22 @@ pub fn build_table(fits: &[ScenarioFit], strength: &[f64], shrink: f64, note: St
                 return Err("a role and aggressor with no observed class".into());
             }
             let present_w: Vec<f64> = wsum.iter().copied().filter(|&w| w > 0.0).collect();
-            let w0 = shrink * present_w.iter().sum::<f64>() / present_w.len().max(1) as f64;
-            // the weighted mean of the (up to) 4 nearest observed classes of the same kind, then of the same pair-ness, then any
-            let near = |c: usize| -> f64 {
-                let (_, _, suited, pair) = crate::cards::class_info(c);
-                let pick = |same_suit: bool| -> Vec<(f64, usize)> {
-                    let mut v: Vec<(f64, usize)> = (0..169)
-                        .filter(|&d| d != c && obs[d].is_some())
-                        .filter(|&d| {
-                            let (_, _, s2, p2) = crate::cards::class_info(d);
-                            p2 == pair && (!same_suit || s2 == suited)
-                        })
-                        .map(|d| ((strength[d] - strength[c]).abs(), d))
-                        .collect();
-                    v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-                    v
-                };
-                let mut v = pick(true);
-                if v.len() < 3 {
-                    v = pick(false);
-                }
-                if v.len() < 3 {
-                    v = (0..169).filter(|&d| d != c && obs[d].is_some()).map(|d| ((strength[d] - strength[c]).abs(), d)).collect();
-                    v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-                }
-                let top = &v[..v.len().min(4)];
-                let (num, den) = top.iter().fold((0f64, 0f64), |(n, d), &(_, k)| (n + wsum[k] * obs[k].unwrap(), d + wsum[k]));
-                if den > 0.0 {
-                    num / den
-                } else {
-                    0.0
-                }
-            };
+            let mean_w = present_w.iter().sum::<f64>() / present_w.len().max(1) as f64;
+            let w0 = shrink * mean_w;
+            // the smooth part (the weights are scaled to a mean of 1 so that the ridge means the same in every group)
+            let rows: Vec<([f64; 5], f64, f64)> = (0..169)
+                .filter_map(|c| obs[c].map(|v| (class_features(c, strength), v.clamp(M_MIN as f64, M_MAX as f64), wsum[c] / mean_w)))
+                .collect();
+            let beta = weighted_fit(&rows);
+            let mean_obs = rows.iter().map(|(_, y, w)| y * w).sum::<f64>() / rows.iter().map(|(_, _, w)| w).sum::<f64>().max(1e-12);
             for c in 0..169 {
+                let smooth = match &beta {
+                    Some(b) => class_features(c, strength).iter().zip(b.iter()).map(|(x, b)| x * b).sum::<f64>(),
+                    None => mean_obs,
+                };
                 let v = match obs[c] {
-                    Some(v) => (wsum[c] * v + w0 * near(c)) / (wsum[c] + w0),
-                    None => near(c),
+                    Some(o) => smooth + wsum[c] / (wsum[c] + w0) * (o - smooth),
+                    None => smooth,
                 };
                 // a realisation of 0.3 .. 2.5 at k = 1 is what a hand can plausibly have
                 m[role][aggr][c] = (v as f32).clamp(M_MIN, M_MAX);
@@ -707,6 +736,40 @@ mod tests {
         for c in 0..169 {
             assert!((sip2[c] - sip[c]).abs() < 2e-3, "IP class {}: {} vs {}", c, sip2[c], sip[c]);
             assert!((soop2[c] - soop[c]).abs() < 2e-3, "OOP class {}: {} vs {}", c, soop2[c], soop[c]);
+        }
+    }
+
+    #[test]
+    fn the_table_follows_a_line_where_the_data_are_thin_and_the_data_where_they_are_heavy() {
+        // the truth is a line in the strength; only the strong half of the classes is in the data, a few of them thinly and wrongly
+        let strength: Vec<f64> = (0..169).map(|c| 0.8 - 0.5 * c as f64 / 168.0).collect();
+        let truth = |c: usize| -> f32 { (-0.2 + 1.0 * (strength[c] - 0.5)) as f32 };
+        let mut w = vec![0f64; 169];
+        let mut r = vec![1.0f32; 169];
+        let mut present = vec![false; 169];
+        for c in 0..84 {
+            present[c] = true;
+            w[c] = 5.0;
+            r[c] = 1.0 + truth(c);
+        }
+        for c in [10usize, 40, 70] {
+            w[c] = 0.05;
+            r[c] = 1.0 + truth(c) + 0.8; // a thin and wrong class
+        }
+        let fit = |ip_aggr: bool| ScenarioFit { name: "x".into(), k: 1.0, ip_aggr, w: [w.clone(), w.clone()], r: [r.clone(), r.clone()], present: [present.clone(), present.clone()] };
+        let t = build_table(&[fit(true), fit(false)], &strength, 0.5, String::new()).unwrap();
+        for role in 0..2 {
+            for aggr in 0..2 {
+                for c in [0usize, 20, 60, 83] {
+                    assert!((t.m[role][aggr][c] - truth(c)).abs() < 0.03, "heavy class {} of {}/{}: {} vs {}", c, role, aggr, t.m[role][aggr][c], truth(c));
+                }
+                for c in [10usize, 40, 70] {
+                    assert!((t.m[role][aggr][c] - truth(c)).abs() < 0.1, "thin class {} is pulled back to the line: {} vs {}", c, t.m[role][aggr][c], truth(c));
+                }
+                for c in [100usize, 140, 168] {
+                    assert!((t.m[role][aggr][c] - truth(c).max(M_MIN)).abs() < 0.08, "unobserved class {} follows the line: {} vs {}", c, t.m[role][aggr][c], truth(c));
+                }
+            }
         }
     }
 }
