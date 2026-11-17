@@ -709,4 +709,34 @@ mod tests {
             assert!((soop2[c] - soop[c]).abs() < 2e-3, "OOP class {}: {} vs {}", c, soop2[c], soop[c]);
         }
     }
+
+    #[test]
+    fn a_class_the_data_hold_thinly_goes_to_its_neighbours_and_one_they_do_not_hold_takes_them() {
+        // the first half of the classes (by strength) is in the data; `m` falls with the class number
+        let strength: Vec<f64> = (0..169).map(|c| 0.8 - 0.5 * c as f64 / 168.0).collect();
+        let truth = |c: usize| -> f32 { 0.5 - c as f32 / 168.0 };
+        let (mut w, mut r, mut present) = (vec![0f64; 169], vec![1.0f32; 169], vec![false; 169]);
+        for c in 0..84 {
+            present[c] = true;
+            w[c] = 5.0;
+            r[c] = 1.0 + truth(c);
+        }
+        let thin = 40usize;
+        w[thin] = 0.05;
+        r[thin] = 1.0 + truth(thin) + 1.0; // a thin and wrong class
+        let fit = |ip_aggr: bool| ScenarioFit { name: "x".into(), k: 1.0, ip_aggr, w: [w.clone(), w.clone()], r: [r.clone(), r.clone()], present: [present.clone(), present.clone()] };
+        let t = build_table(&[fit(true), fit(false)], &strength, 1.0, String::new()).unwrap();
+        let lo = (0..84).map(truth).fold(f32::MAX, f32::min);
+        let hi = (0..84).map(truth).fold(f32::MIN, f32::max);
+        for role in 0..2 {
+            for aggr in 0..2 {
+                let v = &t.m[role][aggr];
+                assert!((v[10] - truth(10)).abs() < 1e-4, "a heavy class keeps its data");
+                assert!((v[thin] - truth(thin)).abs() < 0.15, "the thin class goes back to its neighbours: {} vs {}", v[thin], truth(thin));
+                for c in 84..169 {
+                    assert!(v[c] >= lo - 1e-4 && v[c] <= hi + 1e-4, "class {} is a mean of observed classes, never beyond them: {}", c, v[c]);
+                }
+            }
+        }
+    }
 }
