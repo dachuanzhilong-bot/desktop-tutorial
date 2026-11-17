@@ -332,56 +332,22 @@ impl EqrTable {
     }
 }
 
-/// features of a hand class for the regression that fills the classes the data does not have: 1, the high card, the low card
-/// (0..1), suited, pair, connectedness
-pub fn class_features(c: usize) -> [f64; 6] {
-    let (hi, lo, suited, pair) = crate::cards::class_info(c);
-    let (hn, ln) = (hi as f64 / 12.0, lo as f64 / 12.0);
-    let gap = if pair { 0.0 } else { (hi - lo - 1) as f64 };
-    let conn = if pair { 0.0 } else { (1.0 - gap / 4.0).max(0.0) };
-    [1.0, hn, ln, suited as u8 as f64, pair as u8 as f64, conn]
-}
-
-/// Weighted least squares of `y` on the class features over the classes with `w > 0`; `None` if the system is singular.
-pub fn regress(y: &[Option<f64>], w: &[f64]) -> Option<[f64; 6]> {
-    let mut a = [[0f64; 7]; 6];
-    for c in 0..169 {
-        let Some(v) = y[c] else { continue };
-        if w[c] <= 0.0 {
-            continue;
-        }
-        let f = class_features(c);
-        for i in 0..6 {
-            for j in 0..6 {
-                a[i][j] += w[c] * f[i] * f[j];
+/// The equity of every hand class against a random hand (the table's `eq` weighted by the card-removal counts `n`).
+pub fn class_strength(eq: &[f32], n: &[f32]) -> Vec<f64> {
+    (0..169)
+        .map(|a| {
+            let (mut s, mut z) = (0f64, 0f64);
+            for c in 0..169 {
+                s += n[a * 169 + c] as f64 * eq[a * 169 + c] as f64;
+                z += n[a * 169 + c] as f64;
             }
-            a[i][6] += w[c] * f[i] * v;
-        }
-    }
-    // a tiny ridge keeps the system solvable when a feature does not vary in the data
-    for i in 0..6 {
-        a[i][i] += 1e-9 + 1e-6 * a[i][i];
-    }
-    for col in 0..6 {
-        let piv = (col..6).max_by(|&p, &q| a[p][col].abs().partial_cmp(&a[q][col].abs()).unwrap())?;
-        if a[piv][col].abs() < 1e-12 {
-            return None;
-        }
-        a.swap(col, piv);
-        for r in 0..6 {
-            if r != col {
-                let f = a[r][col] / a[col][col];
-                for k in col..7 {
-                    a[r][k] -= f * a[col][k];
-                }
+            if z > 0.0 {
+                s / z
+            } else {
+                0.5
             }
-        }
-    }
-    let mut out = [0f64; 6];
-    for i in 0..6 {
-        out[i] = a[i][6] / a[i][i];
-    }
-    Some(out)
+        })
+        .collect()
 }
 
 /// What the fit of one scenario gives: the calibrated factors per role (0 OOP, 1 IP) and class, where the class was in the
@@ -395,10 +361,16 @@ pub struct ScenarioFit {
     pub present: [Vec<bool>; 2],
 }
 
+/// Bounds of `m` (`R = 1 + k m` is 0.3 .. 2.5 at k = 1).
+pub const M_MIN: f32 = -0.7;
+pub const M_MAX: f32 = 1.5;
+
 /// The table from the fits of several scenarios: for each role and aggressor, the weighted mean of `m = (R - 1) / k` of the
-/// scenarios in which that role is (or is not) the aggressor; classes with little data are pulled to a weighted regression
-/// on the class features (`class_features`), and classes without data take the regression, kept within the observed range.
-pub fn build_table(fits: &[ScenarioFit], note: String) -> Result<EqrTable, String> {
+/// scenarios in which that role is (or is not) the aggressor.  A class the data hold thinly is pulled to its neighbours (`shrink`
+/// times the mean class weight is half way), a class the data do not hold at all takes them: the neighbours are the observed
+/// classes of the same kind (pair / suited / offsuit) whose strength (`class_strength`) is closest, so no value is ever
+/// extrapolated beyond what was observed.
+pub fn build_table(fits: &[ScenarioFit], strength: &[f64], shrink: f64, note: String) -> Result<EqrTable, String> {
     let mut m: [[Vec<f32>; 2]; 2] = [[vec![0.0; 169], vec![0.0; 169]], [vec![0.0; 169], vec![0.0; 169]]];
     for role in 0..2usize {
         for aggr in 0..2usize {
@@ -418,17 +390,49 @@ pub fn build_table(fits: &[ScenarioFit], note: String) -> Result<EqrTable, Strin
                 }
             }
             let obs: Vec<Option<f64>> = (0..169).map(|c| if wsum[c] > 0.0 { Some(msum[c] / wsum[c]) } else { None }).collect();
-            let reg = regress(&obs, &wsum).ok_or("the regression is singular")?;
-            let predict = |c: usize| class_features(c).iter().zip(reg.iter()).map(|(f, b)| f * b).sum::<f64>();
-            let seen: Vec<f64> = obs.iter().flatten().copied().collect();
+            if obs.iter().all(|o| o.is_none()) {
+                return Err("a role and aggressor with no observed class".into());
+            }
             let present_w: Vec<f64> = wsum.iter().copied().filter(|&w| w > 0.0).collect();
-            let w0 = 0.1 * present_w.iter().sum::<f64>() / present_w.len().max(1) as f64;
-            let (lo, hi) = seen.iter().fold((f64::MAX, f64::MIN), |(l, h), &v| (l.min(v), h.max(v)));
-            for c in 0..169 {
-                m[role][aggr][c] = match obs[c] {
-                    Some(v) => ((wsum[c] * v + w0 * predict(c)) / (wsum[c] + w0)) as f32,
-                    None => predict(c).clamp(lo - 0.1, hi + 0.1) as f32,
+            let w0 = shrink * present_w.iter().sum::<f64>() / present_w.len().max(1) as f64;
+            // the weighted mean of the (up to) 4 nearest observed classes of the same kind, then of the same pair-ness, then any
+            let near = |c: usize| -> f64 {
+                let (_, _, suited, pair) = crate::cards::class_info(c);
+                let pick = |same_suit: bool| -> Vec<(f64, usize)> {
+                    let mut v: Vec<(f64, usize)> = (0..169)
+                        .filter(|&d| d != c && obs[d].is_some())
+                        .filter(|&d| {
+                            let (_, _, s2, p2) = crate::cards::class_info(d);
+                            p2 == pair && (!same_suit || s2 == suited)
+                        })
+                        .map(|d| ((strength[d] - strength[c]).abs(), d))
+                        .collect();
+                    v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+                    v
                 };
+                let mut v = pick(true);
+                if v.len() < 3 {
+                    v = pick(false);
+                }
+                if v.len() < 3 {
+                    v = (0..169).filter(|&d| d != c && obs[d].is_some()).map(|d| ((strength[d] - strength[c]).abs(), d)).collect();
+                    v.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
+                }
+                let top = &v[..v.len().min(4)];
+                let (num, den) = top.iter().fold((0f64, 0f64), |(n, d), &(_, k)| (n + wsum[k] * obs[k].unwrap(), d + wsum[k]));
+                if den > 0.0 {
+                    num / den
+                } else {
+                    0.0
+                }
+            };
+            for c in 0..169 {
+                let v = match obs[c] {
+                    Some(v) => (wsum[c] * v + w0 * near(c)) / (wsum[c] + w0),
+                    None => near(c),
+                };
+                // a realisation of 0.3 .. 2.5 at k = 1 is what a hand can plausibly have
+                m[role][aggr][c] = (v as f32).clamp(M_MIN, M_MAX);
             }
         }
     }
@@ -655,5 +659,54 @@ mod tests {
         // AA is in OOP's and IP's range on this flop and realises at least its equity ... as a sanity bound only
         let aa = class_of(51, 50); // two aces of different suits (card = rank * 4 + suit)
         assert!(acc.means(0, aa).is_some() || acc.means(1, aa).is_some());
+    }
+
+    #[test]
+    fn the_table_text_round_trips() {
+        let mut t = EqrTable { m: [[vec![0.0; 169], vec![0.0; 169]], [vec![0.0; 169], vec![0.0; 169]]], note: "a note\nsecond line".into() };
+        for r in 0..2 {
+            for a in 0..2 {
+                for c in 0..169 {
+                    t.m[r][a][c] = ((r * 7 + a * 3 + c) % 23) as f32 / 10.0 - 1.0;
+                }
+            }
+        }
+        let back = EqrTable::from_text(&t.to_text()).expect("parse");
+        assert_eq!(back.note, t.note);
+        for r in 0..2 {
+            for a in 0..2 {
+                for c in 0..169 {
+                    assert!((back.m[r][a][c] - t.m[r][a][c]).abs() < 1e-4);
+                }
+            }
+        }
+        assert!(EqrTable::from_text("role\taggr\tclass\tm\nOOP\tcaller\t0\t0.5\n").is_err(), "an incomplete table is refused");
+        assert_eq!(t.get(5, true, Aggr::Mixed), 0.5 * (t.m[1][0][5] + t.m[1][1][5]));
+    }
+
+    #[test]
+    fn calibration_reproduces_the_shares_it_is_given() {
+        // two ranges of 169 classes against each other with a made-up equity matrix; the shares come from known factors
+        let mut e = vec![0.5f32; 169 * 169];
+        for a in 0..169 {
+            for c in 0..169 {
+                e[a * 169 + c] = 0.5 + 0.4 * ((a as f32 - c as f32) / 168.0);
+            }
+        }
+        let n = vec![16.0f32; 169 * 169];
+        let mass = vec![1.0f64; 169];
+        let pm = matchups(&mass, &mass, &n);
+        let r_ip: Vec<f32> = (0..169).map(|c| 0.8 + 0.5 * (c % 13) as f32 / 12.0).collect();
+        let r_oop: Vec<f32> = (0..169).map(|c| 1.3 - 0.4 * (c % 7) as f32 / 6.0).collect();
+        let ([sip, _], [soop, _]) = model_shares(&pm, &e, &r_ip, &r_oop);
+        let t_ip: Vec<Option<f64>> = sip.iter().map(|&v| Some(v)).collect();
+        let t_oop: Vec<Option<f64>> = soop.iter().map(|&v| Some(v)).collect();
+        let start = vec![1.0f32; 169];
+        let (fi, fo) = calibrate(&pm, &e, &t_ip, &t_oop, &start, &start, 0.2, 3.0, 60);
+        let ([sip2, _], [soop2, _]) = model_shares(&pm, &e, &fi, &fo);
+        for c in 0..169 {
+            assert!((sip2[c] - sip[c]).abs() < 2e-3, "IP class {}: {} vs {}", c, sip2[c], sip[c]);
+            assert!((soop2[c] - soop[c]).abs() < 2e-3, "OOP class {}: {} vs {}", c, soop2[c], soop[c]);
+        }
     }
 }

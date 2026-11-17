@@ -13,7 +13,7 @@
 //! of the equities, the pruned share) to stderr.
 use std::collections::HashMap;
 use tessera_solver::cards::class_name;
-use tessera_solver::eqr::{anchor, build_table, calibrate, flop_values, matchups, model_shares, Aggr, ClassAcc, ScenarioFit};
+use tessera_solver::eqr::{anchor, build_table, class_strength, calibrate, flop_values, matchups, model_shares, Aggr, ClassAcc, ScenarioFit};
 use tessera_solver::equity;
 use tessera_solver::measure::parse_tsp1;
 use tessera_solver::preflop::Realization;
@@ -64,6 +64,8 @@ fn main() {
     let train: Option<Vec<String>> = arg(&args, "--train").map(|t| t.split(',').map(|x| x.to_string()).collect());
     // `--fit ratio`: the measured ratio s / e as the factor; default `calibrated`: the factors that give the measured shares
     let fit_ratio = arg(&args, "--fit").as_deref() == Some("ratio");
+    // how thin the data of a class must be to be pulled to its neighbours (times the mean class weight)
+    let shrink: f64 = arg(&args, "--shrink").and_then(|v| v.parse().ok()).unwrap_or(0.5);
     let mut fits: Vec<ScenarioFit> = Vec::new();
     let mut accs: Vec<(String, f32, bool, ClassAcc)> = Vec::new();
     let eq_path = arg(&args, "--equity").unwrap_or_else(|| "cache/equity-60000-20260101.bin".into());
@@ -166,10 +168,12 @@ fn main() {
     }
     if let Some(p) = table_out {
         let note = format!(
-            "tessera EQR table: R = 1 + k(SPR) m by role (OOP / IP), aggressor and hand class (REFACTOR_PLAN 3-1, docs/07 section 2)\nfrom the solved flops {} (`gen_eqr`: realised share of the initial pot / raw equity, calibrated through the model's own share formula)",
-            fits.iter().map(|f| format!("{} ({} aggressor)", f.name, if f.ip_aggr { "IP" } else { "OOP" })).collect::<Vec<_>>().join(", ")
+            "tessera EQR table: R = 1 + k(SPR) m by role (OOP / IP), aggressor and hand class (REFACTOR_PLAN 3-1, docs/07 section 2)\nfrom the solved flops {} (`gen_eqr`: realised share of the initial pot / raw equity, calibrated through the model's own share formula, thin classes pulled to their neighbours of the same kind and strength; shrink {})",
+            fits.iter().map(|f| format!("{} ({} aggressor)", f.name, if f.ip_aggr { "IP" } else { "OOP" })).collect::<Vec<_>>().join(", "),
+            shrink
         );
-        let table = build_table(&fits, note).unwrap_or_else(|e| panic!("{}", e));
+        let strength = class_strength(&tables.eq, &tables.n);
+        let table = build_table(&fits, &strength, shrink, note).unwrap_or_else(|e| panic!("{}", e));
         // the model with the table, against the measured class shares of every scenario
         for (sc, k, ip_aggr, acc) in &accs {
             let mass: Vec<Vec<f64>> = (0..2).map(|r| (0..169).map(|c| acc.rw[r][c] / acc.flops as f64).collect()).collect();
