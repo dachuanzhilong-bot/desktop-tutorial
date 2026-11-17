@@ -424,7 +424,9 @@ fn main() {
                 eprintln!("{} flop {:2} {:<9} {} iterations: {:.2} s/iteration, peak RSS {}", sc.id, fi, FLOPS[fi], done_iters, t_iter, peak_rss());
                 solver.finalize_avg();
                 let expl = solver.exploitability();
-                let ev = solver.evaluate();
+                // v3 holds the flop and turn nodes only: with the river's average kept (--g1-target) the river nodes' evaluations
+                // would not fit in memory (1.7 million nodes; the process was killed, exit code 137, on a 32 GB machine)
+                let ev = if all_cards { solver.evaluate_upstream() } else { solver.evaluate() };
                 let (eq_oop, eq_ip) = (solver.range_equity(0), solver.range_equity(1));
                 let stats = flop_stats(&tree, &ev, eq_oop, eq_ip, 100.0 * expl / sc.pot);
                 std::fs::create_dir_all(&dir).unwrap();
