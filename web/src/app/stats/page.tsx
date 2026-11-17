@@ -14,6 +14,7 @@ import { readIcmLog, summarizeIcm } from "@/lib/storage/icmLog";
 import { handLabel, resolveStudyHref } from "@/lib/storage/mistakes";
 import type { StudySources } from "@/lib/storage/mistakes";
 import { loadFlop, PF_INDEX } from "@/lib/postflop/loader";
+import { riverLayer } from "@/lib/postflop/riverSolver";
 import { useSolutionStore } from "@/lib/solution/context";
 import { depthOf, rakeOf } from "@/lib/solution/catalog";
 import type { IcmLogEntry } from "@/lib/storage/icmLog";
@@ -74,6 +75,7 @@ export default function StatsPage() {
       },
       flops: PF_INDEX.flops,
       flop: loadFlop,
+      river: riverLayer(),
     }),
     [getStore],
   );

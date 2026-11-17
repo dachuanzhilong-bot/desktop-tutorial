@@ -1224,4 +1224,59 @@ mod tests {
         assert!(std::fs::read(&bin).ok().as_deref() == Some(&bytes[..]), "{} is not what the writer makes now", bin.display());
         assert_eq!(std::fs::read_to_string(&js).unwrap_or_default(), json, "{}", js.display());
     }
+
+    /// wide deterministic ranges (~45 % of the combos, partial weights): river solves about as big as the shipped SRP's
+    fn wide_ranges() -> [Vec<f32>; 2] {
+        let oop = (0..NC).map(|h| (h * 7919 + 13) % 100).map(|x| if x < 48 { (x % 4 + 1) as f32 / 4.0 } else { 0.0 }).collect();
+        let ip = (0..NC).map(|h| (h * 104_729 + 7) % 100).map(|y| if y < 42 { (y % 3 + 1) as f32 / 3.0 } else { 0.0 }).collect();
+        [oop, ip]
+    }
+
+    /// (3-3-6) The `TSP1` v3 file that the web tests open in place of `srp-btn-bb`'s As7d2c
+    /// (`web/src/lib/__tests__/fixtures/tsp1-v3-e2e.bin`; never shipped): that scenario's pot and stack, a small flop /
+    /// turn (no flop bet, 2 turn cards) and `Config::default()`'s river settings, which are what the device solves the
+    /// river with (`RIVER_SETTINGS` in web/src/lib/postflop/river.ts).  Plus one river solved alone from the file's
+    /// (quantized) ranges exactly as the device does it (`river_tree_of`, `Solver::new`, the average restarted at half
+    /// the iterations, export with `min_reach` 0): `tsp1-v3-river.bin`, its river start / card / iterations in
+    /// `tsp1-v3-river.json`.  The web test solves the same river with the WebAssembly build and compares.
+    /// Rewrite with `TESSERA_WRITE_FIXTURES=1 cargo test --release v3_e2e_fixture`.
+    #[test]
+    fn v3_e2e_fixture_for_the_web_tests() {
+        use crate::allcards::{river_tree_of, run_iterations, Plan};
+        let d = Config::default();
+        let cfg = Config { bets: [vec![], d.bets[1].clone(), d.bets[2].clone()], raise_sizes: [false, false, d.raise_sizes[2]], turn_cards: 2, river_cards: 2, flop_runouts: 24, ..d };
+        let tree = build_tree(&cfg, &board("As 7d 2c"));
+        let mut s = solve_b(&tree, &wide_ranges(), 30);
+        let ev = s.evaluate();
+        let starts = s.river_starts().unwrap();
+        let (bytes, map) = export_v3_with_map(&tree, &ev, &starts, 0.004);
+        let f = parse_tsp1(&bytes).unwrap();
+        let n_starts = f.nodes.iter().filter(|n| n.ranges.is_some()).count();
+        assert!(n_starts >= 4, "{} river starts", n_starts);
+        assert!(bytes.len() < 160_000, "{} bytes", bytes.len());
+
+        // the device's solve of one river: the first river start after a turn check-check, river card Kh (or the next free one)
+        let at = f.nodes.iter().position(|n| n.ranges.is_some() && n.inv == [0.0, 0.0]).unwrap();
+        let node = map[at] as usize;
+        let on_board = &tree.nodes[node].board;
+        let card = ["Kh", "Qh", "Jh", "Th"].into_iter().map(card).find(|c| !on_board.contains(c)).unwrap();
+        let r = f.nodes[at].ranges.as_ref().unwrap();
+        let alone = river_tree_of(&tree, node, card);
+        let iters = 300;
+        let mut a = Solver::new(&alone, &[zero_card(&r[0].dense(), card), zero_card(&r[1].dense(), card)]);
+        run_iterations(&mut a, &Plan { iters, reset_at: Some(iters / 2), every: 0 }, None, None, &mut |_| {}).unwrap();
+        a.finalize_avg();
+        let river = export(&alone, &a.evaluate(), 0.0);
+        assert!(river.len() < 80_000, "{} bytes", river.len());
+        let json = format!("{{\"riverStart\":{},\"card\":{},\"iterations\":{},\"resetAt\":{},\"pot\":{},\"stack\":{}}}\n", at, card, iters, iters / 2, alone.cfg.pot, alone.cfg.stack);
+
+        let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/src/lib/__tests__/fixtures");
+        let files = [(dir.join("tsp1-v3-e2e.bin"), bytes), (dir.join("tsp1-v3-river.bin"), river), (dir.join("tsp1-v3-river.json"), json.into_bytes())];
+        for (path, b) in &files {
+            if std::env::var_os("TESSERA_WRITE_FIXTURES").is_some() {
+                std::fs::write(path, b).unwrap();
+            }
+            assert!(std::fs::read(path).ok().as_deref() == Some(&b[..]), "{} is not what the writer makes now", path.display());
+        }
+    }
 }

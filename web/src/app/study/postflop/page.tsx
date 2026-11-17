@@ -1,12 +1,15 @@
 "use client";
 import Link from "next/link";
-import { startTransition, useEffect, useRef, useState } from "react";
+import { startTransition, useCallback, useEffect, useRef, useState } from "react";
 import { GridSkeleton, Skeleton } from "@/components/Skeleton";
 import { SaveButton } from "@/components/SaveButton";
 import { StudyTabs } from "@/components/StudyTabs";
 import { PostflopViewer } from "@/components/postflop/PostflopViewer";
+import type { RiverControls } from "@/components/postflop/PostflopViewer";
 import { decodeFlop, PfFlop } from "@/lib/postflop/decode";
 import { loadFlop, PF_INDEX } from "@/lib/postflop/loader";
+import { openLine } from "@/lib/postflop/river";
+import { riverLayer } from "@/lib/postflop/riverSolver";
 import { fmtBB } from "@/lib/solution/tree";
 import { parsePostflopHash, postflopHash, postflopLink, postflopTarget, postflopTargetFlop } from "@/lib/study/links";
 import { flopRootPos, postflopPos } from "@/lib/practice/position";
@@ -78,6 +81,10 @@ function PostflopStudy() {
   const [solveId, setSolveId] = useState<string | null | undefined>(undefined);
   /** the line of a deep link (the part of `p=` after the flop): looked up once its flop has loaded; null = nothing to look up */
   const [wantLine, setWantLine] = useState<string | null>(null);
+  /** a v3 flop's river solved on this device (lib/postflop/river.ts): the one being solved, how the last one opened */
+  const [riverBusy, setRiverBusy] = useState<RiverControls["busy"]>(null);
+  const [riverLast, setRiverLast] = useState<RiverControls["last"]>(null);
+  const [riverError, setRiverError] = useState(false);
 
   useEffect(() => {
     const want = parsePostflopHash(location.hash);
@@ -99,15 +106,16 @@ function PostflopStudy() {
     if (!scenario || haveFlop) return;
     let alive = true;
     loadFlop(scenario, flopIdx)
-      .then(
-        (f) =>
-          alive &&
-          startTransition(() => {
-            setLoaded({ key: flopKey, flop: f });
-            if (wantLine !== null) setNodeId(postflopTarget(f, wantLine));
-            setWantLine(null);
-          }),
-      )
+      .then(async (f) => {
+        // a line through a river of a v3 flop: that river is opened (solved, or read from the cache) first
+        const deep = wantLine !== null && f.version === 3 ? await openLine(riverLayer(), f, wantLine).catch(() => null) : null;
+        if (!alive) return;
+        startTransition(() => {
+          setLoaded({ key: flopKey, flop: deep?.flop ?? f });
+          if (wantLine !== null) setNodeId(deep && deep.node !== null ? deep.node : postflopTarget(f, wantLine));
+          setWantLine(null);
+        });
+      })
       .catch((e) => alive && setError(e instanceof Error ? e.message : String(e)));
     return () => {
       alive = false;
@@ -138,6 +146,26 @@ function PostflopStudy() {
   }, [scenario, pos]);
 
   const sc = index?.scenarios.find((s) => s.id === scenario);
+
+  const warmRiver = useCallback(() => riverLayer().warm(), []);
+  // a card picked at a river start of a v3 flop: its river is solved on this device (or read from the cache) and grafted
+  const onDeal = (node: number, card: number) => {
+    if (!flop || riverBusy) return;
+    const layer = riverLayer();
+    const key = flopKey;
+    setRiverError(false);
+    setRiverBusy({ node, card, done: 0, total: layer.iterations });
+    layer
+      .open(flop, node, card, (done, total) => setRiverBusy({ node, card, done, total }))
+      .then((o) => {
+        setLoaded((cur) => (cur?.key === key ? { key, flop: o.flop } : cur));
+        setNodeId(o.root);
+        setRiverLast({ source: o.source, ms: o.ms, solveMs: o.solveMs, computed: layer.computed });
+      })
+      .catch(() => setRiverError(true))
+      .finally(() => setRiverBusy(null));
+  };
+  const river: RiverControls | undefined = flop?.version === 3 ? { onDeal, onShow: warmRiver, busy: riverBusy, last: riverLast, error: riverError } : undefined;
 
   const header = (
     <>
@@ -248,7 +276,7 @@ function PostflopStudy() {
 
 
       {flop ? (
-        <PostflopViewer key={`${scenario}/${flopIdx}`} flop={flop} oopName={sc.oop} ipName={sc.ip} exploit={index.stats[`${scenario}/${flopIdx}`]?.exploit ?? 0} nodeId={nodeId} onNode={setNodeId} />
+        <PostflopViewer key={`${scenario}/${flopIdx}`} flop={flop} oopName={sc.oop} ipName={sc.ip} exploit={index.stats[`${scenario}/${flopIdx}`]?.exploit ?? 0} nodeId={nodeId} onNode={setNodeId} river={river} />
       ) : (
         <div className="space-y-3">
           <Skeleton className="h-16 w-full" />

@@ -1,5 +1,5 @@
 "use client";
-import { useCallback, useDeferredValue, useMemo, useState } from "react";
+import { useCallback, useDeferredValue, useEffect, useMemo, useState } from "react";
 import type { ReactNode } from "react";
 import { PlayingCard } from "@/components/PlayingCard";
 import { ApproxNote } from "@/components/ApproxNote";
@@ -17,6 +17,8 @@ import { CATEGORY_IDS, CategoryId, classify, matchesCategory } from "@/lib/postf
 import { COMBOS, COMBOS_OF_CLASS, NC, cardOf, cardText, comboCards } from "@/lib/postflop/combos";
 import { dense, DenseNode, PfFlop, PfNode } from "@/lib/postflop/decode";
 import { contextAt, EdgeLabel, labelEdge, stepsTo } from "@/lib/postflop/replay";
+import { RIVER_ITERATIONS, riverCards } from "@/lib/postflop/river";
+import type { RiverSource } from "@/lib/postflop/river";
 import { fmtBB } from "@/lib/solution/tree";
 import { haptic } from "@/lib/util/haptics";
 
@@ -57,10 +59,25 @@ export interface ViewerProps {
   onNode: (id: number) => void;
   /** rendered under the hand panel of every decision node (the node-lock panel of the Solve screen) */
   extra?: (a: ViewerExtraArgs) => ReactNode;
+  /** a v3 flop: the river is solved on the device when a card is picked at a river start (lib/postflop/river.ts) */
+  river?: RiverControls;
+}
+
+/** the river of a v3 flop, as the screen that owns the flop runs it */
+export interface RiverControls {
+  /** a card picked at a river start whose river is not in the flop yet */
+  onDeal: (node: number, card: number) => void;
+  /** a river start is on screen: the solver may get ready */
+  onShow?: () => void;
+  /** the river being solved */
+  busy: { node: number; card: number; done: number; total: number } | null;
+  /** how the last river was opened; `computed` = rivers solved by this device's layer so far */
+  last: { source: RiverSource; ms: number; solveMs?: number; computed: number } | null;
+  error: boolean;
 }
 
 /** The Study chart for one solved postflop tree: board, line, next-action buttons, 13x13 chart, filters. */
-export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode, extra }: ViewerProps) {
+export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode, extra, river }: ViewerProps) {
   const { t, settings } = useSettings();
   const edgeText = useEdgeText();
   const [mode, setMode] = useState<GridMode>("strategy");
@@ -171,10 +188,12 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
           </section>
 
           {/* next step */}
-          {node.type === "chance" ? (
+          {node.riverStart ? (
+            <RiverDeal flop={flop} node={node} river={river} go={go} />
+          ) : node.type === "chance" ? (
             <section aria-label={t("pf.deal")} className="space-y-2">
               <h2 className="text-sm font-bold text-muted">{t("pf.deal")}</h2>
-              <p className="text-xs text-muted">{t("pf.dealHint")}</p>
+              <p className="text-xs text-muted">{t(flop.version === 3 ? "pf.dealAll" : "pf.dealHint")}</p>
               <div className="flex flex-wrap gap-2">
                 {node.edges.map((e, i) => (
                   <button key={i} type="button" disabled={e.code < 0} data-testid="deal-card" onClick={() => e.code >= 0 && go(e.code)} className="rounded-control border border-line bg-surface p-1.5 disabled:opacity-40" aria-label={cardText(e.kind)}>
@@ -292,8 +311,68 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
               )}
             </>
           )}
+      {river?.last && node.street === 2 && <RiverStatus last={river.last} />}
+      {flop.version === 3 && node.street === 2 && <ApproxNote testId="river-approx">{t("pf.riverApprox", { n: RIVER_ITERATIONS.toLocaleString() })}</ApproxNote>}
       <ApproxNote>{t("pf.approx")}</ApproxNote>
     </>
+  );
+}
+
+/** how the river on screen was opened: solved now, or kept from before */
+function RiverStatus({ last }: { last: NonNullable<RiverControls["last"]> }) {
+  const { t } = useSettings();
+  return (
+    <p className="text-xs text-muted" data-testid="river-status" data-source={last.source} data-computed={last.computed} data-ms={Math.round(last.ms)} data-solve-ms={Math.round(last.solveMs ?? 0)} role="status">
+      {last.source === "solved" ? t("pf.riverSolved", { s: (last.ms / 1000).toFixed(1) }) : t("pf.riverCached")}
+    </p>
+  );
+}
+
+/** a v3 river start: every live card; a river not solved yet is solved on the device when its card is picked */
+function RiverDeal({ flop, node, river, go }: { flop: PfFlop; node: PfNode; river?: RiverControls; go: (id: number) => void }) {
+  const { t } = useSettings();
+  const cards = useMemo(() => riverCards(flop, node.id), [flop, node.id]);
+  const busy = river?.busy && river.busy.node === node.id ? river.busy : null;
+  const pct = busy ? Math.round((100 * busy.done) / Math.max(1, busy.total)) : 0;
+  const onShow = river?.onShow;
+  useEffect(() => onShow?.(), [onShow]);
+  return (
+    <section aria-label={t("pf.deal")} className="space-y-2" data-testid="river-deal" aria-busy={!!busy}>
+      <h2 className="text-sm font-bold text-muted">{t("pf.deal")}</h2>
+      <p className="text-xs text-muted">{t("pf.dealRiver")}</p>
+      {busy && (
+        <div className="space-y-1" role="status" data-testid="river-busy">
+          <p className="text-sm font-semibold">{t("pf.riverSolving", { n: pct })}</p>
+          <div className="h-2 overflow-hidden rounded-full bg-surface-2" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={pct} aria-label={t("pf.riverSolving", { n: pct })}>
+            <span className="block h-full bg-accent" style={{ width: `${pct}%` }} />
+          </div>
+        </div>
+      )}
+      {river?.error && !busy && (
+        <p role="alert" className="text-sm text-accent-text" data-testid="river-error">
+          {t("pf.riverError")}
+        </p>
+      )}
+      <div className="flex flex-wrap gap-2">
+        {cards.map((c) => {
+          const solved = node.edges.find((e) => e.kind === c && e.code >= 0);
+          return (
+            <button
+              key={c}
+              type="button"
+              disabled={!!busy || (!solved && !river)}
+              data-testid="deal-card"
+              data-card={cardText(c)}
+              onClick={() => (solved ? go(solved.code) : river?.onDeal(node.id, c))}
+              className={`rounded-control border bg-surface p-1.5 disabled:opacity-40 ${busy?.card === c ? "border-accent" : "border-line"}`}
+              aria-label={cardText(c)}
+            >
+              <PlayingCard card={cardOf(c)} size="tbl" />
+            </button>
+          );
+        })}
+      </div>
+    </section>
   );
 }
 

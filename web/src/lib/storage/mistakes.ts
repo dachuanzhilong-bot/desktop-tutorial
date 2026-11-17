@@ -2,7 +2,10 @@ import { classInfo } from "../poker/hands";
 import { postflopLink, preflopLink } from "../study/links";
 import { cardText, COMBOS } from "../postflop/combos";
 import type { PfFlop } from "../postflop/decode";
-import { currentFlopIndex, currentPostflopNode, currentPreflopNode } from "../practice/position";
+import { flopKey } from "../postflop/positionKey";
+import { lineAvailable } from "../postflop/river";
+import type { RiverLayer } from "../postflop/river";
+import { currentFlopIndex, currentPostflopNode, currentPreflopNode, splitPostflopPos } from "../practice/position";
 import { solutionEntry } from "../solution/catalog";
 import type { Manifest } from "../solution/types";
 import type { Attempt } from "./types";
@@ -29,6 +32,8 @@ export interface StudySources {
   /** the flops of the post-flop index (board texts), in today's order */
   flops: readonly string[];
   flop(scenario: string, flopIndex: number): Promise<PfFlop>;
+  /** the rivers solved on this device (lib/postflop/riverSolver.ts): a v3 flop's river lines are looked up with it, never solved */
+  river?: RiverLayer;
 }
 
 /**
@@ -39,7 +44,14 @@ export interface StudySources {
 export async function resolveStudyHref(a: Attempt, src: StudySources): Promise<string | null> {
   try {
     const where = currentFlopIndex(src.flops, a);
-    if (where) return currentPostflopNode(await src.flop(where.scenario, where.flopIndex), a) === null ? null : postflopLink(where.scenario, a.pos);
+    if (where) {
+      const flop = await src.flop(where.scenario, where.flopIndex);
+      if (currentPostflopNode(flop, a) !== null) return postflopLink(where.scenario, a.pos);
+      // a river of a v3 flop is not in the file: the line up to the river start and the card are checked (lib/postflop/river.ts)
+      const parts = splitPostflopPos(a.pos);
+      const onRiver = flop.version === 3 && src.river && parts && parts.flop === flopKey(flop.board) && (await lineAvailable(src.river, flop, parts.line));
+      return onRiver ? postflopLink(where.scenario, a.pos) : null;
+    }
     // a pre-flop record of a depth that is not shipped has no link
     const depth = solutionEntry(a.solution)?.stack;
     if (depth === undefined) return null;

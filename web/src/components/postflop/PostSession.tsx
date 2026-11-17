@@ -12,6 +12,7 @@ import { PostTable, PostTableMini } from "@/components/postflop/PostTable";
 import { COMBOS, cardOf } from "@/lib/postflop/combos";
 import { createPostflopDrill, postTableView } from "@/lib/postflop/drillAdapter";
 import { loadFlop, loadIndex, PfIndex } from "@/lib/postflop/loader";
+import { riverLayer } from "@/lib/postflop/riverSolver";
 import { labelEdge } from "@/lib/postflop/replay";
 import type { PostConfig } from "@/lib/postflop/types";
 import { useDrillSession } from "@/lib/practice/useDrillSession";
@@ -30,7 +31,7 @@ export function PostSession({ config, repo, onExit }: { config: PostConfig; repo
   const { t } = useSettings();
   const reduce = useReducedMotion();
   const edgeText = useEdgeText();
-  const [drill] = useState(() => createPostflopDrill({ config, repo, rnd: cryptoRandom, index: loadIndex, flop: loadFlop }));
+  const [drill] = useState(() => createPostflopDrill({ config, repo, rnd: cryptoRandom, index: loadIndex, flop: loadFlop, river: (f, n, c) => riverLayer().open(f, n, c) }));
   const [index, setIndex] = useState<PfIndex | null>(null);
 
   useEffect(() => {
