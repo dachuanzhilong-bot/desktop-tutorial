@@ -8,9 +8,11 @@
 //!     (EQR) function of position, hand shape and stack-to-pot ratio.
 use crate::cards::*;
 use crate::engine::*;
+use crate::eqr::{Aggr, EqrTable};
 use crate::equity::EquityTables;
 use std::collections::HashMap;
 use std::fmt::Write as _;
+use std::sync::Arc;
 
 pub const POS: [&str; 6] = ["UTG", "HJ", "CO", "BTN", "SB", "BB"];
 pub const SB: usize = 4;
@@ -33,11 +35,14 @@ pub struct Realization {
     pub oop_slope: f32,
     /// k(spr) = 1 - exp(-spr / spr_scale)
     pub spr_scale: f32,
+    /// REFACTOR_PLAN 3-1: the realisation by hand class, role and aggressor, measured on solved flops (`eqr.rs`,
+    /// `gen_eqr`): `R = 1 + k m`.  `None` = the hand-made means and slopes above (the output is then unchanged).
+    pub table: Option<Arc<EqrTable>>,
 }
 
 impl Default for Realization {
     fn default() -> Self {
-        Realization { ip_mean: 0.10, ip_slope: 0.25, oop_mean: -0.22, oop_slope: 0.32, spr_scale: 3.5 }
+        Realization { ip_mean: 0.10, ip_slope: 0.25, oop_mean: -0.22, oop_slope: 0.32, spr_scale: 3.5, table: None }
     }
 }
 
@@ -70,6 +75,15 @@ impl Realization {
         let pl = play_score(cls) - 0.5;
         let (m, s) = if ip { (self.ip_mean, self.ip_slope) } else { (self.oop_mean, self.oop_slope) };
         1.0 + k * (m + s * pl)
+    }
+
+    /// `factor`, knowing whether the player is the pot's aggressor, a caller or (three-way) either: with a table the
+    /// measured value, without it the hand-made one (which has no aggressor)
+    pub fn factor_aggr(&self, cls: usize, ip: bool, aggr: Aggr, k: f32) -> f32 {
+        match &self.table {
+            Some(t) => (1.0 + k * t.get(cls, ip, aggr)).max(0.05),
+            None => self.factor(cls, ip, k),
+        }
     }
 }
 
@@ -126,14 +140,17 @@ pub enum ActKind {
 #[derive(Clone, Debug, Default)]
 pub struct NodeMeta {
     pub actions: Vec<(u8, f32)>,
-    /// for a `call` that ends the betting: (spr bucket, caller is IP)
-    pub call_real: Option<(i32, bool)>,
+    /// for a `call` that ends the betting: (spr bucket, caller is IP, the caller's side of the pot: a caller, or either in a
+    /// three-way pot)
+    pub call_real: Option<(i32, bool, Aggr)>,
 }
 
 #[derive(Clone, Copy, Debug)]
 enum ClassDef {
     AllIn,
-    Flop { kq: i32 },
+    /// `kind`: who the aggressor is among the two players (0 OOP, 1 IP), 2 nobody (a limped pot), 3 three-way; 7 when the
+    /// realisation has no table (the aggressor does not matter then, one class per SPR bucket as before)
+    Flop { kq: i32, kind: u8 },
 }
 
 #[derive(Clone)]
@@ -228,8 +245,20 @@ impl<'a> Builder<'a> {
         let pot: f32 = st.inv.iter().sum();
         let spr = (self.cfg.stack - st.cur) / pot;
         let kq = (self.cfg.real.k(spr) * 32.0).round() as i32;
-        let id = *self.class_ids.entry(kq).or_insert_with(|| {
-            self.classes.push(ClassDef::Flop { kq });
+        let kind: u8 = if self.cfg.real.table.is_none() {
+            7
+        } else if live.len() == 3 {
+            3
+        } else {
+            // live is ordered OOP -> IP
+            match st.last_raiser {
+                Some(r) if r == live[1] => 1,
+                Some(r) if r == live[0] => 0,
+                _ => 2,
+            }
+        };
+        let id = *self.class_ids.entry((kq << 3) | kind as i32).or_insert_with(|| {
+            self.classes.push(ClassDef::Flop { kq, kind });
             self.classes.len() - 1
         });
         let tt = if live.len() == 3 { 3 } else { 1 };
@@ -290,7 +319,7 @@ impl<'a> Builder<'a> {
                     let spr = (self.cfg.stack - n.cur) / pot;
                     let kq = (self.cfg.real.k(spr) * 32.0).round() as i32;
                     let is_ip = live2.iter().all(|&q| q == p || post_rank(p) > post_rank(q));
-                    call_real = Some((kq, is_ip));
+                    call_real = Some((kq, is_ip, if live2.len() == 3 { Aggr::Mixed } else { Aggr::Caller }));
                 }
             }
             acts.push((ActKind::Call, st.cur, n));
@@ -374,10 +403,16 @@ pub fn build_preflop(cfg: &Config, t: &EquityTables) -> Preflop {
                 }
                 classes.push(Class { a: m.clone(), b: m });
             }
-            ClassDef::Flop { kq } => {
+            ClassDef::Flop { kq, kind } => {
                 let kk = kq as f32 / 32.0;
-                let r_ip: Vec<f32> = (0..k).map(|h| cfg.real.factor(h, true, kk)).collect();
-                let r_oop: Vec<f32> = (0..k).map(|h| cfg.real.factor(h, false, kk)).collect();
+                let (a_ip, a_oop) = match kind {
+                    0 => (Aggr::Caller, Aggr::Aggressor),
+                    1 => (Aggr::Aggressor, Aggr::Caller),
+                    3 => (Aggr::Mixed, Aggr::Mixed),
+                    _ => (Aggr::Caller, Aggr::Caller),
+                };
+                let r_ip: Vec<f32> = (0..k).map(|h| cfg.real.factor_aggr(h, true, a_ip, kk)).collect();
+                let r_oop: Vec<f32> = (0..k).map(|h| cfg.real.factor_aggr(h, false, a_oop, kk)).collect();
                 let mut ma = vec![0f32; k * k];
                 let mut mb = vec![0f32; k * k];
                 for a in 0..k {
@@ -657,9 +692,9 @@ pub fn export(
                     buf.extend_from_slice(&v.to_le_bytes());
                 }
             }
-            if let Some((kq, ip)) = eqr_a {
+            if let Some((kq, ip, aggr)) = eqr_a {
                 for h in 0..k {
-                    let r = pf.cfg.real.factor(h, ip, kq as f32 / 32.0);
+                    let r = pf.cfg.real.factor_aggr(h, ip, aggr, kq as f32 / 32.0);
                     buf.push((r * 100.0).round().clamp(0.0, 255.0) as u8);
                 }
             }
@@ -768,5 +803,81 @@ mod tests {
         let pf = build_preflop(&Config::default(), &t);
         assert!(pf.game.nodes.iter().all(|n| n.rake.to_bits() == 0f32.to_bits()));
     }
-}
 
+    /// the hand-made realisation written as a table (the same `m + slope * (play - 0.5)` for a caller and an aggressor)
+    fn hand_made_as_table() -> Arc<EqrTable> {
+        let d = Realization::default();
+        let one = |ip: bool| -> Vec<f32> {
+            let (m, sl) = if ip { (d.ip_mean, d.ip_slope) } else { (d.oop_mean, d.oop_slope) };
+            (0..169).map(|c| m + sl * (play_score(c) - 0.5)).collect()
+        };
+        Arc::new(EqrTable { m: [[one(false), one(false)], [one(true), one(true)]], note: "hand-made".into() })
+    }
+
+    /// REFACTOR_PLAN 3-1: a table that holds the hand-made values changes no payoff (bit for bit) at any terminal; the only
+    /// difference is that the terminals are sorted into more classes (the aggressor's side)
+    #[test]
+    fn a_table_with_the_hand_made_values_changes_nothing() {
+        let t = toy_tables();
+        let base = build_preflop(&Config::default(), &t);
+        let mut cfg = Config::default();
+        cfg.real.table = Some(hand_made_as_table());
+        let with = build_preflop(&cfg, &t);
+        assert_eq!(base.game.nodes.len(), with.game.nodes.len());
+        assert!(with.game.classes.len() > base.game.classes.len(), "{} classes with a table, {} without", with.game.classes.len(), base.game.classes.len());
+        let (sb, sw) = (Solver::new(&base.game), Solver::new(&with.game));
+        let k = base.game.k;
+        let mut flops = 0;
+        for i in 0..base.game.nodes.len() {
+            if matches!(base.game.nodes[i].kind, Kind::Decision { .. }) {
+                continue;
+            }
+            let (a, b) = (sb.terminal_values(i), sw.terminal_values(i));
+            assert_eq!(a.len(), b.len());
+            for j in 0..a.len() {
+                assert_eq!(a[j].to_bits(), b[j].to_bits(), "node {} value {} (k {})", i, j, k);
+            }
+            if base.term_type[i] == 1 || base.term_type[i] == 3 {
+                flops += 1;
+            }
+        }
+        assert!(flops > 100, "{} flop terminals", flops);
+    }
+
+    /// with a table that tells the aggressor from the caller, the payouts still add up to the pot at every terminal, and the
+    /// closing call of a node exports the caller's factor
+    #[test]
+    fn a_table_that_knows_the_aggressor_keeps_the_payouts_zero_sum() {
+        let t = toy_tables();
+        let mut tab = (*hand_made_as_table()).clone();
+        // an aggressor realises more than a caller, whatever the role (the measured pattern of a 3-bet pot)
+        for r in 0..2 {
+            for c in 0..169 {
+                tab.m[r][1][c] += 0.15;
+                tab.m[r][0][c] -= 0.05;
+            }
+        }
+        let mut cfg = Config::default();
+        cfg.real.table = Some(Arc::new(tab.clone()));
+        let pf = build_preflop(&cfg, &t);
+        let g = &pf.game;
+        let s = Solver::new(g);
+        let k = g.k;
+        for (i, node) in g.nodes.iter().enumerate() {
+            if matches!(node.kind, Kind::Decision { .. }) {
+                continue;
+            }
+            let out = s.terminal_values(i);
+            let paid: f64 = (0..g.n_players).map(|q| (0..k).map(|h| g.prior[q][h] as f64 * (out[q * k + h] + node.inv[q]) as f64).sum::<f64>()).sum();
+            let pot = node.pot();
+            assert!((paid - pot as f64).abs() < 1e-4 * pot as f64, "node {}: payouts {} for a pot of {}", i, paid, pot);
+        }
+        // the closing call of BB against a BTN open (FFFRF C): the caller's side of a single-raised pot
+        let n = find_node(&pf, "FFFRF").unwrap();
+        let (kq, ip, aggr) = pf.meta[n].call_real.expect("the call closes the betting");
+        assert!(!ip, "BB is out of position");
+        assert_eq!(aggr, Aggr::Caller);
+        let want = (1.0 + (kq as f32 / 32.0) * tab.get(0, false, Aggr::Caller)).max(0.05);
+        assert_eq!(cfg.real.factor_aggr(0, false, aggr, kq as f32 / 32.0), want);
+    }
+}

@@ -2,6 +2,7 @@
 //!
 //!   cargo run --release --bin gen_preflop -- --stack 40 --out out/cash6max-40bb
 //!   cargo run --release --bin gen_preflop -- --rake-pct 5 --rake-cap 3      (-> out/cash6max-100bb-r5c3)
+//!   cargo run --release --bin gen_preflop -- --eqr EQR.tsv --out out/pre-eqr  (the realisation of `gen_eqr`, REFACTOR_PLAN 3-1)
 use std::time::Instant;
 use tessera_solver::{equity, preflop::*, rake};
 
@@ -50,6 +51,14 @@ fn main() {
     cfg.real.oop_mean = arg(&args, "--oop-mean", cfg.real.oop_mean);
     cfg.real.oop_slope = arg(&args, "--oop-slope", cfg.real.oop_slope);
     cfg.real.spr_scale = arg(&args, "--spr-scale", cfg.real.spr_scale);
+    // REFACTOR_PLAN 3-1: the realisation measured on solved flops (`gen_eqr --table-out`) instead of the hand-made one
+    let eqr_path: String = arg(&args, "--eqr", String::new());
+    if !eqr_path.is_empty() {
+        let text = std::fs::read_to_string(&eqr_path).unwrap_or_else(|e| panic!("{}: {}", eqr_path, e));
+        let table = tessera_solver::eqr::EqrTable::from_text(&text).unwrap_or_else(|e| panic!("{}: {}", eqr_path, e));
+        eprintln!("EQR table: {}", eqr_path);
+        cfg.real.table = Some(std::sync::Arc::new(table));
+    }
 
     std::fs::create_dir_all("cache").ok();
     let cache = format!("cache/equity-{}-{}.bin", samples, seed);
