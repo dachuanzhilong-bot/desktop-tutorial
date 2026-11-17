@@ -19,6 +19,7 @@
 pub mod allcards;
 pub mod cards;
 pub mod engine;
+pub mod eqr;
 pub mod equity;
 pub mod eval;
 pub mod ffi;

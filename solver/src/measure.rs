@@ -34,6 +34,11 @@ pub struct FileNode {
     pub hands: Vec<u16>,
     pub weight: Vec<u8>,
     pub freq: Vec<u8>,
+    /// decision nodes: per hand of the bitmap, the raw equity against the opponent's range at the node (x255), the EV of
+    /// the best action (bb x64) and, per action, the loss against it (`postflop::decode_loss`; na x n)
+    pub eq: Vec<u8>,
+    pub best: Vec<i16>,
+    pub loss: Vec<u8>,
     /// river starts (v3): both players' reach ranges (OOP, IP), quantized
     pub ranges: Option<[QRange; 2]>,
 }
@@ -106,6 +111,7 @@ pub fn parse_tsp1(bytes: &[u8]) -> Result<Tsp1, String> {
             edges.push(FileEdge { kind: r.u8()?, amount: r.f32()?, code: r.i32()? });
         }
         let (mut hands, mut weight, mut freq) = (Vec::new(), Vec::new(), Vec::new());
+        let (mut eq, mut best, mut loss) = (Vec::new(), Vec::new(), Vec::new());
         let mut ranges = None;
         if kind == 2 {
             if ver < 3 || street != 1 || ne != 0 {
@@ -127,12 +133,13 @@ pub fn parse_tsp1(bytes: &[u8]) -> Result<Tsp1, String> {
             hands = (0..NC).filter(|&h| (bm[h / 8] >> (h % 8)) & 1 == 1).map(|h| h as u16).collect();
             let k = hands.len();
             weight = r.take(k)?.to_vec();
-            r.take(k)?; // equity
+            eq = r.take(k)?.to_vec();
             freq = r.take(ne * k)?.to_vec();
-            r.take(2 * k)?; // best EV
-            r.take(ne * k)?; // losses
+            let bb = r.take(2 * k)?;
+            best = (0..k).map(|j| i16::from_le_bytes([bb[2 * j], bb[2 * j + 1]])).collect();
+            loss = r.take(ne * k)?.to_vec();
         }
-        nodes.push(FileNode { street, inv, kind, actor, reach, edges, hands, weight, freq, ranges });
+        nodes.push(FileNode { street, inv, kind, actor, reach, edges, hands, weight, freq, eq, best, loss, ranges });
     }
     if r.o != bytes.len() {
         return Err(format!("{} trailing bytes", bytes.len() - r.o));
