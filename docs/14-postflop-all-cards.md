@@ -609,3 +609,59 @@ As7d2c・`srp-btn-bb`・`--all-cards --river-cards 2 --iters 20 --threads 1 --ch
 - 実機（スマホ）での時間。Worker を 4 倍遅くする手段が Chrome に無いので、E2E は見積もり。
 - `RIVER_SETTINGS` はコードの定数。3-3-7 以降にシナリオごとにサイズを変えるなら、`index.json` に持たせる（データの形の変更なので別のステップ）。
 - 練習の通しプレイで、まれなターンのライン（`-2`）とリバー開始点の `min_reach` 未満（書かれていない）は今までどおり「ほぼ選ばれない展開」で終わる。
+
+## 13. 3-3-7: 量産の道具と手順（持ち主の PC で回す）
+
+持ち主の決定（2026-11-17）: 量産は持ち主の PC で回す。レンジは出荷済みの手作りのプリフロップ解（`REFACTOR_PLAN` 3-1 の決定）。
+
+### 13-1. 道具: `gen_postflop --all-cards --g1-target 0.5`
+
+計画の 3-3-7 は「500 反復ごとに全カード値を見て、0.5% 以下になるまで回す（上限 5,000 反復）」。それまでの `gen_postflop --all-cards` は反復数が固定で、全カード値を見なかった（`expl` はリバーの最後の反復での値で、G1 ではない。§8-5 の 9.19%）。
+
+- 追加したフラグ（`--g1-target` を付けたときだけ効く。付けなければ出力は 1 バイトも変わらない。小さな木で、main の実行ファイルと `diff -r` して確かめた）:
+
+| フラグ | 既定 | 意味 |
+|---|---:|---|
+| `--g1-target PCT` | 0（オフ） | G1（全カード exploitability、ポット比 %。フロップ・ターンもリバーも平均戦略。リバーの平均は必要なときに作る）が PCT 以下になるまで回す |
+| `--check-every K` | 500 | K 反復ごとに G1 を見る |
+| `--avg-restart R` | 500 | 戦略の平均を R 反復目の後に 1 回だけ取り直す。最初に見るのは R の後の最初の K の倍数（既定で 1,000 反復目） |
+| `--max-iters M` | 5,000 | ここまで回しても届かなければ、そのフロップは「未達」として書いて先へ進む |
+
+- 平均の取り直しは 1 回だけ（反復数が決まっていないので「全体の半分」にはできない）。3-3-3 の測定（1,400 反復・700 反復目から平均、0.4583%）とは平均の長さが違うので、同じ値になるとは限らない（未実測）。
+- G1 を測るため、リバーの `ssum` を持つ（SRP 1 フロップで約 8 GB。3-3-3 の測定の最大 RSS 8.14 GB。持たない従来の量産は 4.6 GB）。メモリ 16 GB の PC で 1 フロップずつ（`--threads 1`）。
+- 評価は 1 回あたり約 70 秒（As7d2c、3-3-3）。500 反復の時間（8.8 秒 / 反復 × 500 = 約 73 分、3 スレッド）に比べて 2% 弱。
+- フロップごとに `<n>.g1.json`（`.bin` より先に書く）: 回した反復数、見た値の列、`reached`。`<n>.stats.json` の `expl` は、このモードでは G1。`index.json` の `iterations` は `--max-iters`（フロップごとの反復数ではない）。
+- 未達のフロップがあっても、書いて先へ進み、最後に一覧して終了コード 3 で終わる（量産の時間を捨てないため。計画の「止まる条件: 上限まで回しても 0.5% を超えるフロップがある」は、その一覧を見て報告する）。
+- 途中保存（`--checkpoint DIR`）: 保存のたびに 1 つ約 7.6 GB（SRP）、新しい 2 つを残す（ディスクに 16 GB ほど）。タグに反復数を入れないので、止めた所から続けられる。評価の前にも保存するので、評価中に落ちても反復は失わない。
+- テスト: `run_until` が、(a) 見ても反復が変わらない（60 反復の戦略が、見ない実行とビット単位で同じ）、(b) 目標に届けば最初に届いた所で止まる・届かなければ上限で止まる、(c) 途中で切って保存から続けても、続けずに回した戦略とビット単位で同じ、を確かめる（`allcards::tests::run_until_…`）。
+- 小さな木（As7d2c、ターン 2・リバー 2）で `gen_postflop` 全体を流し、`.g1.json` が書かれ、未達が一覧されることを確かめた。**本番の木（49×48）では未実測**。
+
+### 13-2. PC の条件
+
+- メモリ 16 GB 以上（SRP 1 フロップが最大約 8 GB。他のアプリは閉じる）。空きディスク 20 GB 以上（途中保存）。コア数が多いほど速い（1 フロップを `--solve-threads` 本で解く。結果は本数によらずビット単位で同じ、3-3-2）。
+- Rust（`rustup`）と git。Windows は WSL2 の中で行う（下のコマンドは bash）。電源に繋ぎ、スリープしない設定にする。
+
+### 13-3. 実行
+
+```bash
+git clone https://github.com/dachuanzhilong-bot/desktop-tutorial && cd desktop-tutorial/solver
+cargo build --release --bin gen_postflop
+# 出荷済みのプリフロップ解（100bb）を展開する
+mkdir -p out/pre/cash6max-100bb
+for f in ../web/public/solutions/cash6max-100bb/*.gz; do gzip -dc "$f" > out/pre/cash6max-100bb/$(basename "$f" .gz); done
+# 1 シナリオずつ。コア数 C のとき --solve-threads C（C-1 にすると他の作業が楽）
+nohup ./target/release/gen_postflop --all-cards --g1-target 0.5 \
+  --pre out/pre/cash6max-100bb --out out/postflop-v3 --scenario srp-btn-bb \
+  --threads 1 --solve-threads C --checkpoint out/ck --checkpoint-every 100 >> out/gen-srp-btn-bb.log 2>&1 &
+tail -f out/gen-srp-btn-bb.log      # 「iteration n: value g (target 0.5)」が G1 の推移
+```
+
+- 続けて `--scenario srp-co-bb`、`--scenario 3bp-btn-bb`（同じ `--out`。済んだフロップは飛ばす）。まず `--only-flop 0`（As7d2c）で 1 フロップの時間と反復数を見てから全部を流すとよい。
+- **止まったら**（再起動・停電）: 同じコマンドをそのまま実行する。済んだフロップは飛ばし、途中のフロップは `out/ck` の一番新しい保存（最大 100 反復分の巻き戻り）から続ける。
+- 終わったら: `out/postflop-v3/<シナリオ>/*.g1.json` の `g1Pct`・`iterations` が `docs/QUALITY.md` の表の材料（全フロップの G1）。1 シナリオ 3 フロップの G2'（`measure_exploit --dealt`、§11-9）は別に測る（`docs/QUALITY.md` へ）。
+- 差し替え（`web/public/postflop`）: `node scripts/merge-postflop.mjs`・`npm run solutions:pack`・`npm run validate:data`・`npm run e2e`・`npm run e2e:subpath`。`pf.approx` の文言も差し替える（持ち主の確認が要る）。
+
+### 13-4. 見積もり（未実測）
+
+- 3-3-3 の測定（3 スレッド、他の作業と同居）は 8.79 秒 / 反復。G1 が 0.5% に届くまでの反復数は As7d2c で 1,400 弱（平均の長さが違うので 1,500〜2,500 と見ている）。1 フロップ 約 4〜6 時間（3 スレッド）。**コア数と反復数は、持ち主の PC での `--only-flop 0` で測ってから、全体の時間を決める。**
+- 全体は約 1,300 CPU 時間（§5）。PC のコア数を C とすると、壁時計は 1,300 ÷ C 時間（C = 8 で約 7 日、C = 16 で約 3.4 日）。

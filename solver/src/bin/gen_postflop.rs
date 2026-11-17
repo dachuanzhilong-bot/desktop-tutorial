@@ -18,6 +18,16 @@
 //! iterations (default 100) to `DIR/<scenario>-<flop>/` and resumes from there (REFACTOR_PLAN 3-3-3; bit for bit the
 //! same result), removed once the flop is written.
 //!
+//! Production with the all-card value looked at (REFACTOR_PLAN 3-3-7): `--g1-target 0.5` replaces the fixed `--iters` with
+//! "iterate, look at the all-card exploitability (G1, % of the pot, the whole tree under the average strategy, the
+//! river's average made on demand) every `--check-every 500` iterations, stop at the first value at most the target, give
+//! up at `--max-iters 5000`".  The strategy average restarts once, before iteration `--avg-restart 500` + 1 (the first look
+//! is at 1,000), so the river's `ssum` is kept (about 8 GB for an SRP flop, against 4.6 GB without it).  Each flop's
+//! `<n>.g1.json` (written before its `.bin`) holds the iterations, the values looked at and whether the target was met; a flop
+//! that is not met is written all the same and listed at the end (the exit code is 3), so that the hours are not lost.
+//! `index.json` names `--max-iters` as the scenario's `iterations`.  `--checkpoint` works as above (its tag does not name
+//! the iteration count).  Without `--g1-target` nothing of this exists: the output is what it was.
+//!
 //! Threads: `--threads N` solves N flops at a time; `--solve-threads M` walks one flop's turn card subtrees on M
 //! threads (REFACTOR_PLAN 3-3-2; default 1, the results are bit for bit the same for every M).  The two
 //! multiply: up to N x M busy threads, so keep N x M at most the number of cores (e.g. one big flop at a time:
@@ -25,7 +35,7 @@
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Mutex;
 use std::time::Instant;
-use tessera_solver::allcards::{run_iterations, Checkpoints, Plan};
+use tessera_solver::allcards::{run_iterations, run_until, Checkpoints, Looks, Plan};
 use tessera_solver::cards::{class_info, RANK_CHARS, NUM_CLASSES};
 use tessera_solver::postflop::*;
 use tessera_solver::solution_io;
@@ -275,6 +285,18 @@ fn main() {
     let checkpoint: String = arg(&args, "--checkpoint", String::new());
     let checkpoint_every: u32 = arg(&args, "--checkpoint-every", 100);
     assert!(all_cards || checkpoint.is_empty(), "--checkpoint needs --all-cards");
+    // --g1-target (see the top of the file): 0 = off
+    let g1_target: f32 = arg(&args, "--g1-target", 0.0);
+    let check_every: u32 = arg(&args, "--check-every", 500);
+    let max_iters: u32 = arg(&args, "--max-iters", 5000);
+    let avg_restart: u32 = arg(&args, "--avg-restart", 500);
+    assert!(g1_target == 0.0 || all_cards, "--g1-target needs --all-cards");
+    assert!(g1_target == 0.0 || (check_every > 0 && max_iters > avg_restart), "--max-iters must be more than --avg-restart (and --check-every more than 0)");
+    let g1_mode = g1_target > 0.0;
+    if g1_mode {
+        eprintln!("--g1-target {}%: looking every {} iterations from {} (the average restarts before iteration {}), at most {}; the river's average is kept (about 8 GB for an SRP flop)", g1_target, check_every, avg_restart + 1, avg_restart + 1, max_iters);
+    }
+    let g1_missed = Mutex::new(Vec::<String>::new());
     assert!(!all_cards || no_average_from >= 2, "--all-cards writes the flop and turn averages: --no-average-from must be at least 2");
     // threads inside one flop (see the top of the file: N x M threads with --threads N, keep it <= the cores)
     let solve_threads: usize = arg(&args, "--solve-threads", SolverOptions::default().threads).max(1);
@@ -328,7 +350,7 @@ fn main() {
         .collect();
     let write_index = || {
         let _guard = index_lock.lock().unwrap();
-        let idx = index_json(n_flops, &only, &ranges, iters, turn_cards, river_cards, &rake_field, &pre_of, &stats_on_disk(&out, &indexed));
+        let idx = index_json(n_flops, &only, &ranges, if g1_mode { max_iters } else { iters }, turn_cards, river_cards, &rake_field, &pre_of, &stats_on_disk(&out, &indexed));
         write_atomic(&format!("{}/index.json", out), idx.as_bytes());
     };
     if all_cards {
@@ -355,12 +377,30 @@ fn main() {
                 let cfg = Config { pot: sc.pot, stack: sc.stack, turn_cards, river_cards, flop_runouts, seed: 11 + fi as u64, rake_pct, rake_cap, ..Config::default() };
                 let t = Instant::now();
                 let tree = build_tree(&cfg, &board);
-                let mut solver = Solver::with_options(&tree, &ranges[si], SolverOptions { no_average_from, threads: solve_threads, ..Default::default() });
+                let opts = if g1_mode { SolverOptions { no_average_from: 3, avg_on_demand_from: 2, threads: solve_threads, ..Default::default() } } else { SolverOptions { no_average_from, threads: solve_threads, ..Default::default() } };
+                let mut solver = Solver::with_options(&tree, &ranges[si], opts);
                 let t_build = t.elapsed().as_secs_f32();
                 let n_dec = tree.nodes.iter().filter(|n| matches!(n.kind, PKind::Decision { .. })).count();
                 eprintln!("{} flop {:2} {:<9} built: {} nodes ({} decisions), {:.2} GB regret+ssum, {:.1}s, peak RSS {}", sc.id, fi, FLOPS[fi], tree.nodes.len(), n_dec, solver.strategy_bytes() as f64 / 1e9, t_build, peak_rss());
                 let mut ck = None;
-                if all_cards {
+                let mut until = None;
+                if all_cards && g1_mode {
+                    // looking at G1 every `check_every` iterations; the checkpoint's tag does not name the iteration count
+                    if !checkpoint.is_empty() {
+                        ck = Some(Checkpoints::new(format!("{}/{}-{}", checkpoint, sc.id, fi), format!("gen_postflop g1 reset_at={}", avg_restart)).expect("checkpoint directory"));
+                    }
+                    let mut log = |m: &str| eprintln!("{} flop {:2} {:<9} {}", sc.id, fi, FLOPS[fi], m);
+                    let pot = sc.pot;
+                    let mut g1 = |s: &mut Solver| -> f32 {
+                        s.finalize_avg();
+                        100.0 * s.exploitability() / pot
+                    };
+                    let info = run_until(&mut solver, &Looks { reset_at: avg_restart, check_every, max_iters, target: g1_target }, ck.as_ref(), if checkpoint.is_empty() { 0 } else { checkpoint_every }, &mut g1, &mut log).expect("checkpoint IO");
+                    if info.resumed_from > 0 {
+                        eprintln!("{} flop {:2} {:<9} resumed from iteration {}", sc.id, fi, FLOPS[fi], info.resumed_from);
+                    }
+                    until = Some(info);
+                } else if all_cards {
                     // the same iterations (and restart of the average) as the loop below, resumable
                     let plan = Plan::new(iters, avg_from, if checkpoint.is_empty() { 0 } else { checkpoint_every });
                     if !checkpoint.is_empty() {
@@ -379,8 +419,9 @@ fn main() {
                         solver.iterate();
                     }
                 }
-                let t_iter = (t.elapsed().as_secs_f32() - t_build) / iters.max(1) as f32;
-                eprintln!("{} flop {:2} {:<9} {} iterations: {:.2} s/iteration, peak RSS {}", sc.id, fi, FLOPS[fi], iters, t_iter, peak_rss());
+                let done_iters = if g1_mode { solver.iters } else { iters };
+                let t_iter = (t.elapsed().as_secs_f32() - t_build) / done_iters.max(1) as f32;
+                eprintln!("{} flop {:2} {:<9} {} iterations: {:.2} s/iteration, peak RSS {}", sc.id, fi, FLOPS[fi], done_iters, t_iter, peak_rss());
                 solver.finalize_avg();
                 let expl = solver.exploitability();
                 let ev = solver.evaluate();
@@ -390,6 +431,22 @@ fn main() {
                 let bytes = if all_cards {
                     let starts = solver.river_starts().expect("the flop and turn averages");
                     let bytes = export_v3(&tree, &ev, &starts, min_reach);
+                    if let Some(info) = &until {
+                        // G1 of the strategy that is written (`expl` above: the river's average, on demand), and how it was got
+                        let g1 = 100.0 * expl / sc.pot;
+                        let reached = g1 <= g1_target;
+                        let hist: Vec<String> = info.history.iter().map(|(i, v)| format!("[{},{:.4}]", i, v)).collect();
+                        let js = format!(
+                            "{{\"target\":{},\"iterations\":{},\"g1Pct\":{:.4},\"reached\":{},\"avgRestart\":{},\"checkEvery\":{},\"resumedFrom\":{},\"secsPerIteration\":{:.2},\"looks\":[{}]}}",
+                            g1_target, solver.iters, g1, reached, avg_restart, check_every, info.resumed_from, info.secs_per_iter, hist.join(",")
+                        );
+                        write_atomic(&format!("{}/{}.g1.json", dir, fi), js.as_bytes());
+                        if !reached {
+                            let m = format!("{} flop {} ({}): G1 {:.4}% after {} iterations, target {}%", sc.id, fi, FLOPS[fi], g1, solver.iters, g1_target);
+                            eprintln!("{} flop {:2} {:<9} G1 TARGET NOT REACHED: {}", sc.id, fi, FLOPS[fi], m);
+                            g1_missed.lock().unwrap().push(m);
+                        }
+                    }
                     // the file first, then its stats: a flop counts as written once both are there
                     write_atomic(&format!("{}/{}.bin", dir, fi), &bytes);
                     write_atomic(&format!("{}/{}.stats.json", dir, fi), stats.as_bytes());
@@ -417,6 +474,14 @@ fn main() {
         std::fs::write(format!("{}/index.json", out), idx).unwrap();
     }
     eprintln!("done in {:.0}s", t0.elapsed().as_secs_f32());
+    let missed = g1_missed.lock().unwrap();
+    if !missed.is_empty() {
+        eprintln!("G1 target not reached by {} flop(s) (written all the same; REFACTOR_PLAN 3-3-7: stop and report):", missed.len());
+        for m in missed.iter() {
+            eprintln!("  {}", m);
+        }
+        std::process::exit(3);
+    }
     let _ = (class_info as fn(usize) -> _, RANK_CHARS, NUM_CLASSES);
 }
 
