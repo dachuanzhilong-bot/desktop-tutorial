@@ -643,6 +643,8 @@ As7d2c・`srp-btn-bb`・`--all-cards --river-cards 2 --iters 20 --threads 1 --ch
 
 ### 13-3. 実行
 
+**スクリプト（推奨）**: `bash solver/scripts/pc-run.sh measure`（As7d2c の 1 フロップ）で秒/反復・反復数・G1 の推移を測り、値を見てから `bash solver/scripts/pc-run.sh all`（3 シナリオ × 21 フロップ）。ビルド・プリフロップ解の展開・実行・`out/pc-report.txt`（機械の情報・秒/反復・G1 の推移）の書き出しまで行い、同じコマンドを再実行すると続きから回す。環境変数（`SOLVE_THREADS` など）はスクリプトの先頭を見る。小さな木での動作確認（`measure` と `all`。目標に届かないフロップ＝終了コード 3 を越えて先へ進む）は済み。以下は、スクリプトがやることを手で行う場合。
+
 ```bash
 git clone https://github.com/dachuanzhilong-bot/desktop-tutorial && cd desktop-tutorial/solver
 cargo build --release --bin gen_postflop
