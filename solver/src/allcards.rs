@@ -605,6 +605,101 @@ pub fn run_iterations(s: &mut Solver, plan: &Plan, ck: Option<&Checkpoints>, sto
     Ok(info)
 }
 
+/// When `run_until` looks and gives up.
+#[derive(Clone, Copy, Debug)]
+pub struct Looks {
+    /// the strategy average restarts before iteration `reset_at + 1`
+    pub reset_at: u32,
+    /// look every this many iterations (once past `reset_at`)
+    pub check_every: u32,
+    /// give up at this many iterations
+    pub max_iters: u32,
+    /// stop at the first value at most this
+    pub target: f32,
+}
+
+/// How a `run_until` call went.
+#[derive(Clone, Debug, Default)]
+pub struct UntilInfo {
+    /// the iteration the run started from (0, or the checkpoint it resumed)
+    pub resumed_from: u32,
+    /// the iteration count and the value (`measure`'s unit) at each evaluation of this call, in order
+    pub history: Vec<(u32, f32)>,
+    /// the last value was at most `target`
+    pub reached: bool,
+    /// seconds per iteration of the iterations run by this call (evaluations and saves not counted)
+    pub secs_per_iter: f32,
+}
+
+/// Iterate `s` until `measure` (the all-card exploitability, say) is at most `target`, looking every `check_every`
+/// iterations once the average has started (`reset_at`: the strategy average restarts before iteration `reset_at + 1`,
+/// so the first look is at the first multiple of `check_every` after it), and give up at `max_iters`
+/// (REFACTOR_PLAN 3-3-7: every 500 iterations, at most 5,000).  Saving to `ck` every `every` iterations (0 = none) and
+/// before each evaluation, and resuming from its newest checkpoint, as `run_iterations`; the arithmetic is the same
+/// as an uninterrupted run (`measure` must not change the solver's training state: `finalize_avg` and the
+/// exploitability do not), so the strategy at iteration `n` does not depend on when it was looked at or interrupted.
+/// A checkpoint's tag must not name the iteration count (the count is open-ended here).
+pub fn run_until(s: &mut Solver, looks: &Looks, ck: Option<&Checkpoints>, every: u32, measure: &mut dyn FnMut(&mut Solver) -> f32, log: &mut dyn FnMut(&str)) -> std::io::Result<UntilInfo> {
+    let Looks { reset_at, check_every, max_iters, target } = *looks;
+    assert!(check_every > 0 && max_iters > 0);
+    let mut info = UntilInfo::default();
+    if let Some(ck) = ck {
+        info.resumed_from = ck.load_latest(s, log).unwrap_or(0);
+    }
+    let t0 = Instant::now();
+    let (mut ran, mut t_other) = (0u32, 0f32);
+    let mut last_log = Instant::now();
+    let mut measured_at = 0u32;
+    loop {
+        if s.iters > reset_at && s.iters.is_multiple_of(check_every) && measured_at != s.iters {
+            measured_at = s.iters;
+            let t = Instant::now();
+            let v = measure(s);
+            t_other += t.elapsed().as_secs_f32();
+            info.history.push((s.iters, v));
+            log(&format!("iteration {}: value {:.4} (target {:.4})", s.iters, v, target));
+            if v <= target {
+                info.reached = true;
+                break;
+            }
+        }
+        if s.iters >= max_iters {
+            break;
+        }
+        let stop = (s.iters / check_every + 1).saturating_mul(check_every).min(max_iters);
+        while s.iters < stop {
+            if s.iters == reset_at {
+                s.reset_average();
+            }
+            s.iterate();
+            ran += 1;
+            if let Some(ck) = ck {
+                if every > 0 && s.iters.is_multiple_of(every) && s.iters < stop {
+                    let si = ck.save(s)?;
+                    t_other += si.secs;
+                    log(&format!("iteration {}: checkpoint {:.2} GB in {:.1} s", si.iters, si.bytes as f64 / 1e9, si.secs));
+                }
+            }
+            if last_log.elapsed().as_secs() >= 60 {
+                last_log = Instant::now();
+                log(&format!("iteration {} / {}: {:.2} s/iteration, peak RSS {}", s.iters, max_iters, (t0.elapsed().as_secs_f32() - t_other) / ran as f32, fmt_gb(peak_rss_bytes())));
+            }
+        }
+        if let Some(ck) = ck {
+            // before the evaluation: a crash in it (it takes about a minute and a lot of memory) does not cost the iterations
+            if ck.generations().last().map(|g| g.0) != Some(s.iters) {
+                let si = ck.save(s)?;
+                t_other += si.secs;
+                log(&format!("iteration {}: checkpoint {:.2} GB in {:.1} s", si.iters, si.bytes as f64 / 1e9, si.secs));
+            }
+        }
+    }
+    if ran > 0 {
+        info.secs_per_iter = (t0.elapsed().as_secs_f32() - t_other) / ran as f32;
+    }
+    Ok(info)
+}
+
 // ------------------------------------------------------------------ values
 
 /// Exploitability (chips, the sum of both best-response gains) of a solved all-card tree.
@@ -2222,5 +2317,50 @@ mod tests {
         let starts = upstream_river_starts(&tree, &ranges, &up).unwrap();
         let wrong = resolve_rivers_alone(&tree, &ranges, &up, &plan, &|rs| [rs.ranges[0].clone(), starts[(rs.node as usize * 7) % starts.len()].ranges[1].clone()], &mut |_| {}).unwrap();
         assert!((wrong.full - exact.full).abs() > 10.0 * tol, "{:?} vs {:?}", wrong, exact);
+    }
+
+    /// `run_until` (REFACTOR_PLAN 3-3-7): the looks do not change the iterations; it stops at the first value within the target
+    /// or at the cap; a run cut at one look and continued from the checkpoint ends where an uninterrupted one does
+    #[test]
+    fn run_until_looks_every_so_often_and_stops_at_the_target_or_the_cap() {
+        let tree = small_flop();
+        let ranges = mixed_ranges(3);
+        let mut value = |s: &mut Solver| -> f32 {
+            s.finalize_avg();
+            s.exploitability()
+        };
+        let strategy = |s: &mut Solver| -> Vec<u32> {
+            s.finalize_avg();
+            bits(&upstream_of(s).into_iter().map(|x| x.1).collect::<Vec<_>>())
+        };
+        // the reference: 60 iterations, the average restarted before iteration 21
+        let mut reference = Solver::with_options(&tree, &ranges, on_demand(1));
+        run_iterations(&mut reference, &Plan { iters: 60, reset_at: Some(20), every: 0 }, None, None, &mut |_| {}).unwrap();
+        let want = strategy(&mut reference);
+        // a target that is never met: to the cap, looking at 40 and 60 (not at 20: the average has just restarted)
+        let mut s = Solver::with_options(&tree, &ranges, on_demand(1));
+        let info = run_until(&mut s, &Looks { reset_at: 20, check_every: 20, max_iters: 60, target: 0.0 }, None, 0, &mut value, &mut |_| {}).unwrap();
+        assert!(!info.reached);
+        assert_eq!(s.iters, 60);
+        assert_eq!(info.history.iter().map(|h| h.0).collect::<Vec<_>>(), vec![40, 60]);
+        assert_eq!(strategy(&mut s), want, "the looks leave the iterations as they were");
+        // a target met at the first look
+        let mut u = Solver::with_options(&tree, &ranges, on_demand(1));
+        let info = run_until(&mut u, &Looks { reset_at: 20, check_every: 20, max_iters: 60, target: 1e9 }, None, 0, &mut value, &mut |_| {}).unwrap();
+        assert!(info.reached);
+        assert_eq!((u.iters, info.history.len()), (40, 1));
+        // cut at 40 (checkpoint saved before the look), continued to 60 from the checkpoint
+        let dir = tmp_dir("run-until");
+        let tag = "run-until reset_at=20";
+        let mut a = Solver::with_options(&tree, &ranges, on_demand(1));
+        let ck = Checkpoints::new(&dir, tag).unwrap();
+        let first = run_until(&mut a, &Looks { reset_at: 20, check_every: 20, max_iters: 40, target: 0.0 }, Some(&ck), 10, &mut value, &mut |_| {}).unwrap();
+        assert_eq!((first.resumed_from, a.iters), (0, 40));
+        let mut b = Solver::with_options(&tree, &ranges, on_demand(1));
+        let second = run_until(&mut b, &Looks { reset_at: 20, check_every: 20, max_iters: 60, target: 0.0 }, Some(&ck), 10, &mut value, &mut |_| {}).unwrap();
+        assert_eq!(second.resumed_from, 40);
+        assert_eq!(b.iters, 60);
+        assert_eq!(strategy(&mut b), want, "a run continued from a checkpoint ends where an uninterrupted one does");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
