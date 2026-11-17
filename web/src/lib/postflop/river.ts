@@ -31,9 +31,10 @@ export const RIVER_ITERATIONS = 1000;
 
 /**
  * Version of the step "ranges read from the file -> the ranges the river is solved from" (`riverSolveInput`). It is the
- * identity today. 3-3-3 found that re-solving from the reach ranges alone lets lines played with ~1e-5 frequency be
- * exploited; a fix (e.g. mixing in a thin full range) goes into `riverSolveInput` with a new version here, which is
- * part of the cache key.
+ * identity, and stays so: 3-3-3 found that re-solving from the reach ranges alone lets lines played with ~1e-5
+ * frequency be exploited (26.6% of the pot over all lines), but within the lines the app deals (G2', docs/14 §11-9) the
+ * plain re-solve is at 0.5687%, so no tremble and no mixed-in thin range are needed. Should a pre-processing be added
+ * to `riverSolveInput`, raise this version: it is part of the cache key.
  */
 export const RIVER_INPUT_VERSION = 1;
 
