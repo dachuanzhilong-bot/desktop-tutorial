@@ -663,6 +663,8 @@ tail -f out/gen-srp-btn-bb.log      # 「iteration n: value g (target 0.5)」が
 - 終わったら: `out/postflop-v3/<シナリオ>/*.g1.json` の `g1Pct`・`iterations` が `docs/QUALITY.md` の表の材料（全フロップの G1）。1 シナリオ 3 フロップの G2'（`measure_exploit --dealt`、§11-9）は別に測る（`docs/QUALITY.md` へ）。
 - 差し替え（`web/public/postflop`）: `node scripts/merge-postflop.mjs`・`npm run solutions:pack`・`npm run validate:data`・`npm run e2e`・`npm run e2e:subpath`。`pf.approx` の文言も差し替える（持ち主の確認が要る）。
 
+**結果を送る**（`pc-run.sh all` が「全シナリオが済みました」と出てから）: `git pull` のあと `bash solver/scripts/pc-publish.sh`。フロップが 63 個そろっているか確かめ、`g1-summary.tsv`（フロップごとの反復数・G1・目標を満たしたか・秒/反復）を作り、`.bin` を gzip して `data-import/postflop-v3/` に集め、ブランチ `data/3-3-7-postflop-v3` に送る（GitHub のログインが要る。初回の手順はスクリプトの先頭）。クラウド側がそれを受けて、`web/public/postflop` への差し替え（`merge-postflop`・`solutions:pack`・`validate:data`・`e2e`）と、`docs/QUALITY.md` の表を行う。`data-import/` は受け取り用で、差し替えのあとに消す。ダミーのデータとローカルのリモートで、そろっていないときの停止・`FORCE=1`・表・gzip・送信を確かめた。
+
 ### 13-4. 測定結果（2026-11-17、As7d2c・`srp-btn-bb`・`--g1-target 0.5`）
 
 | 機械 | スレッド | 秒/反復 | 最大 RSS | G1（1,000 反復目 → 1,500 反復目） |
