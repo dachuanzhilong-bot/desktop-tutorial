@@ -39,6 +39,7 @@ RUSTFLAGS="-C target-cpu=native" cargo run --release --bin gen_preflop -- --out 
 RUSTFLAGS="-C target-cpu=native" cargo run --release --bin gen_postflop -- --out out/postflop \
     --scenario srp-btn-bb,3bp-btn-bb,srp-co-bb --flops 21 --iters 1400 --avg-from 0.5                         # ポストフロップ解(約1.5時間, 4スレッド。`--from-flop` と `scripts/merge-postflop.mjs` で追加分だけ計算して結合もできる)
 cd ../web && npm run solutions:pack  # public/solutions と public/postflop にgzipで梱包
+# ポストフロップの .bin.gz は git に無い（GitHub の Release に置く）。npm test / build の前に自動で取ってくる（npm run data:fetch）
 
 # クラウド同期（任意）: Supabaseのプロジェクトを作り、supabase/schema.sql をSQLエディタで実行、Email認証を有効にして
 cp web/.env.example web/.env.local   # URLと anon キーを書き、再ビルド。詳細は docs/10

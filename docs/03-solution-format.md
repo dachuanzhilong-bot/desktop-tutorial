@@ -133,7 +133,7 @@ node × nNodes (DFS順):
 
 ## ポストフロップ: `TSP1` v3（リバーは端末で解く。REFACTOR_PLAN 3-3-5）
 
-3-3 の B 案（[14](14-postflop-all-cards.md)）のための形式。全ターン 49 枚 × 全リバー 48 枚で解いた解のうち、**フロップ・ターンの決定ノードだけ**を書き、リバーのノードは書かない。代わりに、各ラインの「リバー開始点」（ターンが終わってリバーのカードを配るチャンスノード）に**両者の到達レンジ**を書く。利用者がリバーのカードを選ぶと、端末はそのカードを含むコンボを 0 にしたレンジでリバー単独の木を WASM で解く（3-3-6）。出荷データ（`web/public/postflop`）は、3-3-7 で `gen_postflop --all-cards` が書いた v3（63 フロップ、gzip で計 113MB）に差し替えた。v2 は読めるまま（Solve 画面の保存データ・テストの固定ファイル）。
+3-3 の B 案（[14](14-postflop-all-cards.md)）のための形式。全ターン 49 枚 × 全リバー 48 枚で解いた解のうち、**フロップ・ターンの決定ノードだけ**を書き、リバーのノードは書かない。代わりに、各ラインの「リバー開始点」（ターンが終わってリバーのカードを配るチャンスノード）に**両者の到達レンジ**を書く。利用者がリバーのカードを選ぶと、端末はそのカードを含むコンボを 0 にしたレンジでリバー単独の木を WASM で解く（3-3-6）。出荷データ（`web/public/postflop`）は、3-3-7 で `gen_postflop --all-cards` が書いた v3（63 フロップ、gzip で計 113MB）に差し替えた。**`.bin.gz` は git に入れず、GitHub の Release に置く**（REFACTOR_PLAN 4-5）。`web/data.lock.json` が Release と tar の SHA-256 を名指しし、`npm run data:fetch`（`test`・`validate:data`・`build` の前に自動）が取ってきて、各ファイルを `index.json` の `build` と照らす。`index.json` は git に入れる。v2 は読めるまま（Solve 画面の保存データ・テストの固定ファイル）。
 
 ```
 "TSP1" | u8 version=3 | u8 nBoard(3) | u8 board[nBoard] | f32 pot | f32 stack | u16 nNodes      ← v2 と同じ

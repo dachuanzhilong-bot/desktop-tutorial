@@ -304,6 +304,7 @@
 - PC の送り先（`pc-publish.sh`）も、ブランチではなく Release にする（`gh release create`）。
 - 完了条件: CI（`npm test`・`e2e`・`e2e:subpath`）と Pages のデプロイが、取ってきたデータで通る。PR #46 のマージで、main の履歴に `.bin.gz` が増えない。
 - 止まる条件: Pages のデプロイでデータを取ってこられない。
+- **進み具合（2026-11-21）**: `data-release.yml` で Release `data-postflop-v3-20261121`（`postflop.tar` 113 MB、SHA-256 `6fd4ed14…`。手元で同じ手順で作った tar と一致）を作った。`web/data.lock.json`・`web/scripts/fetch-data.mjs` と、PR #46 から `.bin.gz` を外す変更を、PR #46 に入れた（取ってくるのに約 5 秒）。PC の送り先を Release にするのは、次の量産の道具（4-1 の `pc.sh`）で行う。
 
 ### ステップ 4-1: 交互更新
 
