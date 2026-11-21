@@ -706,9 +706,20 @@ pub struct Solver<'a> {
     river_subtree_walk: bool,
     /// the showdowns of an all-in with many run-outs, computed on the threads (REFACTOR_PLAN 4-3); kept between walks
     allin_buf: std::sync::Mutex<Vec<f32>>,
+    /// `capture_river_inputs`: the reaches the river subtrees are entered with in a training walk, recorded
+    river_capture: Option<std::sync::Mutex<Vec<RiverInput>>>,
     /// tests: an alternating walk computes the other player's values too (they are not used; see `Shared::train_only`)
     #[cfg(test)]
     alt_full_values: bool,
+}
+
+/// A river subtree as a training walk entered it (`Solver::capture_river_inputs`; the GPU prototype of
+/// REFACTOR_PLAN 4-6, `gpu_bench`): its root, the player the walk updates (`None`: both), the 1,326 wide reaches.
+#[doc(hidden)]
+pub struct RiverInput {
+    pub root: u32,
+    pub train_only: Option<usize>,
+    pub reach: [Vec<f32>; 2],
 }
 
 /// `sigma` (`na * NC`) from the regrets of a support (`na * k`): regret matching on the support,
@@ -872,9 +883,25 @@ impl<'a> Solver<'a> {
             river_plans,
             river_subtree_walk: true,
             allin_buf: std::sync::Mutex::new(Vec::new()),
+            river_capture: None,
             #[cfg(test)]
             alt_full_values: false,
         }
+    }
+
+    /// One training iteration (`iterate`) that records the reaches every river subtree is entered with (in no
+    /// particular order).  For the GPU prototype (REFACTOR_PLAN 4-6, `gpu_bench`); the iteration is the same.
+    #[doc(hidden)]
+    pub fn capture_river_inputs(&mut self) -> Vec<RiverInput> {
+        self.river_capture = Some(std::sync::Mutex::new(Vec::new()));
+        self.iterate();
+        self.river_capture.take().map(|m| m.into_inner().expect("capture")).unwrap_or_default()
+    }
+
+    /// What `gpu_bench` needs to train the river subtrees by themselves (REFACTOR_PLAN 4-6).
+    #[doc(hidden)]
+    pub(crate) fn river_parts(&self) -> Option<(Arc<RiverPlans>, &[bool], &[u32])> {
+        self.river_plans.clone().map(|p| (p, &self.has_avg[..], &self.subtree_end[..]))
     }
 
     /// how the next iterations update (`SolverOptions::update`); e.g. a re-solve of the river on the device's terms
@@ -930,6 +957,7 @@ impl<'a> Solver<'a> {
             dcfr: self.dcfr,
             river_plans: if self.river_subtree_walk { self.river_plans.as_deref() } else { None },
             allin_buf: &self.allin_buf,
+            river_capture: self.river_capture.as_ref(),
         };
         let mut sub = SubScratch::default();
         let mut part = Part { sh: &sh, base: 0, regret: &mut self.regret, ssum: &mut self.ssum, ev, extra: &mut self.extra, fork: threads > 1, sub: &mut sub };
@@ -1257,6 +1285,8 @@ struct Shared<'w> {
     river_plans: Option<&'w RiverPlans>,
     /// `Solver::allin_buf`
     allin_buf: &'w std::sync::Mutex<Vec<f32>>,
+    /// `Solver::river_capture`
+    river_capture: Option<&'w std::sync::Mutex<Vec<RiverInput>>>,
 }
 
 /// What a walk writes, for the nodes `base..base + regret.len()`: the whole tree, or one subtree that a thread
@@ -1398,6 +1428,9 @@ impl<'w> Part<'w> {
         let sh = self.sh;
         let (Mode::Train(t), Some(plans)) = (mode, sh.river_plans) else { unreachable!("a training walk with river plans") };
         let ctx = SubTrain { tree: sh.tree, plans, has_avg: sh.has_avg, t, train_only: sh.train_only, dcfr: sh.dcfr };
+        if let Some(c) = sh.river_capture {
+            c.lock().expect("capture").push(RiverInput { root: ni as u32, train_only: sh.train_only, reach: [r0.to_vec(), r1.to_vec()] });
+        }
         river::train_subtree(&ctx, ni, sh.subtree_end[ni] as usize, self.base, self.regret, self.ssum, [r0, r1], self.sub, out, w);
     }
 

@@ -9,6 +9,10 @@ publish = false
 # No external crates on purpose: see docs/04-solver-selection.md
 [dependencies]
 
+[features]
+# REFACTOR_PLAN 4-6: the GPU (CUDA) parts, built by build.rs with nvcc.  Off by default (CI, WASM).
+cuda = []
+
 [lib]
 name = "tessera_solver"
 path = "src/lib.rs"

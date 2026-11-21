@@ -27,11 +27,11 @@ use std::collections::HashMap;
 /// The combos of one showdown table that are in either support, in `Strength::order` (ascending strength).
 pub(crate) struct Showdown {
     /// the two cards of each entry
-    cards: Vec<(u8, u8)>,
+    pub(crate) cards: Vec<(u8, u8)>,
     /// per player: the entry's index in that player's support (`k`, the zero slot, if it is not in it)
-    idx: [Vec<u32>; 2],
+    pub(crate) idx: [Vec<u32>; 2],
     /// start of every group of equal strength, and the number of entries at the end
-    starts: Vec<u32>,
+    pub(crate) starts: Vec<u32>,
 }
 
 impl Showdown {
@@ -327,11 +327,11 @@ fn showdown(sd: &Showdown, p: usize, ro: &[f32], pot_total: f32, inv: f32, rv: &
 
 /// The supports of the two players on one 5 card board of a tree, and the board's showdown table cut to them.
 pub(crate) struct BoardPlan {
-    k: [usize; 2],
-    sup: [Vec<u16>; 2],
-    cards: [Vec<(u8, u8)>; 2],
-    cross: [Vec<u32>; 2],
-    showdown: Option<Showdown>,
+    pub(crate) k: [usize; 2],
+    pub(crate) sup: [Vec<u16>; 2],
+    pub(crate) cards: [Vec<(u8, u8)>; 2],
+    pub(crate) cross: [Vec<u32>; 2],
+    pub(crate) showdown: Option<Showdown>,
 }
 
 impl BoardPlan {
@@ -374,7 +374,7 @@ impl BoardPlan {
 pub(crate) struct RiverPlans {
     /// per node: the index in `plans` of a river subtree's root (the child of a river chance node), `u32::MAX` otherwise
     pub(crate) plan_of: Vec<u32>,
-    plans: Vec<BoardPlan>,
+    pub(crate) plans: Vec<BoardPlan>,
 }
 
 impl RiverPlans {
