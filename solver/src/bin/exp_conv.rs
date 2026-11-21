@@ -72,7 +72,7 @@ fn main() {
         x => panic!("variant {}", x),
     };
     let per_iter = if alternating { 2 } else { 1 };
-    eprintln!("{} {} sizes {} nodes {} variant {} reset {} threads {}", "srp-btn-bb", board_s, sizes, tree.nodes.len(), variant, reset, threads);
+    eprintln!("srp-btn-bb {} sizes {} nodes {} variant {} reset {} threads {}", board_s, sizes, tree.nodes.len(), variant, reset, threads);
     let t0 = Instant::now();
     let mut done = 0u32;
     let mut train_secs = 0f64;
