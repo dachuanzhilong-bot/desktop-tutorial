@@ -1,0 +1,17 @@
+# PC で流す仕事（bash solver/scripts/pc.sh が上から順に流す）。1 行 = 名前<TAB>コマンド。
+# コマンドは solver/ で実行し、$THREADS（スレッド数）・$OUT（出力先、既定 out）・$PRE（プリフロップ解）が使える。
+# 結果は $OUT/q/<名前>/ に書くと、小さな JSON が pc-results/ に集められて送られる。済んだ仕事は飛ばす（$OUT/pc-done/<名前>）。
+#
+# REFACTOR_PLAN 4-3 の材料（1 本 1〜2 分）: As7d2c・49×48 を 30 反復だけ、スレッド数と同時に解くフロップ数を変えて、秒/反復を比べる。
+# 49 枚のターンを 24 スレッドで分けると 3 巡目が 1 枚だけになる（17 スレッドでも同じ 3 巡）。2 フロップ × 12 スレッドなら 1 巡あたりの無駄が減る。
+4-3-solve-threads-24	./target/release/gen_postflop --all-cards --iters 30 --pre "$PRE" --out "$OUT/q/4-3-t24" --scenario srp-btn-bb --only-flop 0 --threads 1 --solve-threads 24
+4-3-solve-threads-17	./target/release/gen_postflop --all-cards --iters 30 --pre "$PRE" --out "$OUT/q/4-3-t17" --scenario srp-btn-bb --only-flop 0 --threads 1 --solve-threads 17
+4-3-solve-threads-12	./target/release/gen_postflop --all-cards --iters 30 --pre "$PRE" --out "$OUT/q/4-3-t12" --scenario srp-btn-bb --only-flop 0 --threads 1 --solve-threads 12
+4-3-two-flops-12	./target/release/gen_postflop --all-cards --iters 30 --pre "$PRE" --out "$OUT/q/4-3-two" --scenario srp-btn-bb --flops 2 --threads 2 --solve-threads 12
+4-3-general-walk-24	./target/release/gen_postflop --all-cards --iters 30 --general-walk --pre "$PRE" --out "$OUT/q/4-3-general" --scenario srp-btn-bb --only-flop 0 --threads 1 --solve-threads 24
+#
+# REFACTOR_PLAN 4-1: As7d2c・srp-btn-bb・全ターン 49 × 全リバー 48 を、交互更新の 2 方式と今の方式で G1 0.3% まで解く。
+# .g1.json の looks に、見た反復数と G1 の列が残る（0.5% に届いた所も分かる）。交互更新の 1 反復は 2 走査。
+4-1-alt-dcfr	./target/release/gen_postflop --all-cards --g1-target 0.3 --update alt-dcfr --check-every 125 --max-iters 1500 --pre "$PRE" --out "$OUT/q/4-1-alt-dcfr" --scenario srp-btn-bb --only-flop 0 --threads 1 --solve-threads "$THREADS" --checkpoint "$OUT/q-ck/4-1-alt-dcfr" --checkpoint-every 50
+4-1-alt-cfr+	./target/release/gen_postflop --all-cards --g1-target 0.3 --update alt-cfr+ --avg-restart 250 --check-every 125 --max-iters 1500 --pre "$PRE" --out "$OUT/q/4-1-alt-cfr+" --scenario srp-btn-bb --only-flop 0 --threads 1 --solve-threads "$THREADS" --checkpoint "$OUT/q-ck/4-1-alt-cfr+" --checkpoint-every 50
+4-1-sim-cfr+	./target/release/gen_postflop --all-cards --g1-target 0.3 --check-every 250 --max-iters 4000 --pre "$PRE" --out "$OUT/q/4-1-sim-cfr+" --scenario srp-btn-bb --only-flop 0 --threads 1 --solve-threads "$THREADS" --checkpoint "$OUT/q-ck/4-1-sim-cfr+" --checkpoint-every 100

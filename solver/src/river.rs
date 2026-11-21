@@ -21,16 +21,42 @@
 //! the same layout (`na * k` over the node's support), so everything else (`finalize_avg`, `exploitability`,
 //! `evaluate`, checkpoints) is unchanged and still uses the general walk.
 use crate::engine::regret_match;
-use crate::postflop::{blocked, ct, mask_of, PKind, Tree, NC};
+use crate::postflop::{blocked, ct, mask_of, PKind, Strength, Tree, NC};
+use std::collections::HashMap;
 
 /// The combos of one showdown table that are in either support, in `Strength::order` (ascending strength).
-struct Showdown {
+pub(crate) struct Showdown {
     /// the two cards of each entry
     cards: Vec<(u8, u8)>,
     /// per player: the entry's index in that player's support (`k`, the zero slot, if it is not in it)
     idx: [Vec<u32>; 2],
     /// start of every group of equal strength, and the number of entries at the end
     starts: Vec<u32>,
+}
+
+impl Showdown {
+    /// The entries of `st` that are in either support (`pos[p][combo]`: the index in p's support, `k[p]` if not in it).
+    fn cut(st: &Strength, pos: &[Vec<u32>; 2], k: [usize; 2]) -> Showdown {
+        let cards = &ct().cards;
+        let mut sd = Showdown { cards: Vec::new(), idx: [Vec::new(), Vec::new()], starts: Vec::new() };
+        for g in 0..st.starts.len() - 1 {
+            let first = sd.cards.len();
+            for &h in &st.order[st.starts[g] as usize..st.starts[g + 1] as usize] {
+                let (i0, i1) = (pos[0][h as usize], pos[1][h as usize]);
+                if i0 as usize == k[0] && i1 as usize == k[1] {
+                    continue;
+                }
+                sd.cards.push(cards[h as usize]);
+                sd.idx[0].push(i0);
+                sd.idx[1].push(i1);
+            }
+            if sd.cards.len() > first {
+                sd.starts.push(first as u32);
+            }
+        }
+        sd.starts.push(sd.cards.len() as u32);
+        sd
+    }
 }
 
 pub(crate) struct RiverWalk {
@@ -109,25 +135,7 @@ impl RiverWalk {
                 PKind::Showdown { table } => {
                     let t = *table as usize;
                     if showdowns[t].is_none() {
-                        let st = &tree.tables[t];
-                        let mut sd = Showdown { cards: Vec::new(), idx: [Vec::new(), Vec::new()], starts: Vec::new() };
-                        for g in 0..st.starts.len() - 1 {
-                            let first = sd.cards.len();
-                            for &h in &st.order[st.starts[g] as usize..st.starts[g + 1] as usize] {
-                                let (i0, i1) = (pos[0][h as usize], pos[1][h as usize]);
-                                if i0 as usize == k[0] && i1 as usize == k[1] {
-                                    continue;
-                                }
-                                sd.cards.push(cards[h as usize]);
-                                sd.idx[0].push(i0);
-                                sd.idx[1].push(i1);
-                            }
-                            if sd.cards.len() > first {
-                                sd.starts.push(first as u32);
-                            }
-                        }
-                        sd.starts.push(sd.cards.len() as u32);
-                        showdowns[t] = Some(sd);
+                        showdowns[t] = Some(Showdown::cut(&tree.tables[t], &pos, k));
                     }
                 }
                 _ => {}
@@ -302,6 +310,316 @@ fn showdown(sd: &Showdown, p: usize, ro: &[f32], pot_total: f32, inv: f32, rv: &
             cum_card[b as usize] += r;
             gc[a as usize] = 0.0;
             gc[b as usize] = 0.0;
+        }
+    }
+}
+
+// ------------------------------------------------------------------ river subtrees of a bigger tree (REFACTOR_PLAN 4-2)
+//
+// A tree with chance nodes (a flop or turn tree) has a river subtree under every river card: a 5 card board, decisions,
+// folds and showdowns, as a river tree.  More than 99% of the nodes of a 49 x 48 flop tree are in those subtrees, and
+// the general walk trains them over 1,326 wide vectors.  `train_subtree` trains one of them over the supports, with the
+// same arithmetic in the same order as the general walk (as `RiverWalk` does for a river tree), so the regrets and
+// strategy sums stay bit for bit the same.  Its reaches come from above (the general walk's, at the river card), and
+// it returns the values the general walk would return at the subtree's root on the supports, and 0 elsewhere: a value
+// of a combo outside a player's support at the river board is either 0 in the general walk too (the combo is on the
+// board) or of a combo outside the player's range, which no regret or strategy sum ever reads.
+
+/// The supports of the two players on one 5 card board of a tree, and the board's showdown table cut to them.
+pub(crate) struct BoardPlan {
+    k: [usize; 2],
+    sup: [Vec<u16>; 2],
+    cards: [Vec<(u8, u8)>; 2],
+    cross: [Vec<u32>; 2],
+    showdown: Option<Showdown>,
+}
+
+impl BoardPlan {
+    fn new(tree: &Tree, prior: &[Vec<f32>; 2], board: u64, table: Option<usize>) -> BoardPlan {
+        let cards = &ct().cards;
+        let sup: [Vec<u16>; 2] = [0, 1].map(|p| (0..NC).filter(|&h| prior[p][h] != 0.0 && !blocked(board, h)).map(|h| h as u16).collect());
+        let k = [sup[0].len(), sup[1].len()];
+        let mut pos = [vec![k[0] as u32; NC], vec![k[1] as u32; NC]];
+        for p in 0..2 {
+            for (j, &h) in sup[p].iter().enumerate() {
+                pos[p][h as usize] = j as u32;
+            }
+        }
+        let cross = [0, 1].map(|p| sup[p].iter().map(|&h| pos[1 - p][h as usize]).collect::<Vec<u32>>());
+        let sup_cards = [0, 1].map(|p| sup[p].iter().map(|&h| cards[h as usize]).collect::<Vec<_>>());
+        let showdown = table.map(|t| Showdown::cut(&tree.tables[t], &pos, k));
+        BoardPlan { k, sup, cards: sup_cards, cross, showdown }
+    }
+
+    /// as `RiverWalk::compat_mass`
+    fn compat_mass(&self, p: usize, ro: &[f32], out: &mut [f32]) {
+        let o = 1 - p;
+        let mut total = 0f64;
+        let mut card_all = [0f64; 52];
+        for (&(a, b), &r) in self.cards[o].iter().zip(&ro[..self.k[o]]) {
+            let rv = r as f64;
+            if rv != 0.0 {
+                total += rv;
+                card_all[a as usize] += rv;
+                card_all[b as usize] += rv;
+            }
+        }
+        for ((x, &(a, b)), &c) in out[..self.k[p]].iter_mut().zip(&self.cards[p]).zip(&self.cross[p]) {
+            *x = (total - card_all[a as usize] - card_all[b as usize] + ro[c as usize] as f64) as f32;
+        }
+    }
+}
+
+/// The river subtrees of a tree with chance nodes that `train_subtree` can walk, and their boards' plans.
+pub(crate) struct RiverPlans {
+    /// per node: the index in `plans` of a river subtree's root (the child of a river chance node), `u32::MAX` otherwise
+    pub(crate) plan_of: Vec<u32>,
+    plans: Vec<BoardPlan>,
+}
+
+impl RiverPlans {
+    /// `None` for a tree with no river subtree under a chance node (e.g. a river tree, which `RiverWalk` trains).
+    pub(crate) fn new(tree: &Tree, prior: &[Vec<f32>; 2], subtree_end: &[u32]) -> Option<RiverPlans> {
+        if tree.board.len() >= 5 {
+            return None;
+        }
+        let n = tree.nodes.len();
+        let mut plan_of = vec![u32::MAX; n];
+        let mut plans = Vec::new();
+        let mut by_board: HashMap<u64, u32> = HashMap::new();
+        for node in &tree.nodes {
+            let PKind::Chance { children, .. } = &node.kind else { continue };
+            for &c in children {
+                let c = c as usize;
+                let root = &tree.nodes[c];
+                if root.board.len() != 5 {
+                    continue;
+                }
+                // only decisions, folds and showdowns below (no chance node, no all-in run-out)
+                let end = subtree_end[c] as usize;
+                if !tree.nodes[c..end].iter().all(|x| matches!(x.kind, PKind::Decision { .. } | PKind::Fold { .. } | PKind::Showdown { .. })) {
+                    continue;
+                }
+                let board = mask_of(&root.board);
+                let table = tree.nodes[c..end].iter().find_map(|x| match x.kind {
+                    PKind::Showdown { table } => Some(table as usize),
+                    _ => None,
+                });
+                let id = *by_board.entry(board).or_insert_with(|| {
+                    plans.push(BoardPlan::new(tree, prior, board, table));
+                    (plans.len() - 1) as u32
+                });
+                if table.is_some() && plans[id as usize].showdown.is_none() {
+                    plans[id as usize].showdown = table.map(|t| {
+                        let p = &plans[id as usize];
+                        let mut pos = [vec![p.k[0] as u32; NC], vec![p.k[1] as u32; NC]];
+                        for q in 0..2 {
+                            for (j, &h) in p.sup[q].iter().enumerate() {
+                                pos[q][h as usize] = j as u32;
+                            }
+                        }
+                        Showdown::cut(&tree.tables[t], &pos, p.k)
+                    });
+                }
+                plan_of[c] = id;
+            }
+        }
+        if plans.is_empty() {
+            None
+        } else {
+            Some(RiverPlans { plan_of, plans })
+        }
+    }
+}
+
+/// What a training walk of a river subtree needs besides the tree and the regrets.
+pub(crate) struct SubTrain<'a> {
+    pub(crate) tree: &'a Tree,
+    pub(crate) plans: &'a RiverPlans,
+    pub(crate) has_avg: &'a [bool],
+    /// the weight of this iteration in a CFR+ strategy average
+    pub(crate) t: f32,
+    /// an alternating walk: the player it updates (and computes the values of)
+    pub(crate) train_only: Option<usize>,
+    /// a DCFR walk: (positive regrets, negative regrets, strategy sums) discounts
+    pub(crate) dcfr: Option<(f32, f32, f32)>,
+}
+
+/// Buffers of `train_subtree`, kept by a walk from one subtree to the next.
+#[derive(Default)]
+pub(crate) struct SubScratch {
+    reach: Vec<Vec<f32>>,
+    reach_of: Vec<[u32; 2]>,
+    val: Vec<[Vec<f32>; 2]>,
+    sigma: Vec<Vec<f32>>,
+    rv: Vec<f64>,
+}
+
+fn sized(v: &mut Vec<f32>, n: usize) {
+    v.clear();
+    v.resize(n, 0.0);
+}
+
+/// Train the river subtree of `root` (a root of `ctx.plans`; its nodes are `root..end`) entered with the 1,326 wide
+/// reaches `r` (the combos with the river card may be in them: they are off the supports); `regret` / `ssum` hold the
+/// nodes from `base` on (as a `Part` of the general walk).  The values of both players at `root` (1,326 wide; nothing off
+/// the supports, nothing for the player an alternating walk does not update) go to `out`: `out[p][h] += w * value` with
+/// `Some(w)` (what a chance node's `add_scaled` adds, in the same expression), `out[p][h] = value` with `None`.
+#[allow(clippy::too_many_arguments)] // the subtree, where its regrets are, its reaches, its buffers and where its values go
+pub(crate) fn train_subtree(ctx: &SubTrain, root: usize, end: usize, base: usize, regret: &mut [Vec<f32>], ssum: &mut [Vec<f32>], r: [&[f32]; 2], sc: &mut SubScratch, out: &mut [Vec<f32>; 2], w: Option<f32>) {
+    let tree = ctx.tree;
+    let plan = &ctx.plans.plans[ctx.plans.plan_of[root] as usize];
+    let k = plan.k;
+    let n = end - root;
+    let wants = |q: usize| ctx.train_only.is_none_or(|o| o == q);
+    // reaches: the root's two, then one per (decision, action) for the actor; the other player's is shared
+    sc.reach_of.clear();
+    sc.reach_of.resize(n, [u32::MAX; 2]);
+    let mut used = 0usize;
+    let mut take = |sc: &mut SubScratch, len: usize| -> u32 {
+        if sc.reach.len() <= used {
+            sc.reach.push(Vec::new());
+        }
+        sized(&mut sc.reach[used], len);
+        used += 1;
+        (used - 1) as u32
+    };
+    for p in 0..2 {
+        let id = take(sc, k[p] + 1);
+        let dst = &mut sc.reach[id as usize];
+        for (j, &h) in plan.sup[p].iter().enumerate() {
+            dst[j] = r[p][h as usize];
+        }
+        sc.reach_of[0][p] = id;
+    }
+    if sc.sigma.len() < n {
+        sc.sigma.resize_with(n, Vec::new);
+    }
+    if sc.val.len() < n {
+        sc.val.resize_with(n, || [Vec::new(), Vec::new()]);
+    }
+    // strategies and reaches, parents first
+    for li in 0..n {
+        let i = root + li;
+        let PKind::Decision { player, children, .. } = &tree.nodes[i].kind else { continue };
+        let p = *player as usize;
+        let (kp, na) = (k[p], children.len());
+        debug_assert_eq!(regret[i - base].len(), na * kp, "node {} keeps its regrets over its actor's support", i);
+        let mut sigma = std::mem::take(&mut sc.sigma[li]);
+        sized(&mut sigma, na * kp);
+        regret_match(&regret[i - base], na, kp, &mut sigma);
+        let from = sc.reach_of[li][p] as usize;
+        for (a, &c) in children.iter().enumerate() {
+            let lc = c as usize - root;
+            let to = take(sc, kp + 1);
+            let mut out = std::mem::take(&mut sc.reach[to as usize]);
+            for ((o, &rr), &x) in out[..kp].iter_mut().zip(&sc.reach[from][..kp]).zip(&sigma[a * kp..(a + 1) * kp]) {
+                *o = rr * x;
+            }
+            sc.reach[to as usize] = out;
+            let mut ro = sc.reach_of[li];
+            ro[p] = to;
+            sc.reach_of[lc] = ro;
+        }
+        sc.sigma[li] = sigma;
+    }
+    let rv_len = plan.showdown.as_ref().map_or(0, |s| s.cards.len());
+    if sc.rv.len() < rv_len {
+        sc.rv.resize(rv_len, 0.0);
+    }
+    // values and regrets, children first
+    for li in (0..n).rev() {
+        let i = root + li;
+        let node = &tree.nodes[i];
+        let pot_total = tree.cfg.pot_paid(node.inv);
+        let mut v = std::mem::take(&mut sc.val[li]);
+        for p in 0..2 {
+            sized(&mut v[p], k[p] + 1);
+        }
+        match &node.kind {
+            PKind::Fold { winner } => {
+                let w = *winner as usize;
+                let l = 1 - w;
+                let (rw, rl) = (&sc.reach[sc.reach_of[li][w] as usize], &sc.reach[sc.reach_of[li][l] as usize]);
+                if wants(w) {
+                    let gain = pot_total - node.inv[w];
+                    plan.compat_mass(w, rl, &mut v[w]);
+                    v[w][..k[w]].iter_mut().for_each(|x| *x *= gain);
+                }
+                if wants(l) {
+                    let loss = -node.inv[l];
+                    plan.compat_mass(l, rw, &mut v[l]);
+                    v[l][..k[l]].iter_mut().for_each(|x| *x *= loss);
+                }
+            }
+            PKind::Showdown { .. } => {
+                let sd = plan.showdown.as_ref().expect("the board's showdown table");
+                for p in (0..2).filter(|&p| wants(p)) {
+                    let ro = &sc.reach[sc.reach_of[li][1 - p] as usize];
+                    showdown(sd, p, ro, pot_total, node.inv[p], &mut sc.rv, &mut v[p]);
+                    v[p][k[p]] = 0.0; // the zero slot (entries outside p's support write there)
+                }
+            }
+            PKind::Decision { player, children, .. } => {
+                let p = *player as usize;
+                let o = 1 - p;
+                let (kp, ko, na) = (k[p], k[o], children.len());
+                let sigma = &sc.sigma[li];
+                // the opponent's values add up, the actor's are weighted by the strategy (from 0, as the general walk)
+                if wants(o) {
+                    for &c in children {
+                        let cv = &sc.val[c as usize - root][o];
+                        v[o][..ko].iter_mut().zip(&cv[..ko]).for_each(|(x, &y)| *x += y);
+                    }
+                }
+                if wants(p) {
+                    for (a, &c) in children.iter().enumerate() {
+                        let cv = &sc.val[c as usize - root][p];
+                        for ((x, &y), &s) in v[p][..kp].iter_mut().zip(&cv[..kp]).zip(&sigma[a * kp..(a + 1) * kp]) {
+                            *x += s * y;
+                        }
+                    }
+                    let reg = &mut regret[i - base];
+                    for (a, &c) in children.iter().enumerate() {
+                        let cv = &sc.val[c as usize - root][p][..kp];
+                        for ((rg, &y), &x) in reg[a * kp..(a + 1) * kp].iter_mut().zip(cv).zip(&v[p][..kp]) {
+                            *rg = match ctx.dcfr {
+                                None => (*rg + y - x).max(0.0),
+                                Some((pos, neg, _)) => *rg * if *rg > 0.0 { pos } else { neg } + (y - x),
+                            };
+                        }
+                    }
+                    if ctx.has_avg[i] {
+                        let rp = &sc.reach[sc.reach_of[li][p] as usize][..kp];
+                        let ss = &mut ssum[i - base];
+                        for a in 0..na {
+                            for ((s, &rr), &x) in ss[a * kp..(a + 1) * kp].iter_mut().zip(rp).zip(&sigma[a * kp..(a + 1) * kp]) {
+                                *s = match ctx.dcfr {
+                                    None => *s + ctx.t * rr * x,
+                                    Some((_, _, keep)) => *s * keep + rr * x,
+                                };
+                            }
+                        }
+                    }
+                }
+            }
+            _ => unreachable!("river subtrees have no chance nodes or run-outs"),
+        }
+        sc.val[li] = v;
+    }
+    for p in (0..2).filter(|&p| wants(p)) {
+        let (dst, val) = (&mut out[p], &sc.val[0][p]);
+        match w {
+            Some(w) => {
+                for (j, &h) in plan.sup[p].iter().enumerate() {
+                    dst[h as usize] += w * val[j];
+                }
+            }
+            None => {
+                for (j, &h) in plan.sup[p].iter().enumerate() {
+                    dst[h as usize] = val[j];
+                }
+            }
         }
     }
 }

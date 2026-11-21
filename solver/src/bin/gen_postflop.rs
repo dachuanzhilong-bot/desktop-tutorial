@@ -28,6 +28,12 @@
 //! `index.json` names `--max-iters` as the scenario's `iterations`.  `--checkpoint` works as above (its tag does not name
 //! the iteration count).  Without `--g1-target` nothing of this exists: the output is what it was.
 //!
+//! How an iteration updates (REFACTOR_PLAN 4-1, `docs/15` §2): `--update sim-cfr+` (the default: CFR+ updating both
+//! players in one walk, the solver as it always was), `alt-cfr+` (CFR+ updating one player per walk, two walks per
+//! iteration) or `alt-dcfr` (discounted CFR, alternating; it restarts no average unless `--avg-restart` is given).  The
+//! iteration counts (`--iters`, `--check-every`, `--max-iters`, `.g1.json`) are iterations, so an alternating iteration
+//! costs about two of the default.  The checkpoints of another update are not continued (their tag names it).
+//!
 //! Threads: `--threads N` solves N flops at a time; `--solve-threads M` walks one flop's turn card subtrees on M
 //! threads (REFACTOR_PLAN 3-3-2; default 1, the results are bit for bit the same for every M).  The two
 //! multiply: up to N x M busy threads, so keep N x M at most the number of cores (e.g. one big flop at a time:
@@ -289,12 +295,24 @@ fn main() {
     let g1_target: f32 = arg(&args, "--g1-target", 0.0);
     let check_every: u32 = arg(&args, "--check-every", 500);
     let max_iters: u32 = arg(&args, "--max-iters", 5000);
-    let avg_restart: u32 = arg(&args, "--avg-restart", 500);
+    // how an iteration updates (REFACTOR_PLAN 4-1): sim-cfr+ (the default, as before), alt-cfr+, alt-dcfr
+    // the river subtrees with the general walk instead of the walk over the supports (REFACTOR_PLAN 4-2; the same bits, slower):
+    // the reference of a speed measurement
+    let general_walk = args.iter().any(|a| a == "--general-walk");
+    let update_name: String = arg(&args, "--update", Update::SimCfrPlus.name().to_string());
+    let update = Update::parse(&update_name).unwrap_or_else(|| panic!("--update {}: sim-cfr+, alt-cfr+ or alt-dcfr", update_name));
+    // DCFR discounts the early iterations itself: no restart of the average unless asked for
+    let avg_restart: u32 = arg(&args, "--avg-restart", if update == Update::AltDcfr { 0 } else { 500 });
+    // in a checkpoint's tag only when not the default, so that the checkpoints of a run made before keep their tag
+    let update_tag = if update == Update::SimCfrPlus { String::new() } else { format!(" update={}", update.name()) };
     assert!(g1_target == 0.0 || all_cards, "--g1-target needs --all-cards");
     assert!(g1_target == 0.0 || (check_every > 0 && max_iters > avg_restart), "--max-iters must be more than --avg-restart (and --check-every more than 0)");
     let g1_mode = g1_target > 0.0;
     if g1_mode {
         eprintln!("--g1-target {}%: looking every {} iterations from {} (the average restarts before iteration {}), at most {}; the river's average is kept (about 8 GB for an SRP flop)", g1_target, check_every, avg_restart + 1, avg_restart + 1, max_iters);
+    }
+    if update != Update::SimCfrPlus {
+        eprintln!("--update {}: {} walks of the tree per iteration", update.name(), update.walks());
     }
     let g1_missed = Mutex::new(Vec::<String>::new());
     assert!(!all_cards || no_average_from >= 2, "--all-cards writes the flop and turn averages: --no-average-from must be at least 2");
@@ -377,8 +395,11 @@ fn main() {
                 let cfg = Config { pot: sc.pot, stack: sc.stack, turn_cards, river_cards, flop_runouts, seed: 11 + fi as u64, rake_pct, rake_cap, ..Config::default() };
                 let t = Instant::now();
                 let tree = build_tree(&cfg, &board);
-                let opts = if g1_mode { SolverOptions { no_average_from: 3, avg_on_demand_from: 2, threads: solve_threads, ..Default::default() } } else { SolverOptions { no_average_from, threads: solve_threads, ..Default::default() } };
+                let opts = if g1_mode { SolverOptions { no_average_from: 3, avg_on_demand_from: 2, threads: solve_threads, update, ..Default::default() } } else { SolverOptions { no_average_from, threads: solve_threads, update, ..Default::default() } };
                 let mut solver = Solver::with_options(&tree, &ranges[si], opts);
+                if general_walk {
+                    solver.set_river_subtree_walk(false);
+                }
                 let t_build = t.elapsed().as_secs_f32();
                 let n_dec = tree.nodes.iter().filter(|n| matches!(n.kind, PKind::Decision { .. })).count();
                 eprintln!("{} flop {:2} {:<9} built: {} nodes ({} decisions), {:.2} GB regret+ssum, {:.1}s, peak RSS {}", sc.id, fi, FLOPS[fi], tree.nodes.len(), n_dec, solver.strategy_bytes() as f64 / 1e9, t_build, peak_rss());
@@ -387,7 +408,7 @@ fn main() {
                 if all_cards && g1_mode {
                     // looking at G1 every `check_every` iterations; the checkpoint's tag does not name the iteration count
                     if !checkpoint.is_empty() {
-                        ck = Some(Checkpoints::new(format!("{}/{}-{}", checkpoint, sc.id, fi), format!("gen_postflop g1 reset_at={}", avg_restart)).expect("checkpoint directory"));
+                        ck = Some(Checkpoints::new(format!("{}/{}-{}", checkpoint, sc.id, fi), format!("gen_postflop g1 reset_at={}{}", avg_restart, update_tag)).expect("checkpoint directory"));
                     }
                     let mut log = |m: &str| eprintln!("{} flop {:2} {:<9} {}", sc.id, fi, FLOPS[fi], m);
                     let pot = sc.pot;
@@ -404,7 +425,7 @@ fn main() {
                     // the same iterations (and restart of the average) as the loop below, resumable
                     let plan = Plan::new(iters, avg_from, if checkpoint.is_empty() { 0 } else { checkpoint_every });
                     if !checkpoint.is_empty() {
-                        ck = Some(Checkpoints::new(format!("{}/{}-{}", checkpoint, sc.id, fi), format!("gen_postflop {}", plan.tag())).expect("checkpoint directory"));
+                        ck = Some(Checkpoints::new(format!("{}/{}-{}", checkpoint, sc.id, fi), format!("gen_postflop {}{}", plan.tag(), update_tag)).expect("checkpoint directory"));
                     }
                     let mut log = |m: &str| eprintln!("{} flop {:2} {:<9} {}", sc.id, fi, FLOPS[fi], m);
                     let info = run_iterations(&mut solver, &plan, ck.as_ref(), None, &mut log).expect("checkpoint IO");
@@ -439,8 +460,8 @@ fn main() {
                         let reached = g1 <= g1_target;
                         let hist: Vec<String> = info.history.iter().map(|(i, v)| format!("[{},{:.4}]", i, v)).collect();
                         let js = format!(
-                            "{{\"target\":{},\"iterations\":{},\"g1Pct\":{:.4},\"reached\":{},\"avgRestart\":{},\"checkEvery\":{},\"resumedFrom\":{},\"secsPerIteration\":{:.2},\"looks\":[{}]}}",
-                            g1_target, solver.iters, g1, reached, avg_restart, check_every, info.resumed_from, info.secs_per_iter, hist.join(",")
+                            "{{\"target\":{},\"iterations\":{},\"g1Pct\":{:.4},\"reached\":{},\"avgRestart\":{},\"checkEvery\":{},\"resumedFrom\":{},\"secsPerIteration\":{:.2},\"update\":\"{}\",\"looks\":[{}]}}",
+                            g1_target, solver.iters, g1, reached, avg_restart, check_every, info.resumed_from, info.secs_per_iter, update.name(), hist.join(",")
                         );
                         write_atomic(&format!("{}/{}.g1.json", dir, fi), js.as_bytes());
                         if !reached {

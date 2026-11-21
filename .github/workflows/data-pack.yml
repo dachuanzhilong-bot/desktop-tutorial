@@ -1,0 +1,53 @@
+# Packs a PC's raw postflop output (a release made by solver/scripts/pc-publish.sh) and attaches the packed files to a
+# new release (REFACTOR_PLAN 4-5): the data never goes through git. Then a PR points web/data.lock.json at the new
+# release and puts its index.json (an asset of the release) in web/public/postflop.
+# Run by hand: Actions -> Data pack -> Run workflow (raw = the PC's release, tag = a new release name).
+name: Data pack
+on:
+  workflow_dispatch:
+    inputs:
+      raw:
+        description: "the PC's release with pc-postflop.tar.gz (pc-postflop-<date>, from pc-publish.sh)"
+        required: true
+      tag:
+        description: "new release tag for the packed files, e.g. data-postflop-v3-20261125"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  pack:
+    runs-on: ubuntu-latest
+    env:
+      RAW: ${{ inputs.raw }}
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - name: fetch the raw output
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/raw"
+          gh release download "$RAW" --repo "$GITHUB_REPOSITORY" --pattern pc-postflop.tar.gz --dir "$RUNNER_TEMP"
+          tar -xzf "$RUNNER_TEMP/pc-postflop.tar.gz" -C "$RUNNER_TEMP/raw"
+          src=$(dirname "$(find "$RUNNER_TEMP/raw" -name index.json | head -n 1)")
+          echo "SRC=$src" >> "$GITHUB_ENV"
+          echo "raw files: $(find "$src" -name '*.bin' | wc -l)"
+      - name: pack
+        working-directory: web
+        # node built-ins only (scripts/pack-postflop.mjs, scripts/build-id.mjs): no npm ci
+        run: node scripts/pack-postflop.mjs "$SRC" "$RUNNER_TEMP/packed"
+      - name: release
+        working-directory: ${{ runner.temp }}/packed
+        run: |
+          set -euo pipefail
+          tar --sort=name --mtime='2026-01-01 00:00:00Z' --owner=0 --group=0 --numeric-owner -cf "$RUNNER_TEMP/postflop.tar" */*.bin.gz
+          (cd "$RUNNER_TEMP" && sha256sum postflop.tar | tee postflop.tar.sha256)
+          cp index.json "$RUNNER_TEMP/index.json"
+          printf 'Postflop solution files packed from the PC release %s.\nweb/data.lock.json names this release; web/public/postflop/index.json is the index.json asset.\nsha256: %s\n' \
+            "$RAW" "$(cut -d' ' -f1 "$RUNNER_TEMP/postflop.tar.sha256")" > "$RUNNER_TEMP/notes.md"
+          gh release create "$TAG" "$RUNNER_TEMP/postflop.tar" "$RUNNER_TEMP/postflop.tar.sha256" "$RUNNER_TEMP/index.json" \
+            --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md"

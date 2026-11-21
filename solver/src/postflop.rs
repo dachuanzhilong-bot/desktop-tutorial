@@ -11,7 +11,7 @@
 //! REFACTOR_PLAN 3-2) the rake of each terminal leaves the pot first: `v0 + v1 = pot - rake` (`Config::pot_paid`).
 use crate::engine::regret_match;
 use crate::eval::eval7;
-use crate::river::{self, RiverWalk};
+use crate::river::{self, RiverPlans, RiverWalk, SubScratch, SubTrain};
 use crate::rng::Rng;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
@@ -548,6 +548,49 @@ pub struct NodeEval {
     pub reach: f32,
 }
 
+/// How an iteration updates the regrets and strategy sums (REFACTOR_PLAN 4-1, `docs/15` §2).
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub enum Update {
+    /// CFR+ with simultaneous updates: one walk per iteration updates both players (the solver as it always was).
+    #[default]
+    SimCfrPlus,
+    /// CFR+ with alternating updates: two walks per iteration, the first updates OOP's regrets and strategy sums
+    /// against IP's current strategy, the second IP's against OOP's new one.
+    AltCfrPlus,
+    /// Discounted CFR (alpha 1.5, beta 0, gamma 2) with alternating updates: before iteration t adds its regrets, a
+    /// positive regret is multiplied by (t-1)^1.5 / ((t-1)^1.5 + 1), a negative one by 1/2, and the strategy sums by
+    /// ((t-1)/t)^2; the strategy sums add the reach-weighted strategy with weight 1 (no linear weight).  Negative
+    /// regrets are kept (regret matching uses the positive part).
+    AltDcfr,
+}
+
+impl Update {
+    /// the name of `gen_postflop` / `measure_exploit`'s `--update`
+    pub fn name(self) -> &'static str {
+        match self {
+            Update::SimCfrPlus => "sim-cfr+",
+            Update::AltCfrPlus => "alt-cfr+",
+            Update::AltDcfr => "alt-dcfr",
+        }
+    }
+
+    pub fn parse(s: &str) -> Option<Update> {
+        [Update::SimCfrPlus, Update::AltCfrPlus, Update::AltDcfr].into_iter().find(|u| u.name() == s)
+    }
+
+    /// walks of the tree per iteration
+    pub fn walks(self) -> u32 {
+        if self == Update::SimCfrPlus { 1 } else { 2 }
+    }
+}
+
+/// The DCFR discounts of iteration `t` (1, 2, ...): (positive regrets, negative regrets, strategy sums).
+pub fn dcfr_discounts(t: u32) -> (f32, f32, f32) {
+    let tm = (t - 1) as f32;
+    let ta = tm.powf(1.5);
+    (ta / (ta + 1.0), 0.5, (tm / (tm + 1.0)).powi(2))
+}
+
 /// Options of a `Solver` that do not change the tree.
 #[derive(Clone, Copy, Debug)]
 pub struct SolverOptions {
@@ -578,11 +621,13 @@ pub struct SolverOptions {
     /// taken off.  River nodes never tremble, and `exploitability` / `root_values` / `evaluate` play the
     /// averages as they are, without a tremble.
     pub tremble: f32,
+    /// how an iteration updates (`Update`; the default is the solver as it always was)
+    pub update: Update,
 }
 
 impl Default for SolverOptions {
     fn default() -> Self {
-        SolverOptions { no_average_from: 3, threads: 1, avg_on_demand_from: 3, tremble: 0.0 }
+        SolverOptions { no_average_from: 3, threads: 1, avg_on_demand_from: 3, tremble: 0.0, update: Update::SimCfrPlus }
     }
 }
 
@@ -649,6 +694,21 @@ pub struct Solver<'a> {
     z0: f64,
     /// the training walk of a river tree (`river.rs`, REFACTOR_PLAN 3-3-4); `None` for other trees
     river: Option<Box<RiverWalk>>,
+    /// `SolverOptions::update` (`set_update` changes it)
+    update: Update,
+    /// during an alternating walk: the player whose regrets and strategy sums it updates
+    train_only: Option<usize>,
+    /// during a DCFR walk: `dcfr_discounts` of the iteration
+    dcfr: Option<(f32, f32, f32)>,
+    /// the river subtrees of a tree with chance nodes and their boards (REFACTOR_PLAN 4-2); `None` for other trees
+    river_plans: Option<Arc<RiverPlans>>,
+    /// training walks take the river subtree walk where they can (default; `set_river_subtree_walk`)
+    river_subtree_walk: bool,
+    /// the showdowns of an all-in with many run-outs, computed on the threads (REFACTOR_PLAN 4-3); kept between walks
+    allin_buf: std::sync::Mutex<Vec<f32>>,
+    /// tests: an alternating walk computes the other player's values too (they are not used; see `Shared::train_only`)
+    #[cfg(test)]
+    alt_full_values: bool,
 }
 
 /// `sigma` (`na * NC`) from the regrets of a support (`na * k`): regret matching on the support,
@@ -782,6 +842,7 @@ impl<'a> Solver<'a> {
         let river = river::applies(tree).then(|| Box::new(RiverWalk::new(tree, &prior, |i| &supports[support_of[i] as usize][..])));
         let supports = Arc::new(supports);
         let subtree_end = subtree_ends(tree);
+        let river_plans = RiverPlans::new(tree, &prior, &subtree_end).map(Arc::new);
         let threads = opts.threads.max(1);
         Solver {
             tree,
@@ -805,7 +866,32 @@ impl<'a> Solver<'a> {
             extra: HashMap::new(),
             z0,
             river,
+            update: opts.update,
+            train_only: None,
+            dcfr: None,
+            river_plans,
+            river_subtree_walk: true,
+            allin_buf: std::sync::Mutex::new(Vec::new()),
+            #[cfg(test)]
+            alt_full_values: false,
         }
+    }
+
+    /// how the next iterations update (`SolverOptions::update`); e.g. a re-solve of the river on the device's terms
+    /// (`Update::SimCfrPlus`) after an all-card solve with another update
+    pub fn set_update(&mut self, update: Update) {
+        self.update = update;
+    }
+
+    pub fn update(&self) -> Update {
+        self.update
+    }
+
+    /// Whether training walks train the river subtrees of a tree with chance nodes over the supports
+    /// (`river::train_subtree`, REFACTOR_PLAN 4-2; the default) or with the general walk (the reference of the tests,
+    /// `measure_exploit --bench-allcards --reference`).  The regrets and strategy sums are bit for bit the same.
+    pub fn set_river_subtree_walk(&mut self, on: bool) {
+        self.river_subtree_walk = on;
     }
 
     /// threads that walk the tree (see `SolverOptions::threads`)
@@ -836,8 +922,17 @@ impl<'a> Solver<'a> {
             tremble: self.tremble,
             br_forbid: &self.br_forbid,
             eval_below: self.eval_below,
+            train_only: self.train_only,
+            #[cfg(test)]
+            full_values: self.alt_full_values,
+            #[cfg(not(test))]
+            full_values: false,
+            dcfr: self.dcfr,
+            river_plans: if self.river_subtree_walk { self.river_plans.as_deref() } else { None },
+            allin_buf: &self.allin_buf,
         };
-        let mut part = Part { sh: &sh, base: 0, regret: &mut self.regret, ssum: &mut self.ssum, ev, extra: &mut self.extra, fork: threads > 1 };
+        let mut sub = SubScratch::default();
+        let mut part = Part { sh: &sh, base: 0, regret: &mut self.regret, ssum: &mut self.ssum, ev, extra: &mut self.extra, fork: threads > 1, sub: &mut sub };
         part.walk(ni, r0, r1, mode, want_mass)
     }
 
@@ -921,10 +1016,27 @@ impl<'a> Solver<'a> {
     /// One CFR+ iteration.  A river tree takes the river walk (`river.rs`): the same regrets and strategy sums, bit
     /// for bit, as the general walk (`iterate_full_width`), several times faster.
     pub fn iterate(&mut self) {
+        if self.update != Update::SimCfrPlus {
+            return self.iterate_alternating();
+        }
         let Some(river) = self.river.as_mut() else { return self.iterate_full_width() };
         self.iters += 1;
         let t = (self.iters - self.avg_start) as f32;
         river.train(self.tree, &mut self.regret, &mut self.ssum, &self.locks, &self.has_avg, t);
+    }
+
+    /// One iteration of an alternating update (`Update::AltCfrPlus` / `AltDcfr`): a walk that updates OOP, then one
+    /// that updates IP (against OOP's new strategy), both with the general walk.
+    fn iterate_alternating(&mut self) {
+        self.iters += 1;
+        let t = (self.iters - self.avg_start) as f32;
+        self.dcfr = (self.update == Update::AltDcfr).then(|| dcfr_discounts(self.iters));
+        for p in 0..2 {
+            self.train_only = Some(p);
+            self.run(Mode::Train(t), None, false);
+        }
+        self.train_only = None;
+        self.dcfr = None;
     }
 
     /// One iteration with the general walk (1,326 wide vectors), whatever the tree: the reference of the river walk
@@ -1133,6 +1245,18 @@ struct Shared<'w> {
     br_forbid: &'w [u64],
     /// `Solver::evaluate_upstream`
     eval_below: u8,
+    /// an alternating walk (`Update`): only this player's regrets and strategy sums are updated, and (unless
+    /// `full_values`) only its values are computed: the walk returns the other player's values as 0, which no
+    /// update of this walk reads
+    train_only: Option<usize>,
+    /// tests: compute both players' values in an alternating walk anyway
+    full_values: bool,
+    /// a DCFR walk: `dcfr_discounts` of the iteration
+    dcfr: Option<(f32, f32, f32)>,
+    /// training walks take `river::train_subtree` at these river subtrees (`Solver::set_river_subtree_walk`)
+    river_plans: Option<&'w RiverPlans>,
+    /// `Solver::allin_buf`
+    allin_buf: &'w std::sync::Mutex<Vec<f32>>,
 }
 
 /// What a walk writes, for the nodes `base..base + regret.len()`: the whole tree, or one subtree that a thread
@@ -1149,6 +1273,8 @@ struct Part<'w> {
     /// walk the children of the next chance node in parallel (`Shared::threads` > 1, and not already inside a
     /// parallel walk)
     fork: bool,
+    /// the buffers of the river subtree walk (`river::train_subtree`)
+    sub: &'w mut SubScratch,
 }
 
 /// one child subtree of a forked chance node: (child number, card, child node, its regrets, strategy sums, evaluations)
@@ -1229,11 +1355,12 @@ impl<'w> Part<'w> {
                         .spawn_scoped(s, move || {
                             set_fp_control(fpc);
                             let mut extra = HashMap::new();
+                            let mut sub = SubScratch::default();
                             let mut done = Vec::new();
                             loop {
                                 let job = queue.lock().expect("job queue").next();
                                 let Some((i, c, ch, regret, ssum, ev)) = job else { break };
-                                let mut part = Part { sh, base: ch, regret, ssum, ev, extra: &mut extra, fork: false };
+                                let mut part = Part { sh, base: ch, regret, ssum, ev, extra: &mut extra, fork: false, sub: &mut sub };
                                 let (a0, a1) = (zero_card(r0, c), zero_card(r1, c));
                                 done.push((i, part.walk(ch, &a0, &a1, mode, want_mass)));
                             }
@@ -1258,6 +1385,22 @@ impl<'w> Part<'w> {
         out.into_iter().map(|r| r.expect("every child walked")).collect()
     }
 
+    /// Does a training walk take `river::train_subtree` at node `ni`: the root of a river subtree (`Shared::river_plans`)
+    /// with no locked node, values without masses.
+    fn is_river_subtree(&self, ni: usize, mode: Mode, want_mass: bool) -> bool {
+        let sh = self.sh;
+        matches!(mode, Mode::Train(_)) && !want_mass && sh.river_plans.is_some_and(|p| p.plan_of[ni] != u32::MAX) && sh.locks[ni..sh.subtree_end[ni] as usize].iter().all(|l| l.is_none())
+    }
+
+    /// Train the river subtree of `ni` over the supports (REFACTOR_PLAN 4-2; `river::train_subtree`): the regrets and
+    /// strategy sums of the general walk, bit for bit.  `r0` / `r1` may still hold the combos with the river card.
+    fn river_subtree(&mut self, ni: usize, r0: &[f32], r1: &[f32], mode: Mode, out: &mut [Vec<f32>; 2], w: Option<f32>) {
+        let sh = self.sh;
+        let (Mode::Train(t), Some(plans)) = (mode, sh.river_plans) else { unreachable!("a training walk with river plans") };
+        let ctx = SubTrain { tree: sh.tree, plans, has_avg: sh.has_avg, t, train_only: sh.train_only, dcfr: sh.dcfr };
+        river::train_subtree(&ctx, ni, sh.subtree_end[ni] as usize, self.base, self.regret, self.ssum, [r0, r1], self.sub, out, w);
+    }
+
     fn walk(&mut self, ni: usize, r0: &[f32], r1: &[f32], mode: Mode, want_mass: bool) -> Res {
         let sh: &'w Shared<'w> = self.sh;
         let tree: &'w Tree = sh.tree;
@@ -1265,6 +1408,18 @@ impl<'w> Part<'w> {
         // what a terminal pays out (the pot minus the rake; not used at other nodes)
         let pot_total = tree.cfg.pot_paid(node.inv);
         let need_mass = want_mass || !matches!(mode, Mode::Train(_));
+        // an alternating walk computes the values of the player it updates only (`Shared::train_only`)
+        let only: Option<usize> = match mode {
+            Mode::Train(_) if !sh.full_values => sh.train_only,
+            _ => None,
+        };
+        let wants = |q: usize| only.is_none_or(|o| o == q);
+        // the root of a river subtree (reached here when its chance node was forked): see `river_subtree`
+        if self.is_river_subtree(ni, mode, want_mass) {
+            let mut v = [vec![0f32; NC], vec![0f32; NC]];
+            self.river_subtree(ni, r0, r1, mode, &mut v, None);
+            return Res { v, m: [Vec::new(), Vec::new()] };
+        }
         match &node.kind {
             PKind::Fold { winner } => {
                 let w = *winner as usize;
@@ -1272,8 +1427,12 @@ impl<'w> Part<'w> {
                 let bm = mask_of(&node.board);
                 let mut res = Res::zero(true);
                 let rs = [r0, r1];
-                compat_mass(bm, rs[l], &mut res.m[w]);
-                compat_mass(bm, rs[w], &mut res.m[l]);
+                if wants(w) {
+                    compat_mass(bm, rs[l], &mut res.m[w]);
+                }
+                if wants(l) {
+                    compat_mass(bm, rs[w], &mut res.m[l]);
+                }
                 for h in 0..NC {
                     res.v[w][h] = (pot_total - node.inv[w]) * res.m[w][h];
                     res.v[l][h] = -node.inv[l] * res.m[l][h];
@@ -1285,7 +1444,7 @@ impl<'w> Part<'w> {
                 let mut res = Res::zero(true);
                 let rs = [r0, r1];
                 let mut share = vec![0f32; NC];
-                for p in 0..2 {
+                for p in (0..2).filter(|&p| wants(p)) {
                     showdown(st, rs[1 - p], &mut share, &mut res.m[p]);
                     for &h in &st.order {
                         let h = h as usize;
@@ -1297,24 +1456,83 @@ impl<'w> Part<'w> {
             PKind::AllIn { tables, weight } => {
                 let mut res = Res::zero(true);
                 let rs = [r0, r1];
-                let mut share = vec![0f32; NC];
-                let mut mass = vec![0f32; NC];
                 let bm = mask_of(&node.board);
-                for &ti in tables {
+                let players: Vec<usize> = (0..2).filter(|&p| wants(p)).collect();
+                // one run-out's showdown for one player: (share, mass), as `showdown` leaves them
+                let one = |ti: u32, p: usize, share: &mut [f32], mass: &mut [f32]| {
                     let st = &tree.tables[ti as usize];
                     let fresh = st.mask & !bm; // the cards of the run-out
-                    for p in 0..2 {
-                        let mut r = rs[1 - p].to_vec();
-                        for h in 0..NC {
-                            if blocked(fresh, h) {
-                                r[h] = 0.0;
-                            }
+                    let mut r = rs[1 - p].to_vec();
+                    for h in 0..NC {
+                        if blocked(fresh, h) {
+                            r[h] = 0.0;
                         }
-                        showdown(st, &r, &mut share, &mut mass);
-                        for &h in &st.order {
+                    }
+                    showdown(st, &r, share, mass);
+                };
+                // adds one run-out's showdown, in the order of the run-outs whichever thread computed it
+                let mut add = |ti: u32, p: usize, share: &[f32], mass: &[f32]| {
+                    for &h in &tree.tables[ti as usize].order {
+                        let h = h as usize;
+                        res.v[p][h] += weight * (pot_total * share[h] - node.inv[p] * mass[h]);
+                        res.m[p][h] += weight * mass[h];
+                    }
+                };
+                if self.fork && sh.threads > 1 && tables.len() >= 4 * sh.threads {
+                    // many run-outs (a flop all-in: 1,176) above the parallel part of the walk: their showdowns are computed
+                    // on the threads (one contiguous range of run-outs each, one thread start per node) and added here in
+                    // order (REFACTOR_PLAN 4-3), so the values are bit for bit those of one thread.  A showdown keeps only
+                    // the entries `add` reads (`Strength::order`), as (share, mass) pairs.
+                    let jobs: Vec<(u32, usize)> = tables.iter().flat_map(|&ti| players.iter().map(move |&p| (ti, p))).collect();
+                    let len = |&(ti, _): &(u32, usize)| tree.tables[ti as usize].order.len();
+                    // the solver's buffer (`Solver::allin_buf`): kept from node to node and walk to walk, since faulting in
+                    // ~20 MB of new pages for every node took longer than the showdowns (the threads wait on each other there)
+                    let need = 2 * jobs.iter().map(len).sum::<usize>();
+                    let mut guard = sh.allin_buf.lock().expect("all-in buffer");
+                    if guard.len() < need {
+                        guard.resize(need, 0.0);
+                    }
+                    let buf: &mut [f32] = &mut guard[..need];
+                    let per = jobs.len().div_ceil(sh.threads);
+                    let fpc = fp_control();
+                    std::thread::scope(|s| {
+                        let mut rest: &mut [f32] = &mut *buf;
+                        for js in jobs.chunks(per) {
+                            let (mine, more) = std::mem::take(&mut rest).split_at_mut(2 * js.iter().map(len).sum::<usize>());
+                            rest = more;
+                            let one = &one;
+                            s.spawn(move || {
+                                set_fp_control(fpc);
+                                let (mut share, mut mass) = (vec![0f32; NC], vec![0f32; NC]);
+                                let mut at = 0;
+                                for &(ti, p) in js {
+                                    one(ti, p, &mut share, &mut mass);
+                                    for &h in &tree.tables[ti as usize].order {
+                                        mine[at] = share[h as usize];
+                                        mine[at + 1] = mass[h as usize];
+                                        at += 2;
+                                    }
+                                }
+                            });
+                        }
+                    });
+                    let mut at = 0;
+                    for &(ti, p) in &jobs {
+                        for &h in &tree.tables[ti as usize].order {
                             let h = h as usize;
-                            res.v[p][h] += weight * (pot_total * share[h] - node.inv[p] * mass[h]);
-                            res.m[p][h] += weight * mass[h];
+                            let (sh_h, ms_h) = (buf[at], buf[at + 1]);
+                            res.v[p][h] += weight * (pot_total * sh_h - node.inv[p] * ms_h);
+                            res.m[p][h] += weight * ms_h;
+                            at += 2;
+                        }
+                    }
+                } else {
+                    let mut share = vec![0f32; NC];
+                    let mut mass = vec![0f32; NC];
+                    for &ti in tables {
+                        for &p in &players {
+                            one(ti, p, &mut share, &mut mass);
+                            add(ti, p, &share, &mass);
                         }
                     }
                 }
@@ -1329,8 +1547,15 @@ impl<'w> Part<'w> {
                     }
                 } else {
                     for (&c, &ch) in cards.iter().zip(children.iter()) {
+                        let ch = ch as usize;
+                        if self.is_river_subtree(ch, mode, want_mass) {
+                            // adds what `add_scaled` would add, on the supports (off them the subtree's values are 0, or of
+                            // combos outside the range, which nothing reads; `acc` is never -0, so adding 0 is a no-op)
+                            self.river_subtree(ch, r0, r1, mode, &mut acc.v, Some(*weight));
+                            continue;
+                        }
                         let (a0, a1) = (zero_card(r0, c), zero_card(r1, c));
-                        let res = self.walk(ch as usize, &a0, &a1, mode, want_mass);
+                        let res = self.walk(ch, &a0, &a1, mode, want_mass);
                         acc.add_scaled(&res, *weight);
                     }
                 }
@@ -1382,8 +1607,10 @@ impl<'w> Part<'w> {
                 for a in 0..na {
                     let new_rp: Vec<f32> = (0..NC).map(|h| rp[h] * sigma[a * NC + h]).collect();
                     let res = if p == 0 { self.walk(children[a] as usize, &new_rp, ro, mode, want_mass) } else { self.walk(children[a] as usize, ro, &new_rp, mode, want_mass) };
-                    for h in 0..NC {
-                        cfv_o[h] += res.v[o][h];
+                    if wants(o) {
+                        for h in 0..NC {
+                            cfv_o[h] += res.v[o][h];
+                        }
                     }
                     if need_mass {
                         for h in 0..NC {
@@ -1407,13 +1634,14 @@ impl<'w> Part<'w> {
                                 }
                             }
                         }
+                        _ if !wants(p) => {}
                         _ => {
                             for h in 0..NC {
                                 cfv_p[h] += sigma[a * NC + h] * res.v[p][h];
                             }
                         }
                     }
-                    child_p.push(res.v[p].clone());
+                    child_p.push(if wants(p) { res.v[p].clone() } else { Vec::new() });
                 }
                 if let Some(mut b) = best {
                     if let Some(m) = &mix {
@@ -1426,6 +1654,8 @@ impl<'w> Part<'w> {
                 let mut cfv_p_chosen: Option<Vec<f32>> = None;
                 match mode {
                     Mode::Train(_) if locked => {}
+                    // an alternating walk updates one player only
+                    Mode::Train(_) if sh.train_only.is_some_and(|q| q != p) => {}
                     Mode::Train(t) => {
                         // the support only: elsewhere the reach is 0 (see `Solver`)
                         let k = sup.len();
@@ -1448,7 +1678,13 @@ impl<'w> Part<'w> {
                             for (j, &h) in sup.iter().enumerate() {
                                 let h = h as usize;
                                 let i = a * k + j;
-                                regret[i] = (regret[i] + child_p[a][h] - cfv_own[h]).max(0.0);
+                                regret[i] = match sh.dcfr {
+                                    None => (regret[i] + child_p[a][h] - cfv_own[h]).max(0.0),
+                                    Some((pos, neg, _)) => {
+                                        let r = regret[i];
+                                        r * if r > 0.0 { pos } else { neg } + (child_p[a][h] - cfv_own[h])
+                                    }
+                                };
                             }
                         }
                         if has_avg {
@@ -1456,7 +1692,10 @@ impl<'w> Part<'w> {
                             for a in 0..na {
                                 for (j, &h) in sup.iter().enumerate() {
                                     let h = h as usize;
-                                    ssum[a * k + j] += t * rp[h] * sigma[a * NC + h];
+                                    ssum[a * k + j] = match sh.dcfr {
+                                        None => ssum[a * k + j] + t * rp[h] * sigma[a * NC + h],
+                                        Some((_, _, keep)) => ssum[a * k + j] * keep + rp[h] * sigma[a * NC + h],
+                                    };
                                 }
                             }
                         }
@@ -2638,5 +2877,214 @@ mod tests {
         assert!(Solver::new(&turn, &ranges).river.is_none());
         let river = build_tree(&cfg, &board("Ks 9h 5h 2d 2c"));
         assert!(Solver::new(&river, &ranges).river.is_some());
+    }
+
+    // ---- alternating updates and DCFR (REFACTOR_PLAN 4-1)
+
+    const ALTERNATING: [Update; 2] = [Update::AltCfrPlus, Update::AltDcfr];
+
+    /// the tree and ranges of `three_street_solve_converges`
+    fn three_street_game() -> (Tree, [Vec<f32>; 2]) {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 2, river_cards: 1, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let (mut r0, mut r1) = (vec![0f32; NC], vec![0f32; NC]);
+        for (i, &(a, b)) in ct().cards.iter().enumerate() {
+            let (ra, rb) = (a >> 2, b >> 2);
+            if ra == rb {
+                r0[i] = 1.0;
+                r1[i] = 1.0;
+            } else if ra >= 8 && rb >= 8 {
+                r0[i] = 1.0;
+            } else if (a & 3) == (b & 3) && ra.abs_diff(rb) == 1 {
+                r1[i] = 1.0;
+            }
+        }
+        (tree, [r0, r1])
+    }
+
+    fn solve_with(tree: &Tree, ranges: &[Vec<f32>; 2], update: Update, iters: u32) -> f32 {
+        let mut s = Solver::with_options(tree, ranges, SolverOptions { update, ..Default::default() });
+        for _ in 0..iters {
+            s.iterate();
+        }
+        s.finalize_avg();
+        let v = s.root_values();
+        // the turn and river cards are sampled, so the two values do not add up to the pot exactly: the sum moves towards
+        // about 6.06 as any update converges (simultaneous CFR+: 6.025 / 6.038 / 6.047 after 200 / 400 / 800 iterations)
+        assert!((v[0] + v[1] - tree.cfg.pot).abs() < 0.1, "{:?}: constant sum {:?}", update, v);
+        s.exploitability()
+    }
+
+    #[test]
+    fn update_names_round_trip_and_the_default_is_the_solver_as_it_was() {
+        for u in [Update::SimCfrPlus, Update::AltCfrPlus, Update::AltDcfr] {
+            assert_eq!(Update::parse(u.name()), Some(u));
+        }
+        assert_eq!(Update::parse("cfr"), None);
+        assert_eq!(SolverOptions::default().update, Update::SimCfrPlus);
+        assert_eq!((Update::SimCfrPlus.walks(), Update::AltCfrPlus.walks()), (1, 2));
+        // DCFR: nothing of iteration 0 is kept, the discounts approach 1
+        assert_eq!(dcfr_discounts(1), (0.0, 0.5, 0.0));
+        let (pos, neg, keep) = dcfr_discounts(1001);
+        assert!(pos > 0.9999 && neg == 0.5 && (keep - (1000f32 / 1001.0).powi(2)).abs() < 1e-6);
+    }
+
+    /// the river game of `river_clairvoyant_game_matches_theory`, solved with alternating updates
+    #[test]
+    fn alternating_updates_solve_the_clairvoyant_river_game() {
+        let b = board("Ah 8d 7c 2s 3d");
+        let nuts: Vec<(&str, &str, f32)> = vec![("Ad", "Ac", 1.0), ("Ad", "As", 1.0), ("Ac", "As", 1.0)];
+        let air: Vec<(&str, &str, f32)> = vec![("6c", "5c", 1.0), ("6d", "5d", 1.0), ("6h", "5h", 1.0), ("6s", "5s", 1.0), ("9c", "4c", 1.0), ("9d", "4h", 1.0)];
+        let qq: Vec<(&str, &str, f32)> = vec![("Qc", "Qd", 1.0), ("Qc", "Qh", 1.0), ("Qc", "Qs", 1.0), ("Qd", "Qh", 1.0), ("Qd", "Qs", 1.0), ("Qh", "Qs", 1.0)];
+        let mut oop = nuts.clone();
+        oop.extend(air.clone());
+        let tree = build_tree(&river_cfg(), &b);
+        let (bet_size, pot) = (7.5f32, 10.0f32);
+        let (wn, wa) = (nuts.len() as f32, air.len() as f32);
+        let bluff_theory = bet_size * wn / (wa * (pot + bet_size));
+        let call_theory = pot / (pot + bet_size);
+        for update in ALTERNATING {
+            let mut s = Solver::with_options(&tree, &[range_of(&oop), range_of(&qq)], SolverOptions { update, ..Default::default() });
+            for _ in 0..1500 {
+                s.iterate();
+            }
+            s.finalize_avg();
+            let expl = s.exploitability();
+            assert!(expl < 0.02 * 10.0, "{:?}: exploitability {} chips", update, expl);
+            let root = &s.avg[0];
+            let bluff: f32 = air.iter().map(|&(x, y, _)| root[NC + combo(x, y)]).sum::<f32>() / wa;
+            assert!((bluff - bluff_theory).abs() < 0.04, "{:?}: bluff {} vs theory {}", update, bluff, bluff_theory);
+            let facing = tree.nodes.iter().position(|n| matches!(&n.kind, PKind::Decision { player: 1, acts, .. } if acts.len() == 2 && acts[0].kind == 0)).unwrap();
+            let call: f32 = qq.iter().map(|&(x, y, _)| s.avg[facing][NC + combo(x, y)]).sum::<f32>() / 6.0;
+            assert!((call - call_theory).abs() < 0.04, "{:?}: call {} vs theory {}", update, call, call_theory);
+        }
+    }
+
+    /// with the same number of walks of the tree, alternating updates end closer to an equilibrium (`docs/15` §2)
+    #[test]
+    fn alternating_updates_beat_simultaneous_ones_with_the_same_walks() {
+        let (tree, ranges) = three_street_game();
+        let sim = solve_with(&tree, &ranges, Update::SimCfrPlus, 400);
+        for update in ALTERNATING {
+            let alt = solve_with(&tree, &ranges, update, 200);
+            assert!(alt < sim, "{:?}: {} chips after 400 walks, simultaneous CFR+ {}", update, alt, sim);
+            assert!(alt < 0.04 * 6.0, "{:?}: exploitability {} chips of a 6 chip pot", update, alt);
+        }
+    }
+
+    /// an alternating walk does not compute the values of the player it does not update; computing them does not change
+    /// a bit of the regrets or strategy sums
+    #[test]
+    fn alternating_walks_skip_the_unused_values_without_changing_a_bit() {
+        let (tree, ranges) = three_street_game();
+        for update in ALTERNATING {
+            let run = |full: bool| {
+                let mut s = Solver::with_options(&tree, &ranges, SolverOptions { update, ..Default::default() });
+                s.alt_full_values = full;
+                for _ in 0..25 {
+                    s.iterate();
+                }
+                let bits = |v: &Vec<Vec<f32>>| v.iter().flatten().map(|x| x.to_bits()).collect::<Vec<u32>>();
+                (bits(&s.regret), bits(&s.ssum))
+            };
+            let (skip, full) = (run(false), run(true));
+            assert!(skip.0.len() > 1000);
+            assert!(skip == full, "{:?}: skipping the other player's values changed the result", update);
+        }
+    }
+
+    #[test]
+    fn alternating_updates_give_the_same_bits_on_any_number_of_threads() {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 5, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let ranges = mixed_ranges(3);
+        for update in ALTERNATING {
+            let run = |threads: usize| {
+                let mut s = solve_with_threads(&tree, &ranges, SolverOptions { threads, update, ..Default::default() }, 20, None);
+                everything(&tree, &mut s)
+            };
+            let one = run(1);
+            let four = run(4);
+            assert!(one.0 == four.0 && one.1 == four.1, "{:?}: 4 threads differ from 1", update);
+        }
+    }
+
+    // ---- the river subtree walk (REFACTOR_PLAN 4-2)
+
+    /// trains `iters` iterations with and without the river subtree walk and compares the regrets and strategy sums as bits
+    fn assert_river_subtree_walk_matches(tree: &Tree, ranges: &[Vec<f32>; 2], opts: SolverOptions, iters: u32, locks: &[(usize, Vec<f32>)]) {
+        let run = |fast: bool| {
+            let mut s = Solver::with_options(tree, ranges, opts);
+            assert!(s.river_plans.is_some(), "the tree has river subtrees");
+            s.set_river_subtree_walk(fast);
+            for (n, l) in locks {
+                s.lock_node(*n, l.clone()).unwrap();
+            }
+            for i in 0..iters {
+                if i == iters / 2 && opts.update != Update::AltDcfr {
+                    s.reset_average();
+                }
+                s.iterate();
+            }
+            let bits = |v: &Vec<Vec<f32>>| v.iter().flatten().map(|x| x.to_bits()).collect::<Vec<u32>>();
+            (bits(&s.regret), bits(&s.ssum))
+        };
+        let (general, fast) = (run(false), run(true));
+        assert!(general.0.len() > 1000, "a tree with regrets");
+        assert!(general.0 == fast.0, "{:?}: regrets differ", opts);
+        assert!(general.1 == fast.1, "{:?}: strategy sums differ", opts);
+    }
+
+    #[test]
+    fn river_subtree_walk_gives_the_bits_of_the_general_walk() {
+        let flop = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.5, 1.0]], allow_allin: true, turn_cards: 4, river_cards: 3, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&flop, &board("Ks 7d 2c"));
+        let ranges = mixed_ranges(7);
+        for update in [Update::SimCfrPlus, Update::AltCfrPlus, Update::AltDcfr] {
+            for (no_average_from, threads) in [(3, 1), (2, 1), (3, 4)] {
+                let opts = SolverOptions { no_average_from, threads, update, ..Default::default() };
+                assert_river_subtree_walk_matches(&tree, &ranges, opts, 12, &[]);
+            }
+        }
+        // a turn tree with every river card, with rake
+        let turn = Config { pot: 8.0, stack: 20.0, bets: [vec![], vec![0.5], vec![0.75]], raise_sizes: [false; 3], allow_allin: true, river_cards: 48, rake_pct: 5.0, rake_cap: 3.0, ..Config::default() };
+        let tree = build_tree(&turn, &board("Ks 9h 5h 2d"));
+        for update in [Update::SimCfrPlus, Update::AltCfrPlus] {
+            assert_river_subtree_walk_matches(&tree, &ranges, SolverOptions { update, ..Default::default() }, 10, &[]);
+        }
+    }
+
+    #[test]
+    fn river_subtree_walk_leaves_locked_subtrees_to_the_general_walk() {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 3, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let ranges = mixed_ranges(3);
+        let na = |i: usize| match &tree.nodes[i].kind {
+            PKind::Decision { children, .. } => children.len(),
+            _ => unreachable!(),
+        };
+        let lock = |na: usize| {
+            let mut l = vec![0f32; na * NC];
+            for h in 0..NC {
+                l[h] = 0.3 + (h % 4) as f32 * 0.15;
+                for a in 1..na {
+                    l[a * NC + h] = (1.0 - l[h]) / (na - 1) as f32;
+                }
+            }
+            l
+        };
+        let river = tree.nodes.iter().position(|n| n.street == 2 && matches!(n.kind, PKind::Decision { .. })).unwrap();
+        let turn = tree.nodes.iter().position(|n| n.street == 1 && matches!(n.kind, PKind::Decision { .. })).unwrap();
+        for update in [Update::SimCfrPlus, Update::AltDcfr] {
+            let opts = SolverOptions { update, ..Default::default() };
+            assert_river_subtree_walk_matches(&tree, &ranges, opts, 10, &[(river, lock(na(river)))]);
+            assert_river_subtree_walk_matches(&tree, &ranges, opts, 10, &[(turn, lock(na(turn))), (0, lock(na(0)))]);
+        }
+    }
+
+    #[test]
+    fn river_trees_have_no_river_subtree_plans() {
+        let river = build_tree(&river_cfg(), &board("Ah 8d 7c 2s 3d"));
+        assert!(Solver::new(&river, &mixed_ranges(1)).river_plans.is_none());
     }
 }
