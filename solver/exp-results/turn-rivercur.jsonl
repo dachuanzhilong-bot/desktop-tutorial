@@ -1,0 +1,6 @@
+{"board":"As 7d 2c 9h","sizes":"current","variant":"cfrp-sim","reset":500,"walks":1000,"iters":1000,"pct":0.8181,"pctRiverCurrent":20.8706,"oop":0.3724,"ip":0.4457,"ev":[1.6184,3.8816],"trainSecPerWalk":0.0593,"wall":59.6}
+{"board":"As 7d 2c 9h","sizes":"current","variant":"cfrp-sim","reset":500,"walks":2000,"iters":2000,"pct":0.4768,"pctRiverCurrent":14.8055,"oop":0.2225,"ip":0.2543,"ev":[1.6176,3.8824],"trainSecPerWalk":0.0593,"wall":119.3}
+{"board":"As 7d 2c 9h","sizes":"current","variant":"cfrp-alt","reset":500,"walks":1000,"iters":500,"pct":0.2366,"pctRiverCurrent":0.4445,"oop":0.1324,"ip":0.1042,"ev":[1.6171,3.8829],"trainSecPerWalk":0.0558,"wall":56.1}
+{"board":"As 7d 2c 9h","sizes":"current","variant":"cfrp-alt","reset":500,"walks":2000,"iters":1000,"pct":0.0716,"pctRiverCurrent":0.2244,"oop":0.0441,"ip":0.0276,"ev":[1.6178,3.8822],"trainSecPerWalk":0.0559,"wall":112.4}
+{"board":"As 7d 2c 9h","sizes":"current","variant":"dcfr-alt","reset":500,"walks":1000,"iters":500,"pct":0.1660,"pctRiverCurrent":0.5184,"oop":0.0708,"ip":0.0952,"ev":[1.6176,3.8824],"trainSecPerWalk":0.0577,"wall":58.0}
+{"board":"As 7d 2c 9h","sizes":"current","variant":"dcfr-alt","reset":500,"walks":2000,"iters":1000,"pct":0.0448,"pctRiverCurrent":0.1675,"oop":0.0232,"ip":0.0216,"ev":[1.6182,3.8818],"trainSecPerWalk":0.0572,"wall":115.1}

@@ -1,0 +1,14 @@
+srp-btn-bb As 7d 2c 9h sizes current nodes 3903 variant dcfr-alt reset 0 threads 1
+{"board":"As 7d 2c 9h","sizes":"current","variant":"dcfr-alt","reset":0,"walks":3000,"iters":1500,"pct":0.0222,"oop":0.0122,"ip":0.0100,"ev":[1.6183,3.8817],"trainSecPerWalk":0.0574,"wall":172.3}
+srp-btn-bb As 7d 2c 9h sizes two nodes 6507 variant dcfr-alt reset 0 threads 1
+{"board":"As 7d 2c 9h","sizes":"two","variant":"dcfr-alt","reset":0,"walks":3000,"iters":1500,"pct":0.0288,"oop":0.0159,"ip":0.0129,"ev":[1.6040,3.8960],"trainSecPerWalk":0.0952,"wall":286.0}
+srp-btn-bb As 7d 2c 9h sizes plan nodes 13143 variant dcfr-alt reset 0 threads 1
+{"board":"As 7d 2c 9h","sizes":"plan","variant":"dcfr-alt","reset":0,"walks":3000,"iters":1500,"pct":0.0654,"oop":0.0298,"ip":0.0356,"ev":[1.6154,3.8846],"trainSecPerWalk":0.1914,"wall":574.6}
+srp-btn-bb Qs Jd 6s 9h sizes current nodes 3903 variant dcfr-alt reset 0 threads 1
+{"board":"Qs Jd 6s 9h","sizes":"current","variant":"dcfr-alt","reset":0,"walks":3000,"iters":1500,"pct":0.0307,"oop":0.0144,"ip":0.0164,"ev":[2.2678,3.2322],"trainSecPerWalk":0.0559,"wall":167.8}
+srp-btn-bb Qs Jd 6s 9h sizes two nodes 6507 variant dcfr-alt reset 0 threads 1
+{"board":"Qs Jd 6s 9h","sizes":"two","variant":"dcfr-alt","reset":0,"walks":3000,"iters":1500,"pct":0.0365,"oop":0.0175,"ip":0.0190,"ev":[2.2658,3.2342],"trainSecPerWalk":0.0935,"wall":280.9}
+srp-btn-bb Qs Jd 6s 9h sizes plan nodes 13143 variant dcfr-alt reset 0 threads 1
+{"board":"Qs Jd 6s 9h","sizes":"plan","variant":"dcfr-alt","reset":0,"walks":3000,"iters":1500,"pct":0.0552,"oop":0.0240,"ip":0.0312,"ev":[2.2984,3.2016],"trainSecPerWalk":0.1887,"wall":566.5}
+
+[exited with code 0]

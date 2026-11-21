@@ -649,6 +649,8 @@ pub struct Solver<'a> {
     z0: f64,
     /// the training walk of a river tree (`river.rs`, REFACTOR_PLAN 3-3-4); `None` for other trees
     river: Option<Box<RiverWalk>>,
+    exp_train_only: Option<usize>,
+    exp_dcfr: Option<(f32, f32, f32)>,
 }
 
 /// `sigma` (`na * NC`) from the regrets of a support (`na * k`): regret matching on the support,
@@ -805,7 +807,32 @@ impl<'a> Solver<'a> {
             extra: HashMap::new(),
             z0,
             river,
+            exp_train_only: None,
+            exp_dcfr: None,
         }
+    }
+
+    /// EXPERIMENT (review 2026-11-21): one iteration with the general walk, alternating updates (one walk per
+    /// player) or simultaneous (one walk), CFR+ (`dcfr` None) or DCFR (alpha, gamma; beta = 0).
+    pub fn iterate_exp(&mut self, alternating: bool, dcfr: Option<(f32, f32)>) {
+        self.iters += 1;
+        let t = (self.iters - self.avg_start) as f32;
+        self.exp_dcfr = dcfr.map(|(alpha, gamma)| {
+            let tm = (self.iters - 1) as f32;
+            let ta = tm.powf(alpha);
+            (ta / (ta + 1.0), 0.5, (tm / (tm + 1.0)).powf(gamma))
+        });
+        if alternating {
+            for p in 0..2 {
+                self.exp_train_only = Some(p);
+                self.run(Mode::Train(t), None, false);
+            }
+        } else {
+            self.exp_train_only = None;
+            self.run(Mode::Train(t), None, false);
+        }
+        self.exp_train_only = None;
+        self.exp_dcfr = None;
     }
 
     /// threads that walk the tree (see `SolverOptions::threads`)
@@ -836,6 +863,8 @@ impl<'a> Solver<'a> {
             tremble: self.tremble,
             br_forbid: &self.br_forbid,
             eval_below: self.eval_below,
+            train_only: self.exp_train_only,
+            dcfr: self.exp_dcfr,
         };
         let mut part = Part { sh: &sh, base: 0, regret: &mut self.regret, ssum: &mut self.ssum, ev, extra: &mut self.extra, fork: threads > 1 };
         part.walk(ni, r0, r1, mode, want_mass)
@@ -1133,6 +1162,10 @@ struct Shared<'w> {
     br_forbid: &'w [u64],
     /// `Solver::evaluate_upstream`
     eval_below: u8,
+    /// EXPERIMENT: update only this player's regrets / sums (alternating updates)
+    train_only: Option<usize>,
+    /// EXPERIMENT: DCFR discounts (positive regrets, negative regrets, strategy sums)
+    dcfr: Option<(f32, f32, f32)>,
 }
 
 /// What a walk writes, for the nodes `base..base + regret.len()`: the whole tree, or one subtree that a thread
@@ -1426,6 +1459,7 @@ impl<'w> Part<'w> {
                 let mut cfv_p_chosen: Option<Vec<f32>> = None;
                 match mode {
                     Mode::Train(_) if locked => {}
+                    Mode::Train(_) if sh.train_only.is_some_and(|q| q != p) => {}
                     Mode::Train(t) => {
                         // the support only: elsewhere the reach is 0 (see `Solver`)
                         let k = sup.len();
@@ -1448,7 +1482,13 @@ impl<'w> Part<'w> {
                             for (j, &h) in sup.iter().enumerate() {
                                 let h = h as usize;
                                 let i = a * k + j;
-                                regret[i] = (regret[i] + child_p[a][h] - cfv_own[h]).max(0.0);
+                                regret[i] = match sh.dcfr {
+                                    None => (regret[i] + child_p[a][h] - cfv_own[h]).max(0.0),
+                                    Some((pd, nd, _)) => {
+                                        let r = regret[i];
+                                        r * if r > 0.0 { pd } else { nd } + child_p[a][h] - cfv_own[h]
+                                    }
+                                };
                             }
                         }
                         if has_avg {
@@ -1456,7 +1496,10 @@ impl<'w> Part<'w> {
                             for a in 0..na {
                                 for (j, &h) in sup.iter().enumerate() {
                                     let h = h as usize;
-                                    ssum[a * k + j] += t * rp[h] * sigma[a * NC + h];
+                                    ssum[a * k + j] = match sh.dcfr {
+                                        None => ssum[a * k + j] + t * rp[h] * sigma[a * NC + h],
+                                        Some((_, _, sd)) => ssum[a * k + j] * sd + rp[h] * sigma[a * NC + h],
+                                    };
                                 }
                             }
                         }
