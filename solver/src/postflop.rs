@@ -704,6 +704,8 @@ pub struct Solver<'a> {
     river_plans: Option<Arc<RiverPlans>>,
     /// training walks take the river subtree walk where they can (default; `set_river_subtree_walk`)
     river_subtree_walk: bool,
+    /// the showdowns of an all-in with many run-outs, computed on the threads (REFACTOR_PLAN 4-3); kept between walks
+    allin_buf: std::sync::Mutex<Vec<f32>>,
     /// tests: an alternating walk computes the other player's values too (they are not used; see `Shared::train_only`)
     #[cfg(test)]
     alt_full_values: bool,
@@ -869,6 +871,7 @@ impl<'a> Solver<'a> {
             dcfr: None,
             river_plans,
             river_subtree_walk: true,
+            allin_buf: std::sync::Mutex::new(Vec::new()),
             #[cfg(test)]
             alt_full_values: false,
         }
@@ -926,6 +929,7 @@ impl<'a> Solver<'a> {
             full_values: false,
             dcfr: self.dcfr,
             river_plans: if self.river_subtree_walk { self.river_plans.as_deref() } else { None },
+            allin_buf: &self.allin_buf,
         };
         let mut sub = SubScratch::default();
         let mut part = Part { sh: &sh, base: 0, regret: &mut self.regret, ssum: &mut self.ssum, ev, extra: &mut self.extra, fork: threads > 1, sub: &mut sub };
@@ -1251,6 +1255,8 @@ struct Shared<'w> {
     dcfr: Option<(f32, f32, f32)>,
     /// training walks take `river::train_subtree` at these river subtrees (`Solver::set_river_subtree_walk`)
     river_plans: Option<&'w RiverPlans>,
+    /// `Solver::allin_buf`
+    allin_buf: &'w std::sync::Mutex<Vec<f32>>,
 }
 
 /// What a walk writes, for the nodes `base..base + regret.len()`: the whole tree, or one subtree that a thread
@@ -1450,24 +1456,83 @@ impl<'w> Part<'w> {
             PKind::AllIn { tables, weight } => {
                 let mut res = Res::zero(true);
                 let rs = [r0, r1];
-                let mut share = vec![0f32; NC];
-                let mut mass = vec![0f32; NC];
                 let bm = mask_of(&node.board);
-                for &ti in tables {
+                let players: Vec<usize> = (0..2).filter(|&p| wants(p)).collect();
+                // one run-out's showdown for one player: (share, mass), as `showdown` leaves them
+                let one = |ti: u32, p: usize, share: &mut [f32], mass: &mut [f32]| {
                     let st = &tree.tables[ti as usize];
                     let fresh = st.mask & !bm; // the cards of the run-out
-                    for p in (0..2).filter(|&p| wants(p)) {
-                        let mut r = rs[1 - p].to_vec();
-                        for h in 0..NC {
-                            if blocked(fresh, h) {
-                                r[h] = 0.0;
-                            }
+                    let mut r = rs[1 - p].to_vec();
+                    for h in 0..NC {
+                        if blocked(fresh, h) {
+                            r[h] = 0.0;
                         }
-                        showdown(st, &r, &mut share, &mut mass);
-                        for &h in &st.order {
+                    }
+                    showdown(st, &r, share, mass);
+                };
+                // adds one run-out's showdown, in the order of the run-outs whichever thread computed it
+                let mut add = |ti: u32, p: usize, share: &[f32], mass: &[f32]| {
+                    for &h in &tree.tables[ti as usize].order {
+                        let h = h as usize;
+                        res.v[p][h] += weight * (pot_total * share[h] - node.inv[p] * mass[h]);
+                        res.m[p][h] += weight * mass[h];
+                    }
+                };
+                if self.fork && sh.threads > 1 && tables.len() >= 4 * sh.threads {
+                    // many run-outs (a flop all-in: 1,176) above the parallel part of the walk: their showdowns are computed
+                    // on the threads (one contiguous range of run-outs each, one thread start per node) and added here in
+                    // order (REFACTOR_PLAN 4-3), so the values are bit for bit those of one thread.  A showdown keeps only
+                    // the entries `add` reads (`Strength::order`), as (share, mass) pairs.
+                    let jobs: Vec<(u32, usize)> = tables.iter().flat_map(|&ti| players.iter().map(move |&p| (ti, p))).collect();
+                    let len = |&(ti, _): &(u32, usize)| tree.tables[ti as usize].order.len();
+                    // the solver's buffer (`Solver::allin_buf`): kept from node to node and walk to walk, since faulting in
+                    // ~20 MB of new pages for every node took longer than the showdowns (the threads wait on each other there)
+                    let need = 2 * jobs.iter().map(len).sum::<usize>();
+                    let mut guard = sh.allin_buf.lock().expect("all-in buffer");
+                    if guard.len() < need {
+                        guard.resize(need, 0.0);
+                    }
+                    let buf: &mut [f32] = &mut guard[..need];
+                    let per = jobs.len().div_ceil(sh.threads);
+                    let fpc = fp_control();
+                    std::thread::scope(|s| {
+                        let mut rest: &mut [f32] = &mut *buf;
+                        for js in jobs.chunks(per) {
+                            let (mine, more) = std::mem::take(&mut rest).split_at_mut(2 * js.iter().map(len).sum::<usize>());
+                            rest = more;
+                            let one = &one;
+                            s.spawn(move || {
+                                set_fp_control(fpc);
+                                let (mut share, mut mass) = (vec![0f32; NC], vec![0f32; NC]);
+                                let mut at = 0;
+                                for &(ti, p) in js {
+                                    one(ti, p, &mut share, &mut mass);
+                                    for &h in &tree.tables[ti as usize].order {
+                                        mine[at] = share[h as usize];
+                                        mine[at + 1] = mass[h as usize];
+                                        at += 2;
+                                    }
+                                }
+                            });
+                        }
+                    });
+                    let mut at = 0;
+                    for &(ti, p) in &jobs {
+                        for &h in &tree.tables[ti as usize].order {
                             let h = h as usize;
-                            res.v[p][h] += weight * (pot_total * share[h] - node.inv[p] * mass[h]);
-                            res.m[p][h] += weight * mass[h];
+                            let (sh_h, ms_h) = (buf[at], buf[at + 1]);
+                            res.v[p][h] += weight * (pot_total * sh_h - node.inv[p] * ms_h);
+                            res.m[p][h] += weight * ms_h;
+                            at += 2;
+                        }
+                    }
+                } else {
+                    let mut share = vec![0f32; NC];
+                    let mut mass = vec![0f32; NC];
+                    for &ti in tables {
+                        for &p in &players {
+                            one(ti, p, &mut share, &mut mass);
+                            add(ti, p, &share, &mass);
                         }
                     }
                 }
