@@ -1,0 +1,1 @@
+{"target":0.3,"iterations":2250,"g1Pct":0.2855,"reached":true,"avgRestart":500,"checkEvery":250,"resumedFrom":0,"secsPerIteration":0.75,"update":"sim-cfr+","looks":[[750,1.1379],[1000,0.7592],[1250,0.5677],[1500,0.4544],[1750,0.3809],[2000,0.3276],[2250,0.2855]]}

@@ -1,0 +1,7 @@
+srp-btn-bb   BB range 722 combos (54.4%)  BTN range 628 combos (47.3%)
+3bp-btn-bb   BB range 175 combos (13.2%)  BTN range 347 combos (26.2%)
+srp-co-bb    BB range 589 combos (44.4%)  CO range 368 combos (27.7%)
+srp-btn-bb flop  0 As 7d 2c  built: 1664826 nodes (618888 decisions), 3.80 GB regret+ssum, 2.1s, peak RSS 4.25 GB
+srp-btn-bb flop  0 As 7d 2c  30 iterations: 1.39 s/iteration, peak RSS 4.28 GB
+srp-btn-bb flop  0 As 7d 2c  nodes 1664826  expl 5.805 chips (105.54% pot)  10104540 B  50s  peak RSS 4.66 GB
+done in 50s

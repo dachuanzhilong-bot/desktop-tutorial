@@ -15,3 +15,9 @@
 4-1-alt-dcfr	./target/release/gen_postflop --all-cards --g1-target 0.3 --update alt-dcfr --check-every 125 --max-iters 1500 --pre "$PRE" --out "$OUT/q/4-1-alt-dcfr" --scenario srp-btn-bb --only-flop 0 --threads 1 --solve-threads "$THREADS" --checkpoint "$OUT/q-ck/4-1-alt-dcfr" --checkpoint-every 50
 4-1-alt-cfr+	./target/release/gen_postflop --all-cards --g1-target 0.3 --update alt-cfr+ --avg-restart 250 --check-every 125 --max-iters 1500 --pre "$PRE" --out "$OUT/q/4-1-alt-cfr+" --scenario srp-btn-bb --only-flop 0 --threads 1 --solve-threads "$THREADS" --checkpoint "$OUT/q-ck/4-1-alt-cfr+" --checkpoint-every 50
 4-1-sim-cfr+	./target/release/gen_postflop --all-cards --g1-target 0.3 --check-every 250 --max-iters 4000 --pre "$PRE" --out "$OUT/q/4-1-sim-cfr+" --scenario srp-btn-bb --only-flop 0 --threads 1 --solve-threads "$THREADS" --checkpoint "$OUT/q-ck/4-1-sim-cfr+" --checkpoint-every 100
+#
+# REFACTOR_PLAN 3-3-7 の G2'（出荷したデータ。pc-g2.sh、送るのは pc.sh）: 済んだ部分は飛ばすので、途中まで進んでいれば続きから。
+3-3-7-g2	NO_PUSH=1 OUT_DIR="$OUT" bash scripts/pc-g2.sh && mkdir -p "$OUT/q/3-3-7-g2" && cp "$OUT/g2.jsonl" "$OUT/q/3-3-7-g2/"
+#
+# REFACTOR_PLAN 4-1 の G2': DCFR（交互）で 500 反復解いた 3 フロップを、リバーを N = 1,000 で解き直して、配るラインの中で測る。
+4-1-g2-alt-dcfr	NO_PUSH=1 OUT_DIR="$OUT/g2-dcfr" SPECS="0 500 - 8 500 - 12 500 -" AVG_RESTART=0 EXTRA_ARGS="--update alt-dcfr" bash scripts/pc-g2.sh && mkdir -p "$OUT/q/4-1-g2-alt-dcfr" && cp "$OUT/g2-dcfr/g2.jsonl" "$OUT/q/4-1-g2-alt-dcfr/"
