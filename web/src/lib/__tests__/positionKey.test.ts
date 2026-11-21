@@ -18,6 +18,7 @@ import { BB_SEAT, history, stateAt } from "../solution/tree";
 import { ActionKind } from "../solution/types";
 import type { Manifest } from "../solution/types";
 import { renumberFlop, renumberManifest } from "./fixtures/renumber";
+import { loadV2Flop } from "./helpers";
 
 const PUBLIC = path.resolve(__dirname, "../../../public");
 const TIMEOUT = 60_000;
@@ -307,7 +308,8 @@ describe("postflop position keys", () => {
   }, TIMEOUT);
 
   it("documented example shape: actions, card, actions, card, action", () => {
-    const f = loadFlop("srp-btn-bb", 0);
+    // river nodes: only the v2 data (the fixture) store them; the shipped v3 data stop at the river start
+    const f = loadV2Flop("srp-btn-bb", 0);
     const river = f.nodes.map((n) => postflopKey(f, n.id)).filter((k) => k.split("/").length === 5);
     expect(river.length).toBeGreaterThan(0);
     for (const k of river) expect(k).toMatch(/^[^/]+\/[2-9TJQKA][cdhs]\/[^/]+\/[2-9TJQKA][cdhs]\/[^/]+$/);

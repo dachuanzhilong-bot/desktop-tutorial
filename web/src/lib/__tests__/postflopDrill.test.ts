@@ -33,7 +33,7 @@ import type { Question } from "../practice/engine";
 import { classByName, NUM_CLASSES } from "../poker/hands";
 import { MemoryRepo } from "../storage/memory";
 import { mulberry32, weightedPick } from "../util/rng";
-import { loadManifest, loadNode, walk } from "./helpers";
+import { loadManifest, loadNode, loadV2Flop, walk } from "./helpers";
 
 const DIR = path.resolve(__dirname, "../../../public/postflop");
 const cache = new Map<string, PfFlop>();
@@ -42,7 +42,8 @@ const load = (scenario: string, flop: number): PfFlop => {
   if (!cache.has(k)) cache.set(k, { ...decodeFlop(new Uint8Array(gunzipSync(readFileSync(path.join(DIR, scenario, `${flop}.bin.gz`))))), build: `b-${k}` });
   return cache.get(k)!;
 };
-const FLOPS = [load("srp-btn-bb", 3), load("3bp-btn-bb", 0), load("srp-co-bb", 1)];
+// the shipped data are v3 (no river node: the river is solved on the device), so no edge of them ends at a showdown; the v2 fixture keeps those ends covered
+const FLOPS = [load("srp-btn-bb", 3), load("3bp-btn-bb", 0), load("srp-co-bb", 1), loadV2Flop("srp-btn-bb", 3)];
 const NOW = 1_800_000_000_000;
 const CONFIG: PostConfig = { kind: "spot", scenario: "srp-btn-bb", hero: null, streets: [0, 1, 2], rng: false, timer: 0, flop: null };
 const drill = (config: Partial<PostConfig> = {}, seed = 1, repo = new MemoryRepo()) =>
