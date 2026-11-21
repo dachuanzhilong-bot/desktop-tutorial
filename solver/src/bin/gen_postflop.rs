@@ -296,6 +296,9 @@ fn main() {
     let check_every: u32 = arg(&args, "--check-every", 500);
     let max_iters: u32 = arg(&args, "--max-iters", 5000);
     // how an iteration updates (REFACTOR_PLAN 4-1): sim-cfr+ (the default, as before), alt-cfr+, alt-dcfr
+    // the river subtrees with the general walk instead of the walk over the supports (REFACTOR_PLAN 4-2; the same bits, slower):
+    // the reference of a speed measurement
+    let general_walk = args.iter().any(|a| a == "--general-walk");
     let update_name: String = arg(&args, "--update", Update::SimCfrPlus.name().to_string());
     let update = Update::parse(&update_name).unwrap_or_else(|| panic!("--update {}: sim-cfr+, alt-cfr+ or alt-dcfr", update_name));
     // DCFR discounts the early iterations itself: no restart of the average unless asked for
@@ -394,6 +397,9 @@ fn main() {
                 let tree = build_tree(&cfg, &board);
                 let opts = if g1_mode { SolverOptions { no_average_from: 3, avg_on_demand_from: 2, threads: solve_threads, update, ..Default::default() } } else { SolverOptions { no_average_from, threads: solve_threads, update, ..Default::default() } };
                 let mut solver = Solver::with_options(&tree, &ranges[si], opts);
+                if general_walk {
+                    solver.set_river_subtree_walk(false);
+                }
                 let t_build = t.elapsed().as_secs_f32();
                 let n_dec = tree.nodes.iter().filter(|n| matches!(n.kind, PKind::Decision { .. })).count();
                 eprintln!("{} flop {:2} {:<9} built: {} nodes ({} decisions), {:.2} GB regret+ssum, {:.1}s, peak RSS {}", sc.id, fi, FLOPS[fi], tree.nodes.len(), n_dec, solver.strategy_bytes() as f64 / 1e9, t_build, peak_rss());
