@@ -313,7 +313,7 @@ export function PostflopViewer({ flop, oopName, ipName, exploit, nodeId, onNode,
           )}
       {river?.last && node.street === 2 && <RiverStatus last={river.last} />}
       {flop.version === 3 && node.street === 2 && <ApproxNote testId="river-approx">{t("pf.riverApprox", { n: RIVER_ITERATIONS.toLocaleString() })}</ApproxNote>}
-      <ApproxNote>{t("pf.approx")}</ApproxNote>
+      <ApproxNote>{t(flop.version === 3 ? "pf.approxAll" : "pf.approx")}</ApproxNote>
     </>
   );
 }

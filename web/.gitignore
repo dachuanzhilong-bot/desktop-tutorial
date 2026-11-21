@@ -5,3 +5,6 @@ test-results/
 playwright-report/
 next-env.d.ts
 *.tsbuildinfo
+
+# postflop solution files: attached to a GitHub Release, downloaded by `npm run data:fetch` (data.lock.json, REFACTOR_PLAN 4-5)
+public/postflop/*/*.bin.gz

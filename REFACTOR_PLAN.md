@@ -259,6 +259,7 @@
 - **結果（2026-11-17、`docs/14` §12）**: 実装は揃った（層 `lib/postflop/river.ts`・`riverSolver.ts`・`riverStore.ts`、Study・練習・記録、キャッシュはメモリと IndexedDB `tessera-river`）。**5 秒**: 仮の N = 3,000 では、3-3-3 の本番計算と同時の機械で見積もりが 4.96〜6.50 秒（4 回中 3 回超過）で止まっていたが、N = 1,000（3-3-4）にして機械を空けた状態では **1.27〜1.49 秒**（ページ 4 倍の壁時計 + 3 × Worker の時間。Chrome は Worker を遅くできないため見積もり。実機では未測定）。端末の入力（`riverSolveInput`）は恒等のまま（揺れ・ε は採らない、`docs/14` §11-9）。出荷データ（`web/public/postflop`）は v2 のままで変えていない。
 
 #### 3-3-7: 量産して差し替える（3-1・3-2 の後）
+- **結果（2026-11-21、差し替え。G2' の測定は残り）**: 持ち主の PC（Ryzen 9 7900X・32 GB）で 63 フロップすべてを `gen_postflop --all-cards --g1-target 0.5` で量産し、**63 / 63 が G1 ≤ 0.5%（最大 0.4983%）**。反復数は 1,000〜3,500、合計 121,000 反復、1 フロップ 約 0.2〜0.7 時間（`docs/QUALITY.md` §8 の表、`docs/14` §13-4）。`web/public/postflop` を v3（gzip 113 MB）に差し替え、`validate:data`（v3 に対応）・単体テスト 559・`e2e`（305 通過）・`e2e:subpath` が通る。量産の途中で、書き出し前の評価が全ノード（リバー含む）を作ってメモリ不足（終了コード 137）になる不具合を直した（`docs/14` §13-4）。テストは、出荷データが v3 になった分を、3-3-7 より前のファイルを固定ファイルにして続け、「均衡に近い」の基準をポット比にした（理由はコミット本文）。**残り: 1 シナリオ 3 フロップの G2'（`docs/QUALITY.md` §8）。画面の文言（`pf.approxAll` など）は持ち主の確認が要る。**
 - **進み具合（2026-11-17）**: 3-1 は終わり（手作りのプリフロップ解で量産）。流す場所は**持ち主の PC**（持ち主の指示）。道具 `gen_postflop --all-cards --g1-target 0.5`（500 反復ごとに G1 を見て止める）を足した（`docs/14` §13。本番の木では未実測）。PC への接続（Remote Control にフォルダを登録）が済んだら、`--only-flop 0` で時間と反復数を測ってから全部を流す。
 - `srp-btn-bb` の 21 フロップを、500 反復ごとに全カード値を見て 0.5% 以下になるまで回す（上限 5,000 反復）。流す場所は持ち主の回答で決める（「まだ答えが要る質問」）。続けて残り 2 シナリオ。
 - 完了条件: `docs/QUALITY.md` の表に全フロップの G1 の値、1 シナリオ 3 フロップの G2 の値がある。`validate:data`・`e2e`・`e2e:subpath` が通る。`pf.approx` の文言を差し替える。
@@ -303,6 +304,7 @@
 - PC の送り先（`pc-publish.sh`）も、ブランチではなく Release にする（`gh release create`）。梱包は `data-pack` ワークフロー（Actions）が行い、本番用の Release を作る。**済み（2026-11-21）**: `pc-publish.sh` は生の結果の `pc-postflop.tar.gz` をプレリリースに上げ、`data-pack.yml` がそれを `scripts/pack-postflop.mjs` で梱包して Release（`postflop.tar`・`.sha256`・`index.json`）にする。3-3-7 の PC の結果でこの流れを手元で通し、梱包した 63 ファイルが出荷したものとバイト一致した。
 - 完了条件: CI（`npm test`・`e2e`・`e2e:subpath`）と Pages のデプロイが、取ってきたデータで通る。PR #46 のマージで、main の履歴に `.bin.gz` が増えない。
 - 止まる条件: Pages のデプロイでデータを取ってこられない。
+- **進み具合（2026-11-21）**: `data-release.yml` で Release `data-postflop-v3-20261121`（`postflop.tar` 113 MB、SHA-256 `6fd4ed14…`。手元で同じ手順で作った tar と一致）を作った。`web/data.lock.json`・`web/scripts/fetch-data.mjs` と、PR #46 から `.bin.gz` を外す変更を、PR #46 に入れた（取ってくるのに約 5 秒）。PC の送り先を Release にするのは、次の量産の道具（4-1 の `pc.sh`）で行う。
 
 ### ステップ 4-1: 交互更新
 

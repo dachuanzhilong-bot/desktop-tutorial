@@ -8,12 +8,8 @@
  * compares what is stored. A few values are also written out literally (taken from that old code), so a change
  * to the shared helpers (preflopRef, answerSrs, ...) that both would follow still shows.
  */
-import { readFileSync } from "node:fs";
-import { gunzipSync } from "node:zlib";
-import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { classByName } from "../poker/hands";
-import { decodeFlop } from "../postflop/decode";
 import type { PfFlop } from "../postflop/decode";
 import { PF_INDEX } from "../postflop/loader";
 import type { Grade } from "../practice/grading";
@@ -29,7 +25,7 @@ import { MemoryRepo } from "../storage/memory";
 import { buildStats, loadStats, STATS_CACHE_KEY } from "../storage/statsCache";
 import type { StatsCache } from "../storage/statsCache";
 import type { Attempt, Repo } from "../storage/types";
-import { loadManifest, walk } from "./helpers";
+import { loadManifest, loadV2Flop, walk } from "./helpers";
 
 const NOW = 1_800_000_000_000;
 const MIN = 60_000;
@@ -38,10 +34,9 @@ const BUILD = solutionBuild(m.id);
 const NODE = walk(m, "FFR"); // UTG, HJ fold, CO opens: the button faces an open
 const AKS = classByName("AKs");
 const SCENARIO = PF_INDEX.scenarios.find((s) => s.id === "srp-btn-bb")!;
-const flop: PfFlop = {
-  ...decodeFlop(new Uint8Array(gunzipSync(readFileSync(path.resolve(__dirname, "../../../public/postflop/srp-btn-bb/3.bin.gz"))))),
-  build: PF_INDEX.build["srp-btn-bb/3"],
-};
+// a flop with river decisions (RIVER_IP below): the shipped data are v3 (the river is solved on the device), so the v2 fixture
+// (its build ID is that of the file as it was shipped, the one the literals below name)
+const flop: PfFlop = { ...loadV2Flop("srp-btn-bb", 3), build: "fd91cfc9e86b" };
 const decisions = flop.nodes.filter((n) => n.type === "decision" && n.data);
 const FLOP_OOP = decisions.find((n) => n.street === 0 && n.actor === 0)!.id;
 const FLOP_IP = decisions.find((n) => n.street === 0 && n.actor === 1)!.id;
