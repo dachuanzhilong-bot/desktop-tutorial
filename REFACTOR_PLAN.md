@@ -337,7 +337,7 @@
 ### ステップ 4-6: GPU で学習する（持ち主の依頼、2026-11-21。設計は `docs/16`）
 
 - 作る場所: **持ち主の PC で Claude を動かして作る**（クラウドの環境には GPU が無く、試せない。持ち主の選択）。
-- 変更: 学習の走査のリバーの部分木（`river::train_subtree` と同じ計算）を CUDA で解く。Cargo の feature `cuda`（既定は無効）のときだけ、`build.rs` が `nvcc` でビルドしてリンクする（外部 crate は足さない）。リバーの regret・strategy sum は VRAM に置いたまま。VRAM 8 GB に載せるため、strategy sum（必要なら regret も）を 16 ビットで持つ。
+- 変更: 学習の走査のリバーの部分木（`river::train_subtree` と同じ計算）を CUDA で解く。Cargo の feature `cuda`（既定は無効）のときだけ、`build.rs` が `nvcc` でビルドしてリンクする（外部 crate は足さない）。リバーの regret・strategy sum は VRAM に置いたまま。VRAM 8 GB に載せるため、strategy sum（必要なら regret も）を 16 ビットで持つ（画面とアプリが 2.2 GB 使っていて空きは約 5.8 GB なので、今のサイズでも両方 16 ビットになる見込み。`docs/16` §1）。
 - 効く範囲（見込み）: VRAM に載る大きさ（今のサイズ、2 サイズずつ程度）の量産だけ。計画の 3-4 のサイズ（28.7 GB）は載らず、GPU では速くならない（`docs/16` §1）。
 - 順番: (1) WSL で CUDA が動くか確かめて、CUDA Toolkit を入れる → (2) 計測だけの試作で、リバーの部分木を GPU と CPU で解いて時間を比べる → (3) 組み込み（`gen_postflop --device gpu`）→ (4) 本番の木で G1・G2' と時間を比べる。
 - 完了条件: GPU で解いた As7d2c・49×48 が G1 ≤ 0.5%・G2' ≤ 1.0%。1 反復の regret の差が f32 の丸め程度。49×2 で同じ反復数の G1 が CPU と 0.02 ポイント以内。feature なしのビルド・テスト（CI）が今のまま通る。時間を `docs/14` に書く。
