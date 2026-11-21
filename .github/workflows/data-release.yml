@@ -1,0 +1,45 @@
+# Attaches the postflop solution files of a branch to a GitHub Release (REFACTOR_PLAN 4-5), so that they need not
+# live in the git history. web/data.lock.json names the release; web/scripts/fetch-data.mjs downloads it.
+# Run by hand: Actions -> Data release -> Run workflow (ref = the branch that holds the files, tag = a new release name).
+name: Data release
+on:
+  workflow_dispatch:
+    inputs:
+      ref:
+        description: "branch or commit that holds web/public/postflop/<scenario>/<n>.bin.gz"
+        required: true
+      tag:
+        description: "new release tag, e.g. data-postflop-v3-20261121"
+        required: true
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      SRC_REF: ${{ inputs.ref }}
+      TAG: ${{ inputs.tag }}
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.ref }}
+      - name: pack
+        working-directory: web/public/postflop
+        run: |
+          set -euo pipefail
+          n=$(ls */*.bin.gz | wc -l)
+          echo "files: $n"
+          test "$n" -gt 0
+          # a reproducible tar: sorted names, fixed times and owners
+          tar --sort=name --mtime='2026-01-01 00:00:00Z' --owner=0 --group=0 --numeric-owner -cf "$RUNNER_TEMP/postflop.tar" */*.bin.gz
+          (cd "$RUNNER_TEMP" && sha256sum postflop.tar | tee postflop.tar.sha256)
+      - name: release
+        run: |
+          set -euo pipefail
+          printf 'Postflop solution files (web/public/postflop/<scenario>/<n>.bin.gz) of %s.\nDownloaded by web/scripts/fetch-data.mjs (web/data.lock.json).\nsha256: %s\n' \
+            "$SRC_REF" "$(cut -d' ' -f1 "$RUNNER_TEMP/postflop.tar.sha256")" > "$RUNNER_TEMP/notes.md"
+          gh release create "$TAG" "$RUNNER_TEMP/postflop.tar" "$RUNNER_TEMP/postflop.tar.sha256" \
+            --repo "$GITHUB_REPOSITORY" --title "$TAG" --notes-file "$RUNNER_TEMP/notes.md" --target "$(git rev-parse HEAD)"
