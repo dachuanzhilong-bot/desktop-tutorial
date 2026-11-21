@@ -1,16 +1,17 @@
 #!/usr/bin/env bash
-# REFACTOR_PLAN 3-3-7: 量産の結果（solver/out/postflop-v3）を gzip して、確認用の表（g1-summary.tsv）と一緒に
-# GitHub のブランチへ送る。そのあと、クラウド側で差し替え（pack・validate・e2e）を行う。
+# 量産の結果（solver/out/postflop-v3）を、確認用の表（g1-summary.tsv）と一緒に 1 つの tar.gz にまとめ、GitHub の Release に
+# 上げる（REFACTOR_PLAN 4-5。解データは git に入れない）。そのあと、クラウド側が data-pack ワークフローで梱包して本番用の
+# Release を作り、web/data.lock.json と index.json を差し替える PR を出す。
 #
 #   bash solver/scripts/pc-publish.sh
 #
 # 環境変数（どれも省略できる）:
-#   BRANCH   送り先のブランチ名（既定: data/3-3-7-postflop-v3）
+#   TAG      Release の名前（既定: pc-postflop-<日時>）
 #   FORCE=1  フロップが 63 個そろっていなくても進む
-#   NO_PUSH=1  コミットまで行い、送らない
+#   NO_PUSH=1  tar.gz を作るまで行い、上げない
 #   SRC      結果のディレクトリ（既定: solver/out/postflop-v3）
 #
-# 送るのに GitHub のログインが要る。初回は、先に次を実行しておく（ブラウザで認証する）:
+# 上げるのに GitHub のログインが要る。初回は、先に次を実行しておく（ブラウザで認証する）:
 #   sudo apt install -y gh   （sudo が使えなければ PowerShell で: wsl -d Ubuntu -u root apt install -y gh）
 #   gh auth login            （GitHub.com → HTTPS → Login with a web browser）
 #   gh auth setup-git
@@ -18,8 +19,7 @@ set -eu
 root=$(cd "$(dirname "$0")/../.." && pwd)
 cd "$root"
 src=${SRC:-solver/out/postflop-v3}
-dest=data-import/postflop-v3
-branch=${BRANCH:-data/3-3-7-postflop-v3}
+tag=${TAG:-pc-postflop-$(date -u +%Y%m%d-%H%M)}
 
 [ -f "$src/index.json" ] || { echo "$src/index.json がありません。pc-run.sh all を先に最後まで回してください。"; exit 1; }
 n=$(ls "$src"/*/*.bin 2>/dev/null | wc -l)
@@ -43,30 +43,19 @@ missed=$(grep -c "	false	" "$tsv" || true)
 echo "目標（G1）に届かなかったフロップ: $missed 個"
 [ "$missed" -gt 0 ] && grep "	false	" "$tsv"
 
-# gzip して、小さなファイルと一緒に dest へ集める（.bin は raw のまま送ると大きい）
-rm -rf "$dest"
-mkdir -p "$dest"
-for d in "$src"/*/; do
-  sc=$(basename "$d")
-  mkdir -p "$dest/$sc"
-  for b in $(ls "$d"*.bin | sort -V); do gzip -9 -c "$b" > "$dest/$sc/$(basename "$b").gz"; done
-  cp "$d"*.stats.json "$d"*.g1.json "$dest/$sc/" 2>/dev/null || true
-done
-cp "$src/index.json" "$tsv" "$dest/"
-du -sh "$dest"
-
-git config user.name > /dev/null || git config user.name "pc-run"
-git config user.email > /dev/null || git config user.email "pc-run@localhost"
-git checkout -B "$branch"
-git add "$dest"
-git commit -q -m "3-3-7: 全カードの量産結果（$n フロップ、G1 の表つき）" || echo "（変更なし。前回と同じ結果です）"
+# 生の .bin と小さなファイル（統計・G1・index・表）だけを 1 つの tar.gz に（途中保存は含めない）
+out="$root/solver/out/pc-postflop.tar.gz"
+mkdir -p "$(dirname "$out")"
+(cd "$src" && find . \( -name '*.bin' -o -name '*.json' -o -name '*.tsv' \) -print | sort | tar -czf "$out" -T -)
+du -sh "$out"
 if [ -n "${NO_PUSH:-}" ]; then
-  echo "NO_PUSH=1 のため、送りません。ブランチ $branch にコミットしました。"
+  echo "NO_PUSH=1 のため、上げません。$out を作りました。"
   exit 0
 fi
-if git push -u origin "$branch"; then
-  echo "送りました: ブランチ $branch。そう伝えてください。"
+command -v gh > /dev/null || { echo "gh がありません（このファイルの先頭の手順で入れてください）。"; exit 1; }
+if gh release create "$tag" "$out" --prerelease --title "$tag" --notes "PC の量産結果（生の .bin、$n フロップ、G1 の表つき）。data-pack ワークフローで梱包する（REFACTOR_PLAN 4-5）。"; then
+  echo "送りました: Release $tag。そう伝えてください。"
 else
-  echo "送れませんでした。GitHub のログインが要ります（このファイルの先頭の gh auth login）。済んだら、同じコマンドをもう一度。"
+  echo "上げられませんでした。GitHub のログインが要ります（このファイルの先頭の gh auth login）。済んだら、同じコマンドをもう一度。"
   exit 1
 fi

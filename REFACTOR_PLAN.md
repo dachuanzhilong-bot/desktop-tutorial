@@ -300,7 +300,7 @@
 ### ステップ 4-5: 解データを Releases に置く（最初に行う。PR #46 のマージの前）
 
 - 変更: `.github/workflows/data-release.yml`（手動で実行。指定したブランチの `web/public/postflop/**/*.bin.gz` を tar にまとめ、GitHub の Release に添付する）。`web/data.lock.json`（Release のタグ・添付ファイル名・SHA-256）と `web/scripts/fetch-data.mjs`（`npm run data:fetch`。無ければ取ってきて展開し、各ファイルを `index.json` の `build` と照らす）。`npm test`・`validate:data`・`e2e`・`e2e:subpath`・`build` の前に自動で呼ぶ。`.bin.gz` は git に入れない（`.gitignore`）。`index.json` は今までどおり git に入れる。
-- PC の送り先（`pc-publish.sh`）も、ブランチではなく Release にする（`gh release create`）。
+- PC の送り先（`pc-publish.sh`）も、ブランチではなく Release にする（`gh release create`）。梱包は `data-pack` ワークフロー（Actions）が行い、本番用の Release を作る。**済み（2026-11-21）**: `pc-publish.sh` は生の結果の `pc-postflop.tar.gz` をプレリリースに上げ、`data-pack.yml` がそれを `scripts/pack-postflop.mjs` で梱包して Release（`postflop.tar`・`.sha256`・`index.json`）にする。3-3-7 の PC の結果でこの流れを手元で通し、梱包した 63 ファイルが出荷したものとバイト一致した。
 - 完了条件: CI（`npm test`・`e2e`・`e2e:subpath`）と Pages のデプロイが、取ってきたデータで通る。PR #46 のマージで、main の履歴に `.bin.gz` が増えない。
 - 止まる条件: Pages のデプロイでデータを取ってこられない。
 
