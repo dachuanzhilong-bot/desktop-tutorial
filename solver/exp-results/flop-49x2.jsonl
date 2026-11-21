@@ -1,0 +1,2 @@
+{"board":"As 7d 2c","sizes":"current","variant":"cfrp-sim","reset":500,"walks":500,"iters":500,"pct":34.6486,"oop":19.9326,"ip":14.7160,"ev":[1.4233,4.0165],"trainSecPerWalk":0.9556,"wall":480.5}
+{"board":"As 7d 2c","sizes":"current","variant":"cfrp-sim","reset":500,"walks":1000,"iters":1000,"pct":1.1403,"oop":0.6419,"ip":0.4983,"ev":[1.4218,4.0095],"trainSecPerWalk":0.9981,"wall":1004.6}
