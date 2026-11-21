@@ -1,7 +1,17 @@
 name: CI
+# One run per change: pull requests, and pushes to main (a push to a PR branch is checked by its pull_request run).
+# Changes to Markdown only (docs, plans) run nothing. A newer push cancels the older run of the same ref.
 on:
   push:
+    branches: [main]
+    paths-ignore: ["**/*.md"]
   pull_request:
+    paths-ignore: ["**/*.md"]
+  workflow_dispatch:
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   solver:
