@@ -241,7 +241,7 @@ export function Setup({
         </div>
       </section>
 
-      <ApproxNote>{isPost ? t("pf.approx") : t("approx.grading", { depth })}</ApproxNote>
+      <ApproxNote>{isPost ? t("pf.approxAll") : t("approx.grading", { depth })}</ApproxNote>
 
       {/* always on screen above the tab bar: practice starts in two taps from anywhere (tab + this button) */}
       <div className="pointer-events-none sticky bottom-[calc(4.5rem+env(safe-area-inset-bottom))] z-20 -mx-4 bg-gradient-to-t from-bg from-60% to-transparent px-4 pb-1 pt-4 [&>button]:pointer-events-auto">
