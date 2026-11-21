@@ -665,6 +665,8 @@ tail -f out/gen-srp-btn-bb.log      # 「iteration n: value g (target 0.5)」が
 
 **結果を送る**（`pc-run.sh all` が「全シナリオが済みました」と出てから）: `git pull` のあと `bash solver/scripts/pc-publish.sh`。フロップが 63 個そろっているか確かめ、`g1-summary.tsv`（フロップごとの反復数・G1・目標を満たしたか・秒/反復）を作り、`.bin` を gzip して `data-import/postflop-v3/` に集め、ブランチ `data/3-3-7-postflop-v3` に送る（GitHub のログインが要る。初回の手順はスクリプトの先頭）。クラウド側がそれを受けて、`web/public/postflop` への差し替え（`merge-postflop`・`solutions:pack`・`validate:data`・`e2e`）と、`docs/QUALITY.md` の表を行う。`data-import/` は受け取り用で、差し替えのあとに消す。ダミーのデータとローカルのリモートで、そろっていないときの停止・`FORCE=1`・表・gzip・送信を確かめた。
 
+**G2' を測る**（`bash solver/scripts/pc-g2.sh`。1 シナリオ 3 フロップ。REFACTOR_PLAN 3-3-7 の完了条件）: `srp-btn-bb` の #0 As7d2c（1,500 反復）・#8 Td9d8d（2,500）・#12 8c8d3s（3,000）を、**出荷した v3 のデータと同じ戦略**で作り直し（`measure_exploit --all-cards-solve --iters <出荷の反復数> --avg-restart 500 --river-average`。`gen_postflop --g1-target` と同じ算術で、同じ反復数ならビット単位で同じ戦略になる。確認: 小さな木で、全カードの値が `gen_postflop` の G1 と一致した 29.5601%）、リバーを N = 1,000 で解き直して（`--resolve-river 1000`）、配るラインの中での最適応答（`--dealt`、§11-9）を測る。出力の `resolve-dealt` の `fullPctSum` が G2'（ポット比 %）。同じスクリプトが出す `all-cards` の `fullPct` は、出荷した G1（`docs/QUALITY.md` §8 の表）と一致するはず（一致しなければ、作り直した戦略が出荷のものと違う）。1 フロップ 約 1〜2 時間（解く 36〜73 分 + リバーの解き直し + 測定）。結果は `data/3-3-7-g2` ブランチに送る。1.0% を超えるフロップがあれば、N を上げて測り直す（§9-5）。
+
 ### 13-4. 測定結果（2026-11-17、As7d2c・`srp-btn-bb`・`--g1-target 0.5`）
 
 | 機械 | スレッド | 秒/反復 | 最大 RSS | G1（1,000 反復目 → 1,500 反復目） |
