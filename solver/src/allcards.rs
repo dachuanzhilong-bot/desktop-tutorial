@@ -2363,4 +2363,35 @@ mod tests {
         assert_eq!(strategy(&mut b), want, "a run continued from a checkpoint ends where an uninterrupted one does");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// a DCFR solve (alternating updates, discounts that depend on the iteration count; REFACTOR_PLAN 4-1) cut at a
+    /// checkpoint and continued ends bit for bit where an uninterrupted one does
+    #[test]
+    fn an_alternating_dcfr_solve_continues_from_a_checkpoint_bit_for_bit() {
+        let tree = small_flop();
+        let ranges = mixed_ranges(5);
+        let opts = SolverOptions { update: crate::postflop::Update::AltDcfr, ..on_demand(1) };
+        let strategy = |s: &mut Solver| -> Vec<u32> {
+            s.finalize_avg();
+            bits(&upstream_of(s).into_iter().map(|x| x.1).collect::<Vec<_>>())
+        };
+        let mut value = |s: &mut Solver| -> f32 {
+            s.finalize_avg();
+            s.exploitability()
+        };
+        let looks = |max_iters: u32| Looks { reset_at: 0, check_every: 15, max_iters, target: 0.0 };
+        let mut reference = Solver::with_options(&tree, &ranges, opts);
+        run_until(&mut reference, &looks(45), None, 0, &mut value, &mut |_| {}).unwrap();
+        let want = strategy(&mut reference);
+        let dir = tmp_dir("run-until-dcfr");
+        let ck = Checkpoints::new(&dir, "run-until reset_at=0 update=alt-dcfr").unwrap();
+        let mut a = Solver::with_options(&tree, &ranges, opts);
+        run_until(&mut a, &looks(30), Some(&ck), 10, &mut value, &mut |_| {}).unwrap();
+        assert_eq!(a.iters, 30);
+        let mut b = Solver::with_options(&tree, &ranges, opts);
+        let second = run_until(&mut b, &looks(45), Some(&ck), 10, &mut value, &mut |_| {}).unwrap();
+        assert_eq!((second.resumed_from, b.iters), (30, 45));
+        assert_eq!(strategy(&mut b), want, "continued from iteration 30, the discounts of 31..45 are those of an uninterrupted run");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

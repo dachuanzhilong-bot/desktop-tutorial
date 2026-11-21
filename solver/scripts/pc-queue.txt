@@ -1,0 +1,9 @@
+# PC で流す仕事（bash solver/scripts/pc.sh が上から順に流す）。1 行 = 名前<TAB>コマンド。
+# コマンドは solver/ で実行し、$THREADS（スレッド数）・$OUT（出力先、既定 out）・$PRE（プリフロップ解）が使える。
+# 結果は $OUT/q/<名前>/ に書くと、小さな JSON が pc-results/ に集められて送られる。済んだ仕事は飛ばす（$OUT/pc-done/<名前>）。
+#
+# REFACTOR_PLAN 4-1: As7d2c・srp-btn-bb・全ターン 49 × 全リバー 48 を、交互更新の 2 方式と今の方式で G1 0.3% まで解く。
+# .g1.json の looks に、見た反復数と G1 の列が残る（0.5% に届いた所も分かる）。交互更新の 1 反復は 2 走査。
+4-1-alt-dcfr	./target/release/gen_postflop --all-cards --g1-target 0.3 --update alt-dcfr --check-every 125 --max-iters 1500 --pre "$PRE" --out "$OUT/q/4-1-alt-dcfr" --scenario srp-btn-bb --only-flop 0 --threads 1 --solve-threads "$THREADS" --checkpoint "$OUT/q-ck/4-1-alt-dcfr" --checkpoint-every 50
+4-1-alt-cfr+	./target/release/gen_postflop --all-cards --g1-target 0.3 --update alt-cfr+ --avg-restart 250 --check-every 125 --max-iters 1500 --pre "$PRE" --out "$OUT/q/4-1-alt-cfr+" --scenario srp-btn-bb --only-flop 0 --threads 1 --solve-threads "$THREADS" --checkpoint "$OUT/q-ck/4-1-alt-cfr+" --checkpoint-every 50
+4-1-sim-cfr+	./target/release/gen_postflop --all-cards --g1-target 0.3 --check-every 250 --max-iters 4000 --pre "$PRE" --out "$OUT/q/4-1-sim-cfr+" --scenario srp-btn-bb --only-flop 0 --threads 1 --solve-threads "$THREADS" --checkpoint "$OUT/q-ck/4-1-sim-cfr+" --checkpoint-every 100
