@@ -19,6 +19,7 @@
 | 12 | [12-design-tokens.md](12-design-tokens.md) | デザイントークンと画面の約束ごと |
 | 13 | [13-hosting.md](13-hosting.md) | 公開（GitHub Pages・Vercel・Netlify など）の手順と確認済みの範囲 |
 | 14 | [14-postflop-all-cards.md](14-postflop-all-cards.md) | ポストフロップを全カードで解く方針（A / B 案の設計レビュー、実験、目標、計算資源） |
+| 15 | [15-review-2026-11.md](15-review-2026-11.md) | 根本からの見直し（2026-11-21）: 解き方（交互更新）・ベットサイズの価値・データの置き場所・進め方の提案と、決めてほしいこと |
 
 ## 設計上の大原則
 
