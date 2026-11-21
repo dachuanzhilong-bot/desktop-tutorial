@@ -1,0 +1,73 @@
+--g1-target 0.3%: looking every 250 iterations from 501 (the average restarts before iteration 501), at most 4000; the river's average is kept (about 8 GB for an SRP flop)
+srp-btn-bb   BB range 722 combos (54.4%)  BTN range 628 combos (47.3%)
+3bp-btn-bb   BB range 175 combos (13.2%)  BTN range 347 combos (26.2%)
+srp-co-bb    BB range 589 combos (44.4%)  CO range 368 combos (27.7%)
+srp-btn-bb flop  0 As 7d 2c  built: 1664826 nodes (618888 decisions), 7.57 GB regret+ssum, 4.2s, peak RSS 8.03 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 77 / 4000: 0.78 s/iteration, peak RSS 8.07 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 100: checkpoint 7.57 GB in 8.2 s
+srp-btn-bb flop  0 As 7d 2c  iteration 145 / 4000: 0.78 s/iteration, peak RSS 8.07 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 200: checkpoint 7.57 GB in 6.9 s
+srp-btn-bb flop  0 As 7d 2c  iteration 215 / 4000: 0.77 s/iteration, peak RSS 8.08 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 250: checkpoint 7.57 GB in 6.4 s
+srp-btn-bb flop  0 As 7d 2c  iteration 285 / 4000: 0.77 s/iteration, peak RSS 8.08 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 300: checkpoint 7.57 GB in 10.8 s
+srp-btn-bb flop  0 As 7d 2c  iteration 352 / 4000: 0.77 s/iteration, peak RSS 8.08 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 400: checkpoint 7.57 GB in 7.6 s
+srp-btn-bb flop  0 As 7d 2c  iteration 424 / 4000: 0.76 s/iteration, peak RSS 8.08 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 500: checkpoint 7.57 GB in 5.8 s
+srp-btn-bb flop  0 As 7d 2c  iteration 501 / 4000: 0.76 s/iteration, peak RSS 8.08 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 583 / 4000: 0.75 s/iteration, peak RSS 8.08 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 600: checkpoint 7.57 GB in 5.5 s
+srp-btn-bb flop  0 As 7d 2c  iteration 658 / 4000: 0.75 s/iteration, peak RSS 8.08 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 700: checkpoint 7.57 GB in 5.8 s
+srp-btn-bb flop  0 As 7d 2c  iteration 731 / 4000: 0.75 s/iteration, peak RSS 8.08 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 750: checkpoint 7.57 GB in 7.0 s
+srp-btn-bb flop  0 As 7d 2c  iteration 750: value 1.1379 (target 0.3000)
+srp-btn-bb flop  0 As 7d 2c  iteration 794 / 4000: 0.75 s/iteration, peak RSS 8.14 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 800: checkpoint 7.57 GB in 11.8 s
+srp-btn-bb flop  0 As 7d 2c  iteration 858 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 900: checkpoint 7.57 GB in 6.6 s
+srp-btn-bb flop  0 As 7d 2c  iteration 929 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1000: checkpoint 7.57 GB in 6.5 s
+srp-btn-bb flop  0 As 7d 2c  iteration 1000: value 0.7592 (target 0.3000)
+srp-btn-bb flop  0 As 7d 2c  iteration 1001 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1081 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1100: checkpoint 7.57 GB in 6.2 s
+srp-btn-bb flop  0 As 7d 2c  iteration 1153 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1200: checkpoint 7.57 GB in 6.0 s
+srp-btn-bb flop  0 As 7d 2c  iteration 1225 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1250: checkpoint 7.57 GB in 5.8 s
+srp-btn-bb flop  0 As 7d 2c  iteration 1250: value 0.5677 (target 0.3000)
+srp-btn-bb flop  0 As 7d 2c  iteration 1292 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1300: checkpoint 7.57 GB in 5.8 s
+srp-btn-bb flop  0 As 7d 2c  iteration 1364 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1400: checkpoint 7.57 GB in 12.2 s
+srp-btn-bb flop  0 As 7d 2c  iteration 1428 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1500: checkpoint 7.57 GB in 6.4 s
+srp-btn-bb flop  0 As 7d 2c  iteration 1500: value 0.4544 (target 0.3000)
+srp-btn-bb flop  0 As 7d 2c  iteration 1501 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1581 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1600: checkpoint 7.57 GB in 6.1 s
+srp-btn-bb flop  0 As 7d 2c  iteration 1653 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1700: checkpoint 7.57 GB in 6.9 s
+srp-btn-bb flop  0 As 7d 2c  iteration 1724 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1750: checkpoint 7.57 GB in 6.2 s
+srp-btn-bb flop  0 As 7d 2c  iteration 1750: value 0.3809 (target 0.3000)
+srp-btn-bb flop  0 As 7d 2c  iteration 1790 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1800: checkpoint 7.57 GB in 6.1 s
+srp-btn-bb flop  0 As 7d 2c  iteration 1862 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 1900: checkpoint 7.57 GB in 6.7 s
+srp-btn-bb flop  0 As 7d 2c  iteration 1933 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 2000: checkpoint 7.57 GB in 5.9 s
+srp-btn-bb flop  0 As 7d 2c  iteration 2000: value 0.3276 (target 0.3000)
+srp-btn-bb flop  0 As 7d 2c  iteration 2001 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 2081 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 2100: checkpoint 7.57 GB in 5.8 s
+srp-btn-bb flop  0 As 7d 2c  iteration 2153 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 2200: checkpoint 7.57 GB in 5.8 s
+srp-btn-bb flop  0 As 7d 2c  iteration 2225 / 4000: 0.75 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  iteration 2250: checkpoint 7.57 GB in 13.2 s
+srp-btn-bb flop  0 As 7d 2c  iteration 2250: value 0.2855 (target 0.3000)
+srp-btn-bb flop  0 As 7d 2c  2250 iterations: 0.85 s/iteration, peak RSS 8.15 GB
+srp-btn-bb flop  0 As 7d 2c  nodes 1664826  expl 0.016 chips (0.29% pot)  2446832 B  1932s  peak RSS 8.42 GB
+done in 1932s
