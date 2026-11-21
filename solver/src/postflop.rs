@@ -11,7 +11,7 @@
 //! REFACTOR_PLAN 3-2) the rake of each terminal leaves the pot first: `v0 + v1 = pot - rake` (`Config::pot_paid`).
 use crate::engine::regret_match;
 use crate::eval::eval7;
-use crate::river::{self, RiverWalk};
+use crate::river::{self, RiverPlans, RiverWalk, SubScratch, SubTrain};
 use crate::rng::Rng;
 use std::collections::HashMap;
 use std::sync::{Arc, OnceLock};
@@ -700,6 +700,10 @@ pub struct Solver<'a> {
     train_only: Option<usize>,
     /// during a DCFR walk: `dcfr_discounts` of the iteration
     dcfr: Option<(f32, f32, f32)>,
+    /// the river subtrees of a tree with chance nodes and their boards (REFACTOR_PLAN 4-2); `None` for other trees
+    river_plans: Option<Arc<RiverPlans>>,
+    /// training walks take the river subtree walk where they can (default; `set_river_subtree_walk`)
+    river_subtree_walk: bool,
     /// tests: an alternating walk computes the other player's values too (they are not used; see `Shared::train_only`)
     #[cfg(test)]
     alt_full_values: bool,
@@ -836,6 +840,7 @@ impl<'a> Solver<'a> {
         let river = river::applies(tree).then(|| Box::new(RiverWalk::new(tree, &prior, |i| &supports[support_of[i] as usize][..])));
         let supports = Arc::new(supports);
         let subtree_end = subtree_ends(tree);
+        let river_plans = RiverPlans::new(tree, &prior, &subtree_end).map(Arc::new);
         let threads = opts.threads.max(1);
         Solver {
             tree,
@@ -862,6 +867,8 @@ impl<'a> Solver<'a> {
             update: opts.update,
             train_only: None,
             dcfr: None,
+            river_plans,
+            river_subtree_walk: true,
             #[cfg(test)]
             alt_full_values: false,
         }
@@ -875,6 +882,13 @@ impl<'a> Solver<'a> {
 
     pub fn update(&self) -> Update {
         self.update
+    }
+
+    /// Whether training walks train the river subtrees of a tree with chance nodes over the supports
+    /// (`river::train_subtree`, REFACTOR_PLAN 4-2; the default) or with the general walk (the reference of the tests,
+    /// `measure_exploit --bench-allcards --reference`).  The regrets and strategy sums are bit for bit the same.
+    pub fn set_river_subtree_walk(&mut self, on: bool) {
+        self.river_subtree_walk = on;
     }
 
     /// threads that walk the tree (see `SolverOptions::threads`)
@@ -911,8 +925,10 @@ impl<'a> Solver<'a> {
             #[cfg(not(test))]
             full_values: false,
             dcfr: self.dcfr,
+            river_plans: if self.river_subtree_walk { self.river_plans.as_deref() } else { None },
         };
-        let mut part = Part { sh: &sh, base: 0, regret: &mut self.regret, ssum: &mut self.ssum, ev, extra: &mut self.extra, fork: threads > 1 };
+        let mut sub = SubScratch::default();
+        let mut part = Part { sh: &sh, base: 0, regret: &mut self.regret, ssum: &mut self.ssum, ev, extra: &mut self.extra, fork: threads > 1, sub: &mut sub };
         part.walk(ni, r0, r1, mode, want_mass)
     }
 
@@ -1233,6 +1249,8 @@ struct Shared<'w> {
     full_values: bool,
     /// a DCFR walk: `dcfr_discounts` of the iteration
     dcfr: Option<(f32, f32, f32)>,
+    /// training walks take `river::train_subtree` at these river subtrees (`Solver::set_river_subtree_walk`)
+    river_plans: Option<&'w RiverPlans>,
 }
 
 /// What a walk writes, for the nodes `base..base + regret.len()`: the whole tree, or one subtree that a thread
@@ -1249,6 +1267,8 @@ struct Part<'w> {
     /// walk the children of the next chance node in parallel (`Shared::threads` > 1, and not already inside a
     /// parallel walk)
     fork: bool,
+    /// the buffers of the river subtree walk (`river::train_subtree`)
+    sub: &'w mut SubScratch,
 }
 
 /// one child subtree of a forked chance node: (child number, card, child node, its regrets, strategy sums, evaluations)
@@ -1329,11 +1349,12 @@ impl<'w> Part<'w> {
                         .spawn_scoped(s, move || {
                             set_fp_control(fpc);
                             let mut extra = HashMap::new();
+                            let mut sub = SubScratch::default();
                             let mut done = Vec::new();
                             loop {
                                 let job = queue.lock().expect("job queue").next();
                                 let Some((i, c, ch, regret, ssum, ev)) = job else { break };
-                                let mut part = Part { sh, base: ch, regret, ssum, ev, extra: &mut extra, fork: false };
+                                let mut part = Part { sh, base: ch, regret, ssum, ev, extra: &mut extra, fork: false, sub: &mut sub };
                                 let (a0, a1) = (zero_card(r0, c), zero_card(r1, c));
                                 done.push((i, part.walk(ch, &a0, &a1, mode, want_mass)));
                             }
@@ -1358,6 +1379,22 @@ impl<'w> Part<'w> {
         out.into_iter().map(|r| r.expect("every child walked")).collect()
     }
 
+    /// Does a training walk take `river::train_subtree` at node `ni`: the root of a river subtree (`Shared::river_plans`)
+    /// with no locked node, values without masses.
+    fn is_river_subtree(&self, ni: usize, mode: Mode, want_mass: bool) -> bool {
+        let sh = self.sh;
+        matches!(mode, Mode::Train(_)) && !want_mass && sh.river_plans.is_some_and(|p| p.plan_of[ni] != u32::MAX) && sh.locks[ni..sh.subtree_end[ni] as usize].iter().all(|l| l.is_none())
+    }
+
+    /// Train the river subtree of `ni` over the supports (REFACTOR_PLAN 4-2; `river::train_subtree`): the regrets and
+    /// strategy sums of the general walk, bit for bit.  `r0` / `r1` may still hold the combos with the river card.
+    fn river_subtree(&mut self, ni: usize, r0: &[f32], r1: &[f32], mode: Mode, out: &mut [Vec<f32>; 2], w: Option<f32>) {
+        let sh = self.sh;
+        let (Mode::Train(t), Some(plans)) = (mode, sh.river_plans) else { unreachable!("a training walk with river plans") };
+        let ctx = SubTrain { tree: sh.tree, plans, has_avg: sh.has_avg, t, train_only: sh.train_only, dcfr: sh.dcfr };
+        river::train_subtree(&ctx, ni, sh.subtree_end[ni] as usize, self.base, self.regret, self.ssum, [r0, r1], self.sub, out, w);
+    }
+
     fn walk(&mut self, ni: usize, r0: &[f32], r1: &[f32], mode: Mode, want_mass: bool) -> Res {
         let sh: &'w Shared<'w> = self.sh;
         let tree: &'w Tree = sh.tree;
@@ -1371,6 +1408,12 @@ impl<'w> Part<'w> {
             _ => None,
         };
         let wants = |q: usize| only.is_none_or(|o| o == q);
+        // the root of a river subtree (reached here when its chance node was forked): see `river_subtree`
+        if self.is_river_subtree(ni, mode, want_mass) {
+            let mut v = [vec![0f32; NC], vec![0f32; NC]];
+            self.river_subtree(ni, r0, r1, mode, &mut v, None);
+            return Res { v, m: [Vec::new(), Vec::new()] };
+        }
         match &node.kind {
             PKind::Fold { winner } => {
                 let w = *winner as usize;
@@ -1439,8 +1482,15 @@ impl<'w> Part<'w> {
                     }
                 } else {
                     for (&c, &ch) in cards.iter().zip(children.iter()) {
+                        let ch = ch as usize;
+                        if self.is_river_subtree(ch, mode, want_mass) {
+                            // adds what `add_scaled` would add, on the supports (off them the subtree's values are 0, or of
+                            // combos outside the range, which nothing reads; `acc` is never -0, so adding 0 is a no-op)
+                            self.river_subtree(ch, r0, r1, mode, &mut acc.v, Some(*weight));
+                            continue;
+                        }
                         let (a0, a1) = (zero_card(r0, c), zero_card(r1, c));
-                        let res = self.walk(ch as usize, &a0, &a1, mode, want_mass);
+                        let res = self.walk(ch, &a0, &a1, mode, want_mass);
                         acc.add_scaled(&res, *weight);
                     }
                 }
@@ -2892,5 +2942,84 @@ mod tests {
             let four = run(4);
             assert!(one.0 == four.0 && one.1 == four.1, "{:?}: 4 threads differ from 1", update);
         }
+    }
+
+    // ---- the river subtree walk (REFACTOR_PLAN 4-2)
+
+    /// trains `iters` iterations with and without the river subtree walk and compares the regrets and strategy sums as bits
+    fn assert_river_subtree_walk_matches(tree: &Tree, ranges: &[Vec<f32>; 2], opts: SolverOptions, iters: u32, locks: &[(usize, Vec<f32>)]) {
+        let run = |fast: bool| {
+            let mut s = Solver::with_options(tree, ranges, opts);
+            assert!(s.river_plans.is_some(), "the tree has river subtrees");
+            s.set_river_subtree_walk(fast);
+            for (n, l) in locks {
+                s.lock_node(*n, l.clone()).unwrap();
+            }
+            for i in 0..iters {
+                if i == iters / 2 && opts.update != Update::AltDcfr {
+                    s.reset_average();
+                }
+                s.iterate();
+            }
+            let bits = |v: &Vec<Vec<f32>>| v.iter().flatten().map(|x| x.to_bits()).collect::<Vec<u32>>();
+            (bits(&s.regret), bits(&s.ssum))
+        };
+        let (general, fast) = (run(false), run(true));
+        assert!(general.0.len() > 1000, "a tree with regrets");
+        assert!(general.0 == fast.0, "{:?}: regrets differ", opts);
+        assert!(general.1 == fast.1, "{:?}: strategy sums differ", opts);
+    }
+
+    #[test]
+    fn river_subtree_walk_gives_the_bits_of_the_general_walk() {
+        let flop = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.5, 1.0]], allow_allin: true, turn_cards: 4, river_cards: 3, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&flop, &board("Ks 7d 2c"));
+        let ranges = mixed_ranges(7);
+        for update in [Update::SimCfrPlus, Update::AltCfrPlus, Update::AltDcfr] {
+            for (no_average_from, threads) in [(3, 1), (2, 1), (3, 4)] {
+                let opts = SolverOptions { no_average_from, threads, update, ..Default::default() };
+                assert_river_subtree_walk_matches(&tree, &ranges, opts, 12, &[]);
+            }
+        }
+        // a turn tree with every river card, with rake
+        let turn = Config { pot: 8.0, stack: 20.0, bets: [vec![], vec![0.5], vec![0.75]], raise_sizes: [false; 3], allow_allin: true, river_cards: 48, rake_pct: 5.0, rake_cap: 3.0, ..Config::default() };
+        let tree = build_tree(&turn, &board("Ks 9h 5h 2d"));
+        for update in [Update::SimCfrPlus, Update::AltCfrPlus] {
+            assert_river_subtree_walk_matches(&tree, &ranges, SolverOptions { update, ..Default::default() }, 10, &[]);
+        }
+    }
+
+    #[test]
+    fn river_subtree_walk_leaves_locked_subtrees_to_the_general_walk() {
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 3, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let ranges = mixed_ranges(3);
+        let na = |i: usize| match &tree.nodes[i].kind {
+            PKind::Decision { children, .. } => children.len(),
+            _ => unreachable!(),
+        };
+        let lock = |na: usize| {
+            let mut l = vec![0f32; na * NC];
+            for h in 0..NC {
+                l[h] = 0.3 + (h % 4) as f32 * 0.15;
+                for a in 1..na {
+                    l[a * NC + h] = (1.0 - l[h]) / (na - 1) as f32;
+                }
+            }
+            l
+        };
+        let river = tree.nodes.iter().position(|n| n.street == 2 && matches!(n.kind, PKind::Decision { .. })).unwrap();
+        let turn = tree.nodes.iter().position(|n| n.street == 1 && matches!(n.kind, PKind::Decision { .. })).unwrap();
+        for update in [Update::SimCfrPlus, Update::AltDcfr] {
+            let opts = SolverOptions { update, ..Default::default() };
+            assert_river_subtree_walk_matches(&tree, &ranges, opts, 10, &[(river, lock(na(river)))]);
+            assert_river_subtree_walk_matches(&tree, &ranges, opts, 10, &[(turn, lock(na(turn))), (0, lock(na(0)))]);
+        }
+    }
+
+    #[test]
+    fn river_trees_have_no_river_subtree_plans() {
+        let river = build_tree(&river_cfg(), &board("Ah 8d 7c 2s 3d"));
+        assert!(Solver::new(&river, &mixed_ranges(1)).river_plans.is_none());
     }
 }
