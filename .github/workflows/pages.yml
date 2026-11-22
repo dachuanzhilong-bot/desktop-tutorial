@@ -17,11 +17,8 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     defaults: { run: { working-directory: web } }
     steps:
       - uses: actions/checkout@v4
@@ -37,5 +34,15 @@ jobs:
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with: { path: web/out }
+
+  # A job of its own: deploy-pages in the same job as the upload sometimes found no artifact (2026-11-21/22, "Found 0
+  # artifact(s)" 0.4 s after the upload had finished); a separate job starts tens of seconds later.
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - id: deployment
         uses: actions/deploy-pages@v4
