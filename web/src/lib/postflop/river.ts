@@ -11,10 +11,12 @@
  * What is solved, exactly as `river_tree_of` / `resolve_rivers_alone` of solver/src/allcards.rs (checked against the
  * solver by the fixture `tsp1-v3-river.bin`): the 5 card board, the pot of the river start (`pot + inv0 + inv1`), the
  * stack behind (`stack - inv0`), the precomputation's river settings (`RIVER_SETTINGS`), the ranges of the river start
- * with the river card's combos at 0 (`riverSolveInput`), `RIVER_ITERATIONS` iterations, the average restarted at half.
+ * with the river card's combos at 0 (`riverSolveInput`), `RIVER_ITERATIONS` iterations updated as `RIVER_UPDATE` says
+ * (alternating DCFR, no average restart).
  */
 import { buildConfig } from "../solve/config";
 import type { SolveConfig } from "../solve/config";
+import type { SolverUpdate } from "../solve/protocol";
 import { postflopPos } from "../practice/position";
 import { cardText, COMBOS, NC } from "./combos";
 import { boardAt, decodeFlop, denseRange, riverStartRanges } from "./decode";
@@ -24,10 +26,18 @@ import { stepsTo } from "./replay";
 
 /**
  * Iterations of one river solve on the device: 1,000 (REFACTOR_PLAN 3-3-4, docs/14 §9-5: the smallest measured N that
- * meets G2', 0.5576%; about 0.94 s on a phone-class CPU). If the 3 flop measurement of 3-3-7 finds a flop above 1.0%, N
- * goes up here (one place). The cache key holds it, so results of another N are not reused.
+ * meets G2', 0.5576%; about 0.94 s on a phone-class CPU with `sim-cfr+`). The cache key holds it, so results of another
+ * N are not reused.
  */
 export const RIVER_ITERATIONS = 1000;
+
+/**
+ * How the device's river solve updates: alternating DCFR (`alt-dcfr`), with no average restart (DCFR discounts the
+ * early iterations itself). Measured on the 3 flops of the shipped data (docs/14 §18, docs/QUALITY.md §8): G2' with
+ * `sim-cfr+` and the restart at half was 0.546 / 1.125 / 1.254% (2 flops above the 1.0% target; 0.369 / 0.455% with
+ * N = 3,000), with `alt-dcfr` 0.303 / 0.334 / 0.405% at the same N = 1,000. The cache key holds it.
+ */
+export const RIVER_UPDATE: SolverUpdate = "alt-dcfr";
 
 /**
  * Version of the step "ranges read from the file -> the ranges the river is solved from" (`riverSolveInput`). It is the
@@ -83,25 +93,35 @@ export interface RiverJob {
   r0: Float32Array;
   r1: Float32Array;
   iterations: number;
-  /** restart the average after this many iterations */
+  /** restart the average after this many iterations; 0 = never (DCFR) */
   restartAt: number;
+  /** how the iterations update */
+  update: SolverUpdate;
 }
+
+/** the average restart of a solve of `iterations` updated as `update`: at half for CFR+, none for DCFR */
+export const riverRestartAt = (iterations: number, update: SolverUpdate): number => (update === "alt-dcfr" ? 0 : Math.floor(iterations / 2));
 
 /** the position of the river's first decision, `<flop>@<line>/<card>`: what the cache key and the records hold */
 export const riverPos = (flop: PfFlop, nodeId: number, card: number): string => `${postflopPos(flop, nodeId)}/${cardText(card)}`;
 
 /** the solve of `card` at river start `nodeId`; null when it is not one, or the card is not live there */
-export function riverJob(flop: PfFlop, nodeId: number, card: number, iterations = RIVER_ITERATIONS): RiverJob | null {
+export function riverJob(flop: PfFlop, nodeId: number, card: number, iterations = RIVER_ITERATIONS, update = RIVER_UPDATE): RiverJob | null {
   const node = flop.nodes[nodeId];
   const ranges = node?.riverStart ? riverSolveInput(flop, nodeId, card) : null;
   if (!node || !ranges) return null;
   // a street starts with equal investments: the pot of the river and the stack behind
   const cfg: SolveConfig = { ...RIVER_SETTINGS, pot: flop.pot + node.inv[0] + node.inv[1], stack: flop.stack - node.inv[0] };
-  return { cfg: buildConfig(cfg), board: [...boardAt(flop, nodeId), card], r0: ranges[0], r1: ranges[1], iterations, restartAt: Math.floor(iterations / 2) };
+  return { cfg: buildConfig(cfg), board: [...boardAt(flop, nodeId), card], r0: ranges[0], r1: ranges[1], iterations, restartAt: riverRestartAt(iterations, update), update };
 }
 
-/** the cache key of a river: build ID of the flop file, the river's position key, the iterations, the input's version */
-export const riverCacheKey = (build: string, pos: string, iterations = RIVER_ITERATIONS, input = RIVER_INPUT_VERSION): string => `river|${build}|${pos}|n${iterations}|in${input}`;
+/**
+ * The cache key of a river: build ID of the flop file, the river's position key, the iterations, the input's version,
+ * and the update when it is not `sim-cfr+` (the keys written before `RIVER_UPDATE` existed are those of `sim-cfr+`, and
+ * stay theirs: a river solved one way is never read as one solved the other way).
+ */
+export const riverCacheKey = (build: string, pos: string, iterations = RIVER_ITERATIONS, input = RIVER_INPUT_VERSION, update: SolverUpdate = RIVER_UPDATE): string =>
+  `river|${build}|${pos}|n${iterations}|in${input}${update === "sim-cfr+" ? "" : `|${update}`}`;
 
 /** sum over pairs of combos that share no card of r0[h0] * r1[h1] */
 function pairMass(r0: Float32Array, r1: Float32Array): number {

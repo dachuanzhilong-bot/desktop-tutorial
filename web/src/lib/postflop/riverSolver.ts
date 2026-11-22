@@ -8,7 +8,7 @@ import { RiverLayer } from "./river";
 import type { RiverBackend, RiverJob } from "./river";
 import { idbRiverStore } from "./riverStore";
 
-/** chunk of the worker's run: divides RIVER_ITERATIONS / 2, so the average restarts exactly at half (as the solver's `Plan`) */
+/** chunk of the worker's run: divides RIVER_ITERATIONS / 2, so a restart at half (CFR+) is exactly at half (as the solver's `Plan`) */
 const CHUNK = 150;
 
 /**
@@ -28,7 +28,7 @@ export function rpcRiverBackend(rpc: () => SolverRpc): RiverBackend {
   const one = async (job: RiverJob, onProgress?: (done: number, total: number) => void) => {
     const c = start();
     await ready;
-    const { handle } = await c.call({ type: "create", cfg: job.cfg, board: job.board, r0: job.r0, r1: job.r1 });
+    const { handle } = await c.call({ type: "create", cfg: job.cfg, board: job.board, r0: job.r0, r1: job.r1, update: job.update });
     try {
       // one exploitability measure at the end only (an export measures it as well)
       await c.call({ type: "run", handle, iterations: job.iterations, chunk: CHUNK, restartAt: job.restartAt, target: 0, checkEvery: job.iterations }, [], onProgress && ((p) => onProgress(p.done, p.total)));

@@ -8,7 +8,7 @@ import { boardAt, decodeFlop, denseRange } from "../postflop/decode";
 import type { PfFlop } from "../postflop/decode";
 import { postflopKey, resolvePostflopKey } from "../postflop/positionKey";
 import { contextAt, labelEdge } from "../postflop/replay";
-import { graftRiver, openLine, RIVER_INPUT_VERSION, RIVER_ITERATIONS, riverCacheKey, riverCards, riverJob, RiverLayer, riverOf, riverPos, riverSolveInput } from "../postflop/river";
+import { graftRiver, openLine, RIVER_INPUT_VERSION, RIVER_ITERATIONS, RIVER_UPDATE, riverCacheKey, riverCards, riverJob, RiverLayer, riverOf, riverPos, riverRestartAt, riverSolveInput } from "../postflop/river";
 import type { RiverBackend, RiverJob, RiverStore } from "../postflop/river";
 import { rpcRiverBackend } from "../postflop/riverSolver";
 import { keysToEvict, readRiverRecord, RIVER_RECORD_VERSION } from "../postflop/riverStore";
@@ -31,7 +31,7 @@ const FIX = path.resolve(__dirname, "fixtures");
 const read = (f: string) => new Uint8Array(readFileSync(path.join(FIX, f)));
 const v3 = (): PfFlop => ({ ...decodeFlop(read("tsp1-v3-e2e.bin")), build: "testbuild001" });
 const riverBytes = read("tsp1-v3-river.bin");
-const want: { riverStart: number; card: number; iterations: number; resetAt: number; pot: number; stack: number } = JSON.parse(readFileSync(path.join(FIX, "tsp1-v3-river.json"), "utf8"));
+const want: { riverStart: number; card: number; iterations: number; resetAt: number; update: string; pot: number; stack: number } = JSON.parse(readFileSync(path.join(FIX, "tsp1-v3-river.json"), "utf8"));
 
 /** a backend that does not solve: counts the jobs and answers with the solver's river */
 function fakeBackend(): RiverBackend & { jobs: RiverJob[] } {
@@ -69,7 +69,12 @@ describe("river solved on the device (3-3-6)", () => {
     expect(job.cfg[0]).toBeCloseTo(want.pot, 5);
     expect(job.cfg[1]).toBeCloseTo(want.stack, 5);
     expect(job.cfg[0]).toBeCloseTo(f.pot + rs.inv[0] + rs.inv[1], 5);
-    expect([job.iterations, job.restartAt]).toEqual([RIVER_ITERATIONS, RIVER_ITERATIONS / 2]);
+    // alternating DCFR without an average restart (docs/14 §18), as the solver's fixture was solved
+    expect([job.iterations, job.restartAt, job.update]).toEqual([RIVER_ITERATIONS, 0, "alt-dcfr"]);
+    expect([RIVER_UPDATE, want.resetAt]).toEqual([want.update, 0]);
+    // CFR+ restarts at half, as before
+    expect(riverRestartAt(RIVER_ITERATIONS, "sim-cfr+")).toBe(RIVER_ITERATIONS / 2);
+    expect(riverJob(f, want.riverStart, want.card, RIVER_ITERATIONS, "sim-cfr+")!.restartAt).toBe(RIVER_ITERATIONS / 2);
     // the input is the file's ranges with the card's combos at 0 (no pre-processing in version 1)
     expect(RIVER_INPUT_VERSION).toBe(1);
     const dense = rs.riverStart!.map(denseRange);
@@ -189,6 +194,9 @@ describe("river solved on the device (3-3-6)", () => {
     expect(pos).toMatch(/^As7d2c@.+\/[2-9TJQKA][cdhs]$/);
     expect([...store.data.keys()]).toContain(riverCacheKey("testbuild001", pos, RIVER_ITERATIONS, RIVER_INPUT_VERSION));
     expect(new Set([riverCacheKey("b1", pos), riverCacheKey("b2", pos), riverCacheKey("b1", `${pos}x`), riverCacheKey("b1", pos, 2000), riverCacheKey("b1", pos, RIVER_ITERATIONS, 2)]).size).toBe(5);
+    // the keys of rivers solved with sim-cfr+ (all of them before RIVER_UPDATE) keep their form, and are not read for alt-dcfr
+    expect(riverCacheKey("b1", pos, 1000, 1, "sim-cfr+")).toBe(`river|b1|${pos}|n1000|in1`);
+    expect(riverCacheKey("b1", pos)).toBe(`river|b1|${pos}|n1000|in1|alt-dcfr`);
     // another build of the file, or another iteration count: solved again
     await new RiverLayer(backend, store).open({ ...f, build: "otherbuild99" }, want.riverStart, want.card);
     const n2000 = new RiverLayer(backend, store, 2000);

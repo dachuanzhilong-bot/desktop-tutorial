@@ -3,6 +3,7 @@
  * (solver/src/ffi.rs) and posts the replies. src/workers/solver.worker.ts wires it to the worker's `self`; the tests
  * run the same worker file with the real .wasm.
  */
+import { UPDATE_CODE } from "./protocol";
 import type { ProgressMessage, RequestOf, RunParams, SolverCall, SolverCalls, SolverReply, SolverRequest } from "./protocol";
 
 /** the C ABI of tessera_solver.wasm (pointers and handles are numbers) */
@@ -17,6 +18,7 @@ export interface SolverExports {
   tsr_run(h: number, n: number): void;
   tsr_iterations(h: number): number;
   tsr_reset_average(h: number): void;
+  tsr_set_update(h: number, code: number): number;
   tsr_exploit_pct(h: number): number;
   tsr_export(h: number, minReach: number): number;
   tsr_out_ptr(h: number): number;
@@ -95,6 +97,10 @@ export function createSolverHost(load: () => Promise<SolverExports>, post: Post)
       e.tsr_free_f32(r0, 1326);
       e.tsr_free_f32(r1, 1326);
       if (handle < 0) throw new Error(`create failed (${handle})`);
+      if (m.update && m.update !== "sim-cfr+" && e.tsr_set_update(handle, UPDATE_CODE[m.update]) !== 0) {
+        e.tsr_destroy(handle);
+        throw new Error(`update ${m.update} refused`);
+      }
       return { type: "created", handle, nodes: e.tsr_node_count(handle) };
     },
     run: async (m, e) => {
