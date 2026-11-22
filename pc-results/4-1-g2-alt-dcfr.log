@@ -1,0 +1,155 @@
+ビルド中...
+    Finished `release` profile [optimized] target(s) in 0.02s
+=== flop #0: 500 反復で解き、リバーを 1000 反復で解き直して測る
+srp-btn-bb flop 0 As 7d 2c: 1664826 nodes (618888 decisions), 49 x 48 cards, 1176 flop run-outs, built in 0.2s
+solver: 7.57 GB regrets + strategy sums (a checkpoint is about as big; at most 2 are kept), peak RSS 8.03 GB
+[    64s] iteration 62 / 500: 0.98 s/iteration, peak RSS 8.06 GB
+[   108s] iteration 100: checkpoint 7.57 GB in 7.5 s
+[   124s] iteration 118 / 500: 0.97 s/iteration, peak RSS 8.06 GB
+[   185s] iteration 184 / 500: 0.95 s/iteration, peak RSS 8.06 GB
+[   206s] iteration 200: checkpoint 7.57 GB in 6.3 s
+[   245s] iteration 242 / 500: 0.94 s/iteration, peak RSS 8.07 GB
+[   306s] iteration 300: checkpoint 7.57 GB in 6.2 s
+[   306s] iteration 300 / 500: 0.94 s/iteration, peak RSS 8.07 GB
+[   366s] iteration 365 / 500: 0.94 s/iteration, peak RSS 8.07 GB
+[   405s] iteration 400: checkpoint 7.57 GB in 6.1 s
+[   427s] iteration 423 / 500: 0.94 s/iteration, peak RSS 8.07 GB
+[   488s] iteration 488 / 500: 0.94 s/iteration, peak RSS 8.07 GB
+[   505s] iteration 500: final checkpoint 7.57 GB in 6.1 s
+{"mode":"all-cards","scenario":"srp-btn-bb","flopIndex":0,"flop":"As 7d 2c","pot":5.5,"turnCards":49,"riverCards":48,"flopRunouts":1176,"iters":500,"avgFrom":0.5,"nodes":1664826,"decisions":618888,"solveThreads":24,"tremble":0e0,"riverAverage":1,"riverStrategy":"average","fullPct":0.1480,"fullPctRiverCurrent":0.6983,"riverOnlyPct":0.0859,"fullChips":0.00814,"strategyGB":7.571,"secsPerIter":0.941,"resumedFrom":0,"secsEval":12.5,"checkpointGB":7.571,"checkpointSaveSecs":6.5,"upstreamMB":33.0,"peakRssGB":8.21}
+river re-solve N = 1000 (eps 0e0) from out/g2-dcfr/g2/srp-btn-bb-0/upstream.tsup (srp-btn-bb As 7d 2c flop 0 49x48 runouts 1176 iters=500 reset_at=Some(0) update=alt-dcfr)
+[   579s] iteration 78 / 1000: 0.77 s/iteration, peak RSS 8.21 GB
+[   604s] iteration 100: checkpoint 7.57 GB in 7.7 s
+[   639s] iteration 147 / 1000: 0.77 s/iteration, peak RSS 8.21 GB
+[   686s] iteration 200: checkpoint 7.57 GB in 6.1 s
+[   700s] iteration 218 / 1000: 0.77 s/iteration, peak RSS 8.21 GB
+[   760s] iteration 297 / 1000: 0.77 s/iteration, peak RSS 8.21 GB
+[   769s] iteration 300: checkpoint 7.57 GB in 5.9 s
+[   821s] iteration 368 / 1000: 0.77 s/iteration, peak RSS 8.21 GB
+[   858s] iteration 400: checkpoint 7.57 GB in 13.0 s
+[   882s] iteration 430 / 1000: 0.77 s/iteration, peak RSS 8.21 GB
+[   941s] iteration 500: checkpoint 7.57 GB in 5.9 s
+[   943s] iteration 501 / 1000: 0.77 s/iteration, peak RSS 8.21 GB
+[  1003s] iteration 580 / 1000: 0.77 s/iteration, peak RSS 8.21 GB
+[  1025s] iteration 600: checkpoint 7.57 GB in 6.0 s
+[  1064s] iteration 651 / 1000: 0.77 s/iteration, peak RSS 8.21 GB
+[  1107s] iteration 700: checkpoint 7.57 GB in 6.0 s
+[  1124s] iteration 722 / 1000: 0.77 s/iteration, peak RSS 8.21 GB
+[  1190s] iteration 800: checkpoint 7.57 GB in 6.4 s
+[  1190s] iteration 800 / 1000: 0.77 s/iteration, peak RSS 8.21 GB
+[  1250s] iteration 877 / 1000: 0.77 s/iteration, peak RSS 8.21 GB
+[  1274s] iteration 900: checkpoint 7.57 GB in 6.0 s
+[  1310s] iteration 947 / 1000: 0.77 s/iteration, peak RSS 8.21 GB
+[  1358s] iteration 1000: final checkpoint 7.57 GB in 6.4 s
+{"mode":"resolve-river","scenario":"srp-btn-bb","flopIndex":0,"flop":"As 7d 2c","pot":5.5,"turnCards":49,"riverCards":48,"flopRunouts":1176,"iters":500,"avgFrom":0.5,"nodes":1664826,"decisions":618888,"solveThreads":24,"n":1000,"resolveAvgFrom":0.5,"eps":0e0,"tremble":0e0,"riverStrategy":"average of the re-solve","fullPct":1.0080,"riverOnlyPct":0.3132,"fullPctOop":0.3901,"fullPctIp":0.6179,"fullChips":0.05544,"secsPerIter":0.770,"resumedFrom":0,"secs":848,"peakRssGB":8.21}
+[  1368s] [2s] dealt lines: 366 of 2664 flop / turn nodes; 0.00649 of the hands leave them
+[  1371s] [4s] dealt: player 0 river: 0.00905 chips
+[  1372s] [6s] dealt: player 0 river + dealt turn: 0.01252 chips
+[  1373s] [7s] dealt: player 0 everywhere dealt: 0.01524 chips
+[  1375s] [8s] dealt: player 1 river: 0.00818 chips
+[  1376s] [10s] dealt: player 1 river + dealt turn: 0.01966 chips
+[  1377s] [11s] dealt: player 1 everywhere dealt: 0.02001 chips
+{"mode":"resolve-dealt","scenario":"srp-btn-bb","flopIndex":0,"flop":"As 7d 2c","pot":5.5,"turnCards":49,"riverCards":48,"flopRunouts":1176,"iters":500,"avgFrom":0.5,"nodes":1664826,"decisions":618888,"solveThreads":24,"n":1000,"resolveAvgFrom":0.5,"eps":0e0,"tremble":0e0,"minReach":0.004,"dealtDecisions":366,"upstreamDecisions":2664,"undealtReach":0.006493,"riverPct":[0.1645,0.1486],"turnPct":[0.2276,0.3575],"fullPct":[0.2771,0.3638],"fullRawPct":[0.2771,0.3638],"fullPctSum":0.6409}
+=== flop #8: 500 反復で解き、リバーを 1000 反復で解き直して測る
+srp-btn-bb flop 8 Td 9d 8d: 1664826 nodes (618888 decisions), 49 x 48 cards, 1176 flop run-outs, built in 0.2s
+solver: 7.54 GB regrets + strategy sums (a checkpoint is about as big; at most 2 are kept), peak RSS 8.00 GB
+[    63s] iteration 62 / 500: 0.97 s/iteration, peak RSS 8.03 GB
+[   106s] iteration 100: checkpoint 7.54 GB in 7.2 s
+[   123s] iteration 118 / 500: 0.96 s/iteration, peak RSS 8.03 GB
+[   184s] iteration 182 / 500: 0.95 s/iteration, peak RSS 8.03 GB
+[   206s] iteration 200: checkpoint 7.54 GB in 6.0 s
+[   244s] iteration 241 / 500: 0.95 s/iteration, peak RSS 8.04 GB
+[   308s] iteration 300: checkpoint 7.54 GB in 6.3 s
+[   308s] iteration 300 / 500: 0.95 s/iteration, peak RSS 8.04 GB
+[   369s] iteration 361 / 500: 0.96 s/iteration, peak RSS 8.04 GB
+[   413s] iteration 400: checkpoint 7.54 GB in 6.6 s
+[   430s] iteration 418 / 500: 0.96 s/iteration, peak RSS 8.04 GB
+[   490s] iteration 482 / 500: 0.96 s/iteration, peak RSS 8.04 GB
+[   514s] iteration 500: final checkpoint 7.54 GB in 6.4 s
+{"mode":"all-cards","scenario":"srp-btn-bb","flopIndex":8,"flop":"Td 9d 8d","pot":5.5,"turnCards":49,"riverCards":48,"flopRunouts":1176,"iters":500,"avgFrom":0.5,"nodes":1664826,"decisions":618888,"solveThreads":24,"tremble":0e0,"riverAverage":1,"riverStrategy":"average","fullPct":0.2754,"fullPctRiverCurrent":1.8968,"riverOnlyPct":0.1702,"fullChips":0.01515,"strategyGB":7.542,"secsPerIter":0.956,"resumedFrom":0,"secsEval":12.8,"checkpointGB":7.542,"checkpointSaveSecs":6.5,"upstreamMB":33.0,"peakRssGB":8.18}
+river re-solve N = 1000 (eps 0e0) from out/g2-dcfr/g2/srp-btn-bb-8/upstream.tsup (srp-btn-bb Td 9d 8d flop 8 49x48 runouts 1176 iters=500 reset_at=Some(0) update=alt-dcfr)
+[   588s] iteration 78 / 1000: 0.78 s/iteration, peak RSS 8.18 GB
+[   612s] iteration 100: checkpoint 7.54 GB in 7.1 s
+[   649s] iteration 147 / 1000: 0.78 s/iteration, peak RSS 8.18 GB
+[   698s] iteration 200: checkpoint 7.54 GB in 6.4 s
+[   709s] iteration 215 / 1000: 0.78 s/iteration, peak RSS 8.18 GB
+[   770s] iteration 295 / 1000: 0.78 s/iteration, peak RSS 8.18 GB
+[   779s] iteration 300: checkpoint 7.54 GB in 5.9 s
+[   831s] iteration 365 / 1000: 0.78 s/iteration, peak RSS 8.18 GB
+[   864s] iteration 400: checkpoint 7.54 GB in 6.0 s
+[   891s] iteration 436 / 1000: 0.78 s/iteration, peak RSS 8.18 GB
+[   948s] iteration 500: checkpoint 7.54 GB in 6.4 s
+[   952s] iteration 504 / 1000: 0.78 s/iteration, peak RSS 8.18 GB
+[  1012s] iteration 583 / 1000: 0.78 s/iteration, peak RSS 8.18 GB
+[  1031s] iteration 600: checkpoint 7.54 GB in 6.0 s
+[  1073s] iteration 655 / 1000: 0.77 s/iteration, peak RSS 8.18 GB
+[  1113s] iteration 700: checkpoint 7.54 GB in 5.9 s
+[  1133s] iteration 727 / 1000: 0.77 s/iteration, peak RSS 8.18 GB
+[  1194s] iteration 800: checkpoint 7.54 GB in 5.8 s
+[  1194s] iteration 800 / 1000: 0.77 s/iteration, peak RSS 8.18 GB
+[  1255s] iteration 878 / 1000: 0.77 s/iteration, peak RSS 8.18 GB
+[  1278s] iteration 900: checkpoint 7.54 GB in 6.1 s
+[  1315s] iteration 948 / 1000: 0.77 s/iteration, peak RSS 8.18 GB
+[  1364s] iteration 1000: final checkpoint 7.54 GB in 8.1 s
+{"mode":"resolve-river","scenario":"srp-btn-bb","flopIndex":8,"flop":"Td 9d 8d","pot":5.5,"turnCards":49,"riverCards":48,"flopRunouts":1176,"iters":500,"avgFrom":0.5,"nodes":1664826,"decisions":618888,"solveThreads":24,"n":1000,"resolveAvgFrom":0.5,"eps":0e0,"tremble":0e0,"riverStrategy":"average of the re-solve","fullPct":1.9274,"riverOnlyPct":0.5863,"fullPctOop":0.4724,"fullPctIp":1.4550,"fullChips":0.10601,"secsPerIter":0.773,"resumedFrom":0,"secs":846,"peakRssGB":8.18}
+[  1374s] [2s] dealt lines: 738 of 2664 flop / turn nodes; 0.02267 of the hands leave them
+[  1377s] [5s] dealt: player 0 river: 0.01640 chips
+[  1379s] [6s] dealt: player 0 river + dealt turn: 0.02298 chips
+[  1380s] [8s] dealt: player 0 everywhere dealt: 0.02551 chips
+[  1382s] [9s] dealt: player 1 river: 0.01585 chips
+[  1383s] [10s] dealt: player 1 river + dealt turn: 0.04725 chips
+[  1385s] [12s] dealt: player 1 everywhere dealt: 0.07893 chips
+{"mode":"resolve-dealt","scenario":"srp-btn-bb","flopIndex":8,"flop":"Td 9d 8d","pot":5.5,"turnCards":49,"riverCards":48,"flopRunouts":1176,"iters":500,"avgFrom":0.5,"nodes":1664826,"decisions":618888,"solveThreads":24,"n":1000,"resolveAvgFrom":0.5,"eps":0e0,"tremble":0e0,"minReach":0.004,"dealtDecisions":738,"upstreamDecisions":2664,"undealtReach":0.022668,"riverPct":[0.2981,0.2882],"turnPct":[0.4179,0.8591],"fullPct":[0.4637,1.4351],"fullRawPct":[0.4637,1.4351],"fullPctSum":1.8988}
+=== flop #12: 500 反復で解き、リバーを 1000 反復で解き直して測る
+srp-btn-bb flop 12 8c 8d 3s: 1664826 nodes (618888 decisions), 49 x 48 cards, 1176 flop run-outs, built in 0.2s
+solver: 7.66 GB regrets + strategy sums (a checkpoint is about as big; at most 2 are kept), peak RSS 8.12 GB
+[    63s] iteration 62 / 500: 0.97 s/iteration, peak RSS 8.15 GB
+[   107s] iteration 100: checkpoint 7.66 GB in 7.5 s
+[   124s] iteration 118 / 500: 0.96 s/iteration, peak RSS 8.15 GB
+[   184s] iteration 184 / 500: 0.95 s/iteration, peak RSS 8.15 GB
+[   205s] iteration 200: checkpoint 7.66 GB in 6.0 s
+[   245s] iteration 241 / 500: 0.95 s/iteration, peak RSS 8.16 GB
+[   307s] iteration 300: checkpoint 7.66 GB in 7.1 s
+[   307s] iteration 300 / 500: 0.94 s/iteration, peak RSS 8.16 GB
+[   367s] iteration 365 / 500: 0.94 s/iteration, peak RSS 8.16 GB
+[   406s] iteration 400: checkpoint 7.66 GB in 6.3 s
+[   428s] iteration 424 / 500: 0.94 s/iteration, peak RSS 8.16 GB
+[   488s] iteration 490 / 500: 0.94 s/iteration, peak RSS 8.16 GB
+[   503s] iteration 500: final checkpoint 7.66 GB in 5.8 s
+{"mode":"all-cards","scenario":"srp-btn-bb","flopIndex":12,"flop":"8c 8d 3s","pot":5.5,"turnCards":49,"riverCards":48,"flopRunouts":1176,"iters":500,"avgFrom":0.5,"nodes":1664826,"decisions":618888,"solveThreads":24,"tremble":0e0,"riverAverage":1,"riverStrategy":"average","fullPct":0.4762,"fullPctRiverCurrent":4.4382,"riverOnlyPct":0.1679,"fullChips":0.02619,"strategyGB":7.659,"secsPerIter":0.935,"resumedFrom":0,"secsEval":12.0,"checkpointGB":7.659,"checkpointSaveSecs":6.5,"upstreamMB":33.0,"peakRssGB":8.30}
+river re-solve N = 1000 (eps 0e0) from out/g2-dcfr/g2/srp-btn-bb-12/upstream.tsup (srp-btn-bb 8c 8d 3s flop 12 49x48 runouts 1176 iters=500 reset_at=Some(0) update=alt-dcfr)
+[   577s] iteration 79 / 1000: 0.76 s/iteration, peak RSS 8.30 GB
+[   600s] iteration 100: checkpoint 7.66 GB in 7.3 s
+[   637s] iteration 149 / 1000: 0.76 s/iteration, peak RSS 8.30 GB
+[   682s] iteration 200: checkpoint 7.66 GB in 5.7 s
+[   698s] iteration 221 / 1000: 0.76 s/iteration, peak RSS 8.30 GB
+[   764s] iteration 300: checkpoint 7.66 GB in 6.0 s
+[   764s] iteration 300 / 1000: 0.76 s/iteration, peak RSS 8.30 GB
+[   824s] iteration 379 / 1000: 0.76 s/iteration, peak RSS 8.30 GB
+[   846s] iteration 400: checkpoint 7.66 GB in 6.0 s
+[   884s] iteration 450 / 1000: 0.76 s/iteration, peak RSS 8.30 GB
+[   930s] iteration 500: checkpoint 7.66 GB in 7.3 s
+[   945s] iteration 519 / 1000: 0.76 s/iteration, peak RSS 8.30 GB
+[  1006s] iteration 598 / 1000: 0.76 s/iteration, peak RSS 8.30 GB
+[  1013s] iteration 600: checkpoint 7.66 GB in 5.9 s
+[  1066s] iteration 669 / 1000: 0.76 s/iteration, peak RSS 8.30 GB
+[  1097s] iteration 700: checkpoint 7.66 GB in 7.4 s
+[  1126s] iteration 738 / 1000: 0.76 s/iteration, peak RSS 8.30 GB
+[  1180s] iteration 800: checkpoint 7.66 GB in 6.1 s
+[  1186s] iteration 808 / 1000: 0.77 s/iteration, peak RSS 8.30 GB
+[  1247s] iteration 887 / 1000: 0.77 s/iteration, peak RSS 8.30 GB
+[  1263s] iteration 900: checkpoint 7.66 GB in 5.9 s
+[  1307s] iteration 958 / 1000: 0.77 s/iteration, peak RSS 8.30 GB
+[  1345s] iteration 1000: final checkpoint 7.66 GB in 5.9 s
+{"mode":"resolve-river","scenario":"srp-btn-bb","flopIndex":12,"flop":"8c 8d 3s","pot":5.5,"turnCards":49,"riverCards":48,"flopRunouts":1176,"iters":500,"avgFrom":0.5,"nodes":1664826,"decisions":618888,"solveThreads":24,"n":1000,"resolveAvgFrom":0.5,"eps":0e0,"tremble":0e0,"riverStrategy":"average of the re-solve","fullPct":1.7478,"riverOnlyPct":0.5715,"fullPctOop":0.7060,"fullPctIp":1.0418,"fullChips":0.09613,"secsPerIter":0.766,"resumedFrom":0,"secs":838,"peakRssGB":8.30}
+[  1355s] [2s] dealt lines: 754 of 2664 flop / turn nodes; 0.00961 of the hands leave them
+[  1358s] [4s] dealt: player 0 river: 0.01568 chips
+[  1360s] [6s] dealt: player 0 river + dealt turn: 0.02662 chips
+[  1361s] [7s] dealt: player 0 everywhere dealt: 0.03784 chips
+[  1362s] [9s] dealt: player 1 river: 0.01576 chips
+[  1364s] [10s] dealt: player 1 river + dealt turn: 0.03616 chips
+[  1365s] [11s] dealt: player 1 everywhere dealt: 0.05114 chips
+{"mode":"resolve-dealt","scenario":"srp-btn-bb","flopIndex":12,"flop":"8c 8d 3s","pot":5.5,"turnCards":49,"riverCards":48,"flopRunouts":1176,"iters":500,"avgFrom":0.5,"nodes":1664826,"decisions":618888,"solveThreads":24,"n":1000,"resolveAvgFrom":0.5,"eps":0e0,"tremble":0e0,"minReach":0.004,"dealtDecisions":754,"upstreamDecisions":2664,"undealtReach":0.009608,"riverPct":[0.2850,0.2865],"turnPct":[0.4839,0.6575],"fullPct":[0.6880,0.9298],"fullRawPct":[0.6880,0.9298],"fullPctSum":1.6178}
+3 フロップとも済みました。
+
+=> out/g2-dcfr/pc-g2-report.txt を貼ってください（送れていれば、送ったと表示されます）。

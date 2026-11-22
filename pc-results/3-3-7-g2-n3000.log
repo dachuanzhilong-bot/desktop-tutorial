@@ -1,0 +1,169 @@
+ビルド中...
+    Finished `release` profile [optimized] target(s) in 0.01s
+=== flop #8: 2500 反復で解き、リバーを 3000 反復で解き直して測る
+srp-btn-bb flop 8 Td 9d 8d: 1664826 nodes (618888 decisions), 49 x 48 cards, 1176 flop run-outs, built in 0.2s
+all-card solve: already in out/g2.jsonl (skipped)
+river re-solve N = 3000 (eps 0e0, sim-cfr+) from out/g2/srp-btn-bb-8/upstream.tsup (srp-btn-bb Td 9d 8d flop 8 49x48 runouts 1176 iters=2500 reset_at=Some(500))
+[    64s] iteration 81 / 3000: 0.75 s/iteration, peak RSS 8.10 GB
+[    85s] iteration 100: checkpoint 7.54 GB in 7.5 s
+[   124s] iteration 153 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   164s] iteration 200: checkpoint 7.54 GB in 5.3 s
+[   184s] iteration 227 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   244s] iteration 300: checkpoint 7.54 GB in 5.5 s
+[   245s] iteration 301 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   305s] iteration 383 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   323s] iteration 400: checkpoint 7.54 GB in 5.4 s
+[   365s] iteration 457 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   403s] iteration 500: checkpoint 7.54 GB in 5.3 s
+[   426s] iteration 531 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   482s] iteration 600: checkpoint 7.54 GB in 5.4 s
+[   486s] iteration 605 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   547s] iteration 687 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   562s] iteration 700: checkpoint 7.54 GB in 5.4 s
+[   607s] iteration 761 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   641s] iteration 800: checkpoint 7.54 GB in 5.4 s
+[   667s] iteration 835 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   721s] iteration 900: checkpoint 7.54 GB in 5.5 s
+[   728s] iteration 909 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   788s] iteration 990 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   801s] iteration 1000: checkpoint 7.54 GB in 5.5 s
+[   848s] iteration 1064 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   880s] iteration 1100: checkpoint 7.54 GB in 5.4 s
+[   908s] iteration 1138 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[   960s] iteration 1200: checkpoint 7.54 GB in 5.5 s
+[   969s] iteration 1212 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1029s] iteration 1293 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1039s] iteration 1300: checkpoint 7.54 GB in 5.4 s
+[  1089s] iteration 1367 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1119s] iteration 1400: checkpoint 7.54 GB in 5.4 s
+[  1149s] iteration 1441 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1198s] iteration 1500: checkpoint 7.54 GB in 5.4 s
+[  1209s] iteration 1515 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1269s] iteration 1596 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1278s] iteration 1600: checkpoint 7.54 GB in 5.4 s
+[  1330s] iteration 1670 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1357s] iteration 1700: checkpoint 7.54 GB in 5.5 s
+[  1390s] iteration 1744 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1437s] iteration 1800: checkpoint 7.54 GB in 5.7 s
+[  1451s] iteration 1818 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1517s] iteration 1900: checkpoint 7.54 GB in 5.5 s
+[  1517s] iteration 1900 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1577s] iteration 1982 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1598s] iteration 2000: checkpoint 7.54 GB in 7.5 s
+[  1637s] iteration 2053 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1678s] iteration 2100: checkpoint 7.54 GB in 5.5 s
+[  1698s] iteration 2127 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1757s] iteration 2200: checkpoint 7.54 GB in 5.5 s
+[  1758s] iteration 2201 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1819s] iteration 2283 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1837s] iteration 2300: checkpoint 7.54 GB in 5.5 s
+[  1879s] iteration 2357 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1916s] iteration 2400: checkpoint 7.54 GB in 5.5 s
+[  1939s] iteration 2431 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  1996s] iteration 2500: checkpoint 7.54 GB in 5.5 s
+[  1999s] iteration 2505 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  2060s] iteration 2587 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  2075s] iteration 2600: checkpoint 7.54 GB in 5.6 s
+[  2120s] iteration 2661 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  2155s] iteration 2700: checkpoint 7.54 GB in 5.5 s
+[  2181s] iteration 2735 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  2234s] iteration 2800: checkpoint 7.54 GB in 5.6 s
+[  2241s] iteration 2809 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  2301s] iteration 2890 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  2314s] iteration 2900: checkpoint 7.54 GB in 5.6 s
+[  2361s] iteration 2964 / 3000: 0.74 s/iteration, peak RSS 8.11 GB
+[  2394s] iteration 3000: final checkpoint 7.54 GB in 5.5 s
+{"mode":"resolve-river","scenario":"srp-btn-bb","flopIndex":8,"flop":"Td 9d 8d","pot":5.5,"turnCards":49,"riverCards":48,"flopRunouts":1176,"iters":2500,"avgFrom":0.5,"nodes":1664826,"decisions":618888,"solveThreads":24,"n":3000,"resolveAvgFrom":0.5,"eps":0e0,"tremble":0e0,"riverStrategy":"average of the re-solve","fullPct":1.2443,"riverOnlyPct":0.1420,"fullPctOop":0.9817,"fullPctIp":0.2626,"fullChips":0.06844,"secsPerIter":0.741,"resumedFrom":0,"secs":2401,"peakRssGB":8.18}
+[  2403s] [2s] dealt lines: 703 of 2664 flop / turn nodes; 0.01772 of the hands leave them
+[  2406s] [4s] dealt: player 0 river: 0.00408 chips
+[  2407s] [6s] dealt: player 0 river + dealt turn: 0.00639 chips
+[  2409s] [7s] dealt: player 0 everywhere dealt: 0.00814 chips
+[  2410s] [8s] dealt: player 1 river: 0.00373 chips
+[  2411s] [10s] dealt: player 1 river + dealt turn: 0.00921 chips
+[  2413s] [11s] dealt: player 1 everywhere dealt: 0.01217 chips
+{"mode":"resolve-dealt","scenario":"srp-btn-bb","flopIndex":8,"flop":"Td 9d 8d","pot":5.5,"turnCards":49,"riverCards":48,"flopRunouts":1176,"iters":2500,"avgFrom":0.5,"nodes":1664826,"decisions":618888,"solveThreads":24,"n":3000,"resolveAvgFrom":0.5,"eps":0e0,"tremble":0e0,"minReach":0.004,"dealtDecisions":703,"upstreamDecisions":2664,"undealtReach":0.017721,"riverPct":[0.0741,0.0679],"turnPct":[0.1162,0.1675],"fullPct":[0.1479,0.2213],"fullRawPct":[0.1479,0.2213],"fullPctSum":0.3693}
+=== flop #12: 3000 反復で解き、リバーを 3000 反復で解き直して測る
+srp-btn-bb flop 12 8c 8d 3s: 1664826 nodes (618888 decisions), 49 x 48 cards, 1176 flop run-outs, built in 0.2s
+all-card solve: already in out/g2.jsonl (skipped)
+river re-solve N = 3000 (eps 0e0, sim-cfr+) from out/g2/srp-btn-bb-12/upstream.tsup (srp-btn-bb 8c 8d 3s flop 12 49x48 runouts 1176 iters=3000 reset_at=Some(500))
+[    64s] iteration 82 / 3000: 0.74 s/iteration, peak RSS 8.22 GB
+[    85s] iteration 100: checkpoint 7.66 GB in 7.8 s
+[   124s] iteration 154 / 3000: 0.74 s/iteration, peak RSS 8.22 GB
+[   164s] iteration 200: checkpoint 7.66 GB in 5.9 s
+[   185s] iteration 228 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[   244s] iteration 300: checkpoint 7.66 GB in 5.8 s
+[   245s] iteration 302 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[   305s] iteration 384 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[   323s] iteration 400: checkpoint 7.66 GB in 5.7 s
+[   366s] iteration 458 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[   403s] iteration 500: checkpoint 7.66 GB in 5.8 s
+[   426s] iteration 532 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[   482s] iteration 600: checkpoint 7.66 GB in 5.7 s
+[   487s] iteration 606 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[   547s] iteration 688 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[   563s] iteration 700: checkpoint 7.66 GB in 7.0 s
+[   607s] iteration 760 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[   642s] iteration 800: checkpoint 7.66 GB in 5.6 s
+[   667s] iteration 834 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[   722s] iteration 900: checkpoint 7.66 GB in 5.8 s
+[   728s] iteration 908 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[   789s] iteration 990 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[   802s] iteration 1000: checkpoint 7.66 GB in 5.6 s
+[   849s] iteration 1064 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[   882s] iteration 1100: checkpoint 7.66 GB in 5.8 s
+[   910s] iteration 1138 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[   961s] iteration 1200: checkpoint 7.66 GB in 5.6 s
+[   970s] iteration 1212 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1031s] iteration 1294 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1041s] iteration 1300: checkpoint 7.66 GB in 5.6 s
+[  1091s] iteration 1368 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1120s] iteration 1400: checkpoint 7.66 GB in 5.6 s
+[  1151s] iteration 1442 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1200s] iteration 1500: checkpoint 7.66 GB in 5.9 s
+[  1212s] iteration 1515 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1272s] iteration 1596 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1281s] iteration 1600: checkpoint 7.66 GB in 5.8 s
+[  1333s] iteration 1670 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1360s] iteration 1700: checkpoint 7.66 GB in 5.8 s
+[  1393s] iteration 1744 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1440s] iteration 1800: checkpoint 7.66 GB in 5.8 s
+[  1454s] iteration 1818 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1514s] iteration 1899 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1522s] iteration 1900: checkpoint 7.66 GB in 7.5 s
+[  1574s] iteration 1970 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1602s] iteration 2000: checkpoint 7.66 GB in 5.8 s
+[  1634s] iteration 2044 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1684s] iteration 2100: checkpoint 7.66 GB in 7.6 s
+[  1695s] iteration 2115 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1755s] iteration 2197 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1763s] iteration 2200: checkpoint 7.66 GB in 5.6 s
+[  1816s] iteration 2271 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1843s] iteration 2300: checkpoint 7.66 GB in 5.8 s
+[  1876s] iteration 2345 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  1923s] iteration 2400: checkpoint 7.66 GB in 5.6 s
+[  1937s] iteration 2419 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  2002s] iteration 2500: checkpoint 7.66 GB in 5.7 s
+[  2002s] iteration 2500 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  2063s] iteration 2582 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  2082s] iteration 2600: checkpoint 7.66 GB in 5.6 s
+[  2123s] iteration 2656 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  2162s] iteration 2700: checkpoint 7.66 GB in 5.6 s
+[  2184s] iteration 2730 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  2241s] iteration 2800: checkpoint 7.66 GB in 5.6 s
+[  2244s] iteration 2804 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  2304s] iteration 2885 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  2321s] iteration 2900: checkpoint 7.66 GB in 5.8 s
+[  2365s] iteration 2959 / 3000: 0.74 s/iteration, peak RSS 8.23 GB
+[  2403s] iteration 3000: final checkpoint 7.66 GB in 7.4 s
+{"mode":"resolve-river","scenario":"srp-btn-bb","flopIndex":12,"flop":"8c 8d 3s","pot":5.5,"turnCards":49,"riverCards":48,"flopRunouts":1176,"iters":3000,"avgFrom":0.5,"nodes":1664826,"decisions":618888,"solveThreads":24,"n":3000,"resolveAvgFrom":0.5,"eps":0e0,"tremble":0e0,"riverStrategy":"average of the re-solve","fullPct":0.4895,"riverOnlyPct":0.1653,"fullPctOop":0.2330,"fullPctIp":0.2565,"fullChips":0.02692,"secsPerIter":0.740,"resumedFrom":0,"secs":2410,"peakRssGB":8.30}
+[  2412s] [2s] dealt lines: 771 of 2664 flop / turn nodes; 0.01189 of the hands leave them
+[  2415s] [4s] dealt: player 0 river: 0.00457 chips
+[  2416s] [6s] dealt: player 0 river + dealt turn: 0.00903 chips
+[  2417s] [7s] dealt: player 0 everywhere dealt: 0.01180 chips
+[  2419s] [8s] dealt: player 1 river: 0.00452 chips
+[  2420s] [9s] dealt: player 1 river + dealt turn: 0.00940 chips
+[  2421s] [11s] dealt: player 1 everywhere dealt: 0.01321 chips
+{"mode":"resolve-dealt","scenario":"srp-btn-bb","flopIndex":12,"flop":"8c 8d 3s","pot":5.5,"turnCards":49,"riverCards":48,"flopRunouts":1176,"iters":3000,"avgFrom":0.5,"nodes":1664826,"decisions":618888,"solveThreads":24,"n":3000,"resolveAvgFrom":0.5,"eps":0e0,"tremble":0e0,"minReach":0.004,"dealtDecisions":771,"upstreamDecisions":2664,"undealtReach":0.011889,"riverPct":[0.0830,0.0823],"turnPct":[0.1642,0.1709],"fullPct":[0.2146,0.2402],"fullRawPct":[0.2146,0.2402],"fullPctSum":0.4548}
+3 フロップとも済みました。
+
+=> out/pc-g2-report.txt を貼ってください（送れていれば、送ったと表示されます）。
