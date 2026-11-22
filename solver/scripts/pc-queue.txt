@@ -21,3 +21,11 @@
 #
 # REFACTOR_PLAN 4-1 の G2': DCFR（交互）で 500 反復解いた 3 フロップを、リバーを N = 1,000 で解き直して、配るラインの中で測る。
 4-1-g2-alt-dcfr	NO_PUSH=1 OUT_DIR="$OUT/g2-dcfr" SPECS="0 500 - 8 500 - 12 500 -" AVG_RESTART=0 EXTRA_ARGS="--update alt-dcfr" bash scripts/pc-g2.sh && mkdir -p "$OUT/q/4-1-g2-alt-dcfr" && cp "$OUT/g2-dcfr/g2.jsonl" "$OUT/q/4-1-g2-alt-dcfr/"
+#
+# REFACTOR_PLAN 3-3-7 の G2' の続き（2026-11-22）: 出荷したデータは #0 0.5456%、#8 1.1247%、#12 1.2535% で、2 つが 1.0% を超えた。
+# (1) リバーの解き直しを DCFR（交互）にすると、端末の反復数 N = 1,000 のままで下がるか（上流は出荷したデータのまま。1 フロップ 約 40 分）
+3-3-7-g2-rdcfr	NO_PUSH=1 OUT_DIR="$OUT" SPECS="8 2500 0.4013 12 3000 0.4777 0 1500 0.4544" EXTRA_ARGS="--resolve-update alt-dcfr" bash scripts/pc-g2.sh && mkdir -p "$OUT/q/3-3-7-g2-rdcfr" && cp "$OUT/g2.jsonl" "$OUT/q/3-3-7-g2-rdcfr/"
+# (2) DCFR で解いた上流を DCFR で解き直す（4-1。上流と解き直しの方式をそろえると下がるか。1 フロップ 約 40 分）
+4-1-g2-dcfr-rdcfr	for f in 8 12 0; do ./target/release/measure_exploit --resolve-river 1000 --dealt --update alt-dcfr --resolve-update alt-dcfr --pre "$PRE" --scenario srp-btn-bb --only-flop "$f" --iters 500 --solve-threads "$THREADS" --checkpoint "$OUT/g2-dcfr/g2/srp-btn-bb-$f" --checkpoint-every 100 --out "$OUT/g2-dcfr/g2.jsonl" || exit 1; done && mkdir -p "$OUT/q/4-1-g2-dcfr-rdcfr" && cp "$OUT/g2-dcfr/g2.jsonl" "$OUT/q/4-1-g2-dcfr-rdcfr/"
+# (3) REFACTOR_PLAN 3-3-4 の決め事「1.0% を超えるフロップがあれば N を上げて測り直す」: 今の解き直し（sim-cfr+）を N = 3,000 で（1 フロップ 約 80 分）
+3-3-7-g2-n3000	NO_PUSH=1 OUT_DIR="$OUT" N=3000 SPECS="8 2500 0.4013 12 3000 0.4777" bash scripts/pc-g2.sh && mkdir -p "$OUT/q/3-3-7-g2-n3000" && cp "$OUT/g2.jsonl" "$OUT/q/3-3-7-g2-n3000/"

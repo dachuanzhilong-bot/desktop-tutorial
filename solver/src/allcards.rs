@@ -2394,4 +2394,51 @@ mod tests {
         assert_eq!(strategy(&mut b), want, "continued from iteration 30, the discounts of 31..45 are those of an uninterrupted run");
         let _ = std::fs::remove_dir_all(&dir);
     }
+
+    /// the river re-solved with alternating updates (`measure_exploit --resolve-update`, a measure of a device that
+    /// would re-solve that way; REFACTOR_PLAN 3-3-7): the flop and turn keep the locked strategies whatever the update,
+    /// the re-solve converges (here faster than sim-cfr+), and a checkpoint of it continues bit for bit
+    #[test]
+    fn the_resolve_with_alternating_updates_keeps_the_upstream_and_converges() {
+        use crate::postflop::Update;
+        let cfg = Config { pot: 6.0, stack: 30.0, bets: [vec![0.5], vec![0.75], vec![0.75]], allow_allin: true, turn_cards: 5, river_cards: 2, flop_runouts: 24, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ks 7d 2c"));
+        let ranges = mixed_ranges(9);
+        let mut a = solve(&tree, &ranges, on_demand(1), 60);
+        a.finalize_avg();
+        let up = Upstream { tree: tree_fingerprint(&a), tag: String::new(), nodes: upstream_of(&a), crc: 7 };
+        let plan_of = |u: Update, n: u32| Plan::new(n, if u == Update::AltDcfr { 0.0 } else { 0.5 }, 0);
+        let run = |u: Update, n: u32| {
+            let mut r = Solver::with_options(&tree, &ranges, SolverOptions { update: u, ..on_demand(2) });
+            let (v, _) = resolve_river(&mut r, &up, &plan_of(u, n), None, None, &mut |_| {}).unwrap();
+            (r, v.unwrap())
+        };
+        let (sim, vs) = run(Update::SimCfrPlus, 100);
+        let upstream = |r: &Solver| bits(&upstream_nodes(&tree).map(|(i, _)| r.avg[i].clone()).collect::<Vec<_>>());
+        for u in [Update::AltCfrPlus, Update::AltDcfr] {
+            let (_, early) = run(u, 20);
+            let (r, v) = run(u, 100);
+            // the flop / turn nodes hold the locked strategies, as with sim-cfr+
+            assert_eq!(upstream(&r), upstream(&sim), "{}", u.name());
+            assert!(v.river_only < early.river_only, "{}: {} after 100, {} after 20", u.name(), v.river_only, early.river_only);
+            // here the alternating updates re-solve the river closer than sim-cfr+ does in as many iterations (when
+            // written: alt-cfr+ 0.016, alt-dcfr 0.010, sim-cfr+ 0.075 chips)
+            assert!(v.river_only < vs.river_only, "{}: river {} against sim-cfr+'s {}", u.name(), v.river_only, vs.river_only);
+            assert!(v.river_only <= v.full + 1e-5 && v.full_by_player.iter().all(|&g| g >= 0.0), "{}: {:?}", u.name(), v);
+        }
+        // a DCFR re-solve stopped at a checkpoint and continued ends where an uninterrupted one does
+        let (whole, vw) = run(Update::AltDcfr, 60);
+        let dir = tmp_dir("resolve-dcfr");
+        let plan = Plan { every: 20, ..plan_of(Update::AltDcfr, 60) };
+        let ck = Checkpoints::new(&dir, format!("{} update=alt-dcfr", resolve_tag(&plan, &up, 0.0))).unwrap();
+        let mut first = Solver::with_options(&tree, &ranges, SolverOptions { update: Update::AltDcfr, ..on_demand(2) });
+        assert!(resolve_river(&mut first, &up, &plan, Some(&ck), Some(30), &mut |_| {}).unwrap().0.is_none());
+        let mut second = Solver::with_options(&tree, &ranges, SolverOptions { update: Update::AltDcfr, ..on_demand(2) });
+        let (vc, info) = resolve_river(&mut second, &up, &plan, Some(&ck), None, &mut |_| {}).unwrap();
+        assert_eq!((info.resumed_from, second.iters), (20, 60));
+        assert_eq!(bits(&second.regret), bits(&whole.regret));
+        assert_eq!(bits(&second.ssum), bits(&whole.ssum));
+        assert_eq!(vc.unwrap().full.to_bits(), vw.full.to_bits());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }
