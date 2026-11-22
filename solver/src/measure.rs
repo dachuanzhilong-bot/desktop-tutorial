@@ -1243,9 +1243,9 @@ mod tests {
     /// (`web/src/lib/__tests__/fixtures/tsp1-v3-e2e.bin`; never shipped): that scenario's pot and stack, a small flop /
     /// turn (no flop bet, 2 turn cards) and `Config::default()`'s river settings, which are what the device solves the
     /// river with (`RIVER_SETTINGS` in web/src/lib/postflop/river.ts).  Plus one river solved alone from the file's
-    /// (quantized) ranges exactly as the device does it (`river_tree_of`, `Solver::new`, the average restarted at half
-    /// the iterations, export with `min_reach` 0): `tsp1-v3-river.bin`, its river start / card / iterations in
-    /// `tsp1-v3-river.json`.  The web test solves the same river with the WebAssembly build and compares.
+    /// (quantized) ranges exactly as the device does it (`river_tree_of`, `Solver::new` set to `alt-dcfr` with no
+    /// average restart (REFACTOR_PLAN 3-3-4, `docs/14` §18), export with `min_reach` 0): `tsp1-v3-river.bin`, its river
+    /// start / card / iterations / update in `tsp1-v3-river.json`.  The web test solves the same river with the WebAssembly build and compares.
     /// Rewrite with `TESSERA_WRITE_FIXTURES=1 cargo test --release v3_e2e_fixture`.
     #[test]
     fn v3_e2e_fixture_for_the_web_tests() {
@@ -1271,11 +1271,12 @@ mod tests {
         let alone = river_tree_of(&tree, node, card);
         let iters = 300;
         let mut a = Solver::new(&alone, &[zero_card(&r[0].dense(), card), zero_card(&r[1].dense(), card)]);
-        run_iterations(&mut a, &Plan { iters, reset_at: Some(iters / 2), every: 0 }, None, None, &mut |_| {}).unwrap();
+        a.set_update(Update::AltDcfr);
+        run_iterations(&mut a, &Plan { iters, reset_at: None, every: 0 }, None, None, &mut |_| {}).unwrap();
         a.finalize_avg();
         let river = export(&alone, &a.evaluate(), 0.0);
         assert!(river.len() < 80_000, "{} bytes", river.len());
-        let json = format!("{{\"riverStart\":{},\"card\":{},\"iterations\":{},\"resetAt\":{},\"pot\":{},\"stack\":{}}}\n", at, card, iters, iters / 2, alone.cfg.pot, alone.cfg.stack);
+        let json = format!("{{\"riverStart\":{},\"card\":{},\"iterations\":{},\"resetAt\":0,\"update\":\"{}\",\"pot\":{},\"stack\":{}}}\n", at, card, iters, Update::AltDcfr.name(), alone.cfg.pot, alone.cfg.stack);
 
         let dir = std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../web/src/lib/__tests__/fixtures");
         let files = [(dir.join("tsp1-v3-e2e.bin"), bytes), (dir.join("tsp1-v3-river.bin"), river), (dir.join("tsp1-v3-river.json"), json.into_bytes())];

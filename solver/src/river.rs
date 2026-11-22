@@ -147,9 +147,13 @@ impl RiverWalk {
     }
 
     /// One CFR+ iteration (`t`: the weight of this iteration in the strategy average).  `regret` / `ssum` / `locks` /
-    /// `has_avg` are the solver's (see `Solver`).
-    pub(crate) fn train(&mut self, tree: &Tree, regret: &mut [Vec<f32>], ssum: &mut [Vec<f32>], locks: &[Option<Vec<f32>>], has_avg: &[bool], t: f32) {
+    /// `has_avg` are the solver's (see `Solver`).  `train_only: Some(q)` is one walk of an alternating update: only q's
+    /// values, regrets and strategy sums (REFACTOR_PLAN 4-1); `dcfr` its DCFR discounts, as `train_subtree` takes them
+    /// (the device re-solves the river with `alt-dcfr`, REFACTOR_PLAN 3-3-4).  `None`, `None` is the simultaneous CFR+.
+    #[allow(clippy::too_many_arguments)] // the solver's state, the iteration's weight and how it updates
+    pub(crate) fn train(&mut self, tree: &Tree, regret: &mut [Vec<f32>], ssum: &mut [Vec<f32>], locks: &[Option<Vec<f32>>], has_avg: &[bool], t: f32, train_only: Option<usize>, dcfr: Option<(f32, f32, f32)>) {
         let n = tree.nodes.len();
+        let wants = |q: usize| train_only.is_none_or(|o| o == q);
         // strategies and reaches, parents first
         for i in 0..n {
             let PKind::Decision { player, children, .. } = &tree.nodes[i].kind else { continue };
@@ -192,14 +196,18 @@ impl RiverWalk {
                     let l = 1 - w;
                     let (rw, rl) = (&self.reach[self.reach_of[i][w] as usize], &self.reach[self.reach_of[i][l] as usize]);
                     let (gain, loss) = (pot_total - node.inv[w], -node.inv[l]);
-                    self.compat_mass(w, rl, &mut v[w]);
-                    v[w][..self.k[w]].iter_mut().for_each(|x| *x *= gain);
-                    self.compat_mass(l, rw, &mut v[l]);
-                    v[l][..self.k[l]].iter_mut().for_each(|x| *x *= loss);
+                    if wants(w) {
+                        self.compat_mass(w, rl, &mut v[w]);
+                        v[w][..self.k[w]].iter_mut().for_each(|x| *x *= gain);
+                    }
+                    if wants(l) {
+                        self.compat_mass(l, rw, &mut v[l]);
+                        v[l][..self.k[l]].iter_mut().for_each(|x| *x *= loss);
+                    }
                 }
                 PKind::Showdown { table } => {
                     let sd = self.showdowns[*table as usize].as_ref().expect("showdown table");
-                    for p in 0..2 {
+                    for p in (0..2).filter(|&p| wants(p)) {
                         let ro = &self.reach[self.reach_of[i][1 - p] as usize];
                         showdown(sd, p, ro, pot_total, node.inv[p], &mut self.scratch, &mut v[p]);
                     }
@@ -210,23 +218,31 @@ impl RiverWalk {
                     let (k, ko, na) = (self.k[p], self.k[o], children.len());
                     let sigma = &self.sigma[i];
                     // the opponent's values add up, the actor's are weighted by the strategy (first action: 0 + x = x)
-                    v[o][..ko].iter_mut().for_each(|x| *x = 0.0);
-                    v[p][..k].iter_mut().for_each(|x| *x = 0.0);
-                    for (a, &c) in children.iter().enumerate() {
-                        let cv = &self.val[c as usize];
-                        for (x, &y) in v[o][..ko].iter_mut().zip(&cv[o][..ko]) {
-                            *x += y;
-                        }
-                        for ((x, &y), &s) in v[p][..k].iter_mut().zip(&cv[p][..k]).zip(&sigma[a * k..(a + 1) * k]) {
-                            *x += s * y;
+                    if wants(o) {
+                        v[o][..ko].iter_mut().for_each(|x| *x = 0.0);
+                        for &c in children {
+                            for (x, &y) in v[o][..ko].iter_mut().zip(&self.val[c as usize][o][..ko]) {
+                                *x += y;
+                            }
                         }
                     }
-                    if locks[i].is_none() {
+                    if wants(p) {
+                        v[p][..k].iter_mut().for_each(|x| *x = 0.0);
+                        for (a, &c) in children.iter().enumerate() {
+                            for ((x, &y), &s) in v[p][..k].iter_mut().zip(&self.val[c as usize][p][..k]).zip(&sigma[a * k..(a + 1) * k]) {
+                                *x += s * y;
+                            }
+                        }
+                    }
+                    if wants(p) && locks[i].is_none() {
                         let reg = &mut regret[i];
                         for (a, &c) in children.iter().enumerate() {
                             let cv = &self.val[c as usize][p][..k];
                             for ((r, &y), &x) in reg[a * k..(a + 1) * k].iter_mut().zip(cv).zip(&v[p][..k]) {
-                                *r = (*r + y - x).max(0.0);
+                                *r = match dcfr {
+                                    None => (*r + y - x).max(0.0),
+                                    Some((pos, neg, _)) => *r * if *r > 0.0 { pos } else { neg } + (y - x),
+                                };
                             }
                         }
                         if has_avg[i] {
@@ -234,7 +250,10 @@ impl RiverWalk {
                             let ss = &mut ssum[i];
                             for a in 0..na {
                                 for ((s, &r), &x) in ss[a * k..(a + 1) * k].iter_mut().zip(rp).zip(&sigma[a * k..(a + 1) * k]) {
-                                    *s += t * r * x;
+                                    match dcfr {
+                                        None => *s += t * r * x,
+                                        Some((_, _, keep)) => *s = *s * keep + r * x,
+                                    }
                                 }
                             }
                         }

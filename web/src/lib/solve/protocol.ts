@@ -10,6 +10,15 @@
 /** where the worker finds the module, relative to the app's base path */
 export const SOLVER_WASM = "/wasm/tessera_solver.wasm";
 
+/**
+ * How a solve's iterations update (solver/src/postflop.rs `Update`): the default `sim-cfr+` (the Solve screen), or the
+ * alternating ones; the device re-solves the river with `alt-dcfr` (lib/postflop/river.ts `RIVER_UPDATE`).
+ */
+export type SolverUpdate = "sim-cfr+" | "alt-cfr+" | "alt-dcfr";
+
+/** the code of each update in the C ABI (`tsr_set_update`, solver/src/ffi.rs `update_of_code`) */
+export const UPDATE_CODE: Record<SolverUpdate, number> = { "sim-cfr+": 0, "alt-cfr+": 1, "alt-dcfr": 2 };
+
 /** options shared by `run` and `icmRun` */
 export interface RunParams {
   handle: number;
@@ -35,8 +44,11 @@ export interface RunDone {
 export interface SolverCalls {
   /** load the module */
   init: { args: Record<never, never>; reply: { type: "ready" } };
-  /** build the game tree: cfg from buildConfig, board as card numbers, r0/r1 the 1326 combo weights of each player */
-  create: { args: { cfg: number[]; board: number[]; r0: Float32Array; r1: Float32Array }; reply: { type: "created"; handle: number; nodes: number } };
+  /**
+   * build the game tree: cfg from buildConfig, board as card numbers, r0/r1 the 1326 combo weights of each player;
+   * `update` how its iterations update (default `sim-cfr+`)
+   */
+  create: { args: { cfg: number[]; board: number[]; r0: Float32Array; r1: Float32Array; update?: SolverUpdate }; reply: { type: "created"; handle: number; nodes: number } };
   run: { args: RunParams; reply: { type: "run-done" } & RunDone };
   exploit: { args: { handle: number }; reply: { type: "exploit-done"; exploit: number } };
   /** the solution as a TSP1 file, and exported node id -> solver tree node id (needed for node-locking) */

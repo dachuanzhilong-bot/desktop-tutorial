@@ -1022,20 +1022,27 @@ impl<'a> Solver<'a> {
         let Some(river) = self.river.as_mut() else { return self.iterate_full_width() };
         self.iters += 1;
         let t = (self.iters - self.avg_start) as f32;
-        river.train(self.tree, &mut self.regret, &mut self.ssum, &self.locks, &self.has_avg, t);
+        river.train(self.tree, &mut self.regret, &mut self.ssum, &self.locks, &self.has_avg, t, None, None);
     }
 
     /// One iteration of an alternating update (`Update::AltCfrPlus` / `AltDcfr`): a walk that updates OOP, then one
-    /// that updates IP (against OOP's new strategy), both with the general walk.
+    /// that updates IP (against OOP's new strategy).  A river tree takes the river walk (the device's re-solve,
+    /// REFACTOR_PLAN 3-3-4), any other tree the general walk; the same regrets and strategy sums, bit for bit.
     fn iterate_alternating(&mut self) {
         self.iters += 1;
         let t = (self.iters - self.avg_start) as f32;
         self.dcfr = (self.update == Update::AltDcfr).then(|| dcfr_discounts(self.iters));
-        for p in 0..2 {
-            self.train_only = Some(p);
-            self.run(Mode::Train(t), None, false);
+        if let Some(river) = self.river.as_mut() {
+            for p in 0..2 {
+                river.train(self.tree, &mut self.regret, &mut self.ssum, &self.locks, &self.has_avg, t, Some(p), self.dcfr);
+            }
+        } else {
+            for p in 0..2 {
+                self.train_only = Some(p);
+                self.run(Mode::Train(t), None, false);
+            }
+            self.train_only = None;
         }
-        self.train_only = None;
         self.dcfr = None;
     }
 
@@ -2706,7 +2713,10 @@ mod tests {
                 if river_walk {
                     s.iterate();
                 } else {
-                    s.iterate_full_width();
+                    // the general walk, as the update says (simultaneous: `iterate_full_width`)
+                    let walk = s.river.take();
+                    s.iterate();
+                    s.river = walk;
                 }
             }
             s.finalize_avg();
@@ -2766,6 +2776,24 @@ mod tests {
         let r = |l: &[&str]| range_of(&l.iter().map(|s| (&s[0..2], &s[2..4], 1.0)).collect::<Vec<_>>());
         let tree = build_tree(&river_cfg(), &board("Ah 8d 7c 2s 3d"));
         assert_river_walk_matches(&tree, &[r(&oop), r(&ip)], SolverOptions::default(), 300, &[]);
+    }
+
+    /// the device re-solves the river with `alt-dcfr` (REFACTOR_PLAN 3-3-4): the river walk of an alternating update
+    /// (`alt-cfr+`, `alt-dcfr`) is the general walk's, bit for bit, with partial ranges, locked nodes and without averages
+    #[test]
+    fn river_walk_matches_the_general_walk_with_alternating_updates() {
+        let cfg = Config { pot: 10.0, stack: 40.0, bets: [vec![], vec![], vec![0.5, 1.0]], raise_sizes: [false, false, true], allow_allin: true, ..Config::default() };
+        let tree = build_tree(&cfg, &board("Ah 8d 7c 2s 3d"));
+        let ip = (1..tree.nodes.len()).find(|&i| matches!(tree.nodes[i].kind, PKind::Decision { player: 1, .. })).unwrap();
+        let locks = [(0, uneven_lock(actions(&tree, 0))), (ip, uneven_lock(actions(&tree, ip)))];
+        let default_tree = build_tree(&Config::default(), &board("Kd Kh 9c 4s 4d"));
+        for update in [Update::AltCfrPlus, Update::AltDcfr] {
+            let opts = SolverOptions { update, ..Default::default() };
+            assert_river_walk_matches(&tree, &mixed_ranges(1), opts, 200, &[]);
+            assert_river_walk_matches(&default_tree, &mixed_ranges(5), opts, 200, &[]);
+            assert_river_walk_matches(&tree, &mixed_ranges(1), opts, 150, &locks);
+            assert_river_walk_matches(&tree, &mixed_ranges(1), SolverOptions { no_average_from: 2, ..opts }, 150, &locks[..1]);
+        }
     }
 
     #[test]

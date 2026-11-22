@@ -2173,16 +2173,25 @@ mod tests {
     }
 
     /// (c) with the turn locked, one river subgame of the re-solve is that river solved on its own from the reach
-    /// ranges (what the device does): the same average strategy up to rounding (other weights, same arithmetic)
+    /// ranges (what the device does): the same average strategy up to rounding (other weights, same arithmetic).  For
+    /// the device's update today, `alt-dcfr` without an average restart (`measure_exploit --resolve-update alt-dcfr`,
+    /// REFACTOR_PLAN 3-3-4), as for `sim-cfr+` with the restart at half: DCFR's discounts depend on the iteration
+    /// only, so they scale every regret of a subgame alike
     #[test]
     fn a_river_of_the_resolve_is_the_river_solved_alone() {
+        for (update, avg_from) in [(crate::postflop::Update::SimCfrPlus, 0.5), (crate::postflop::Update::AltDcfr, 0.0)] {
+            river_of_the_resolve_is_the_river_solved_alone(update, avg_from);
+        }
+    }
+
+    fn river_of_the_resolve_is_the_river_solved_alone(update: crate::postflop::Update, avg_from: f32) {
         let tree = turn_tree();
         let ranges = mixed_ranges(11);
         let mut a = solve(&tree, &ranges, on_demand(1), 40);
         a.finalize_avg();
         let up = Upstream { tree: tree_fingerprint(&a), tag: String::new(), nodes: upstream_of(&a), crc: 0 };
-        let plan = Plan::new(50, 0.5, 0);
-        let mut r = Solver::with_options(&tree, &ranges, on_demand(2));
+        let plan = Plan::new(50, avg_from, 0);
+        let mut r = Solver::with_options(&tree, &ranges, SolverOptions { update, ..on_demand(2) });
         resolve_river(&mut r, &up, &plan, None, None, &mut |_| {}).unwrap();
         let ev = r.evaluate();
         // the line check / check on the turn, then a river card
@@ -2203,6 +2212,7 @@ mod tests {
             b5.push(c);
             let alone_tree = build_tree(&tree.cfg, &b5);
             let mut alone = Solver::new(&alone_tree, &[r0.clone(), r1]);
+            alone.set_update(update); // as the device's session (`ffi::Session::set_update`)
             run_iterations(&mut alone, &plan, None, None, &mut |_| {}).unwrap();
             alone.finalize_avg();
             let e = ev[rn as usize].as_ref().expect("the river root is evaluated");
@@ -2214,7 +2224,7 @@ mod tests {
                     worst = worst.max((e.freq[a * NC + h] - alone.avg[0][a * NC + h]).abs());
                 }
             }
-            assert!(worst < 1e-3, "river card {}: largest difference {}", c, worst);
+            assert!(worst < 1e-3, "{}: river card {}: largest difference {}", update.name(), c, worst);
             checked += 1;
         }
         assert!(checked >= 4);

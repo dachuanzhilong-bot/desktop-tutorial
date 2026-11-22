@@ -49,6 +49,16 @@ pub fn config_from_f32(c: &[f32]) -> Result<Config, String> {
     Ok(cfg)
 }
 
+/// The update of a code of the C ABI (`tsr_set_update`): 0 `sim-cfr+`, 1 `alt-cfr+`, 2 `alt-dcfr`.
+pub fn update_of_code(code: u32) -> Option<Update> {
+    match code {
+        0 => Some(Update::SimCfrPlus),
+        1 => Some(Update::AltCfrPlus),
+        2 => Some(Update::AltDcfr),
+        _ => None,
+    }
+}
+
 /// A solve in progress: the tree, the solver and the last export.
 pub struct Session {
     solver: ManuallyDrop<Solver<'static>>,
@@ -84,6 +94,19 @@ impl Session {
 
     pub fn reset_average(&mut self) {
         self.solver.reset_average();
+    }
+
+    /// How the iterations update (`update_of_code`), before the first one: the device re-solves the river with
+    /// `alt-dcfr` (REFACTOR_PLAN 3-3-4, `docs/14` §18); the Solve screen keeps the default, `sim-cfr+`.  False (and
+    /// nothing changed) for a code it does not know or once iterations have run.
+    pub fn set_update(&mut self, code: u32) -> bool {
+        match update_of_code(code) {
+            Some(u) if self.solver.iters == 0 => {
+                self.solver.set_update(u);
+                true
+            }
+            _ => false,
+        }
     }
 
     /// exploitability as a percentage of the initial pot
@@ -215,6 +238,15 @@ pub extern "C" fn tsr_node_count(h: i32) -> u32 {
 #[no_mangle]
 pub extern "C" fn tsr_reset_average(h: i32) {
     with(h, |s| s.reset_average());
+}
+
+/// how the iterations of `h` update, before the first one (`Session::set_update`): 0 done, -1 not
+#[no_mangle]
+pub extern "C" fn tsr_set_update(h: i32, code: u32) -> i32 {
+    match with(h, |s| s.set_update(code)) {
+        Some(true) => 0,
+        _ => -1,
+    }
 }
 
 #[no_mangle]
@@ -573,6 +605,46 @@ mod tests {
         assert!(s.lock(9999, vec![0.0; 2 * NC]).is_err());
         assert!(s.lock(0, vec![0.0; 5]).is_err());
         s.unlock(0);
+    }
+
+    /// the device's river re-solve (`tsr_set_update` 2, REFACTOR_PLAN 3-3-4): a session set to `alt-dcfr` before its
+    /// first iteration solves bit for bit as a solver made with that update; a code it does not know, or a change
+    /// after the first iteration, is refused and changes nothing
+    #[test]
+    fn a_session_set_to_alt_dcfr_solves_as_the_solver_with_that_update() {
+        let mut s = river_session();
+        assert!(!s.set_update(3));
+        assert!(s.set_update(2));
+        s.run(60);
+        let tree = unsafe { &*s.tree };
+        let mut oop = NUTS.to_vec();
+        oop.extend_from_slice(AIR);
+        let mut want = Solver::with_options(tree, &[range(&oop), range(QQ)], SolverOptions { update: Update::AltDcfr, ..Default::default() });
+        for _ in 0..60 {
+            want.iterate();
+        }
+        let bits = |v: &[Vec<f32>]| v.iter().flatten().map(|x| x.to_bits()).collect::<Vec<u32>>();
+        assert_eq!(bits(&s.solver.regret), bits(&want.regret));
+        assert_eq!(bits(&s.solver.ssum), bits(&want.ssum));
+        assert_eq!(s.solver.update(), Update::AltDcfr);
+        // and it is not the default's solve
+        let mut sim = river_session();
+        sim.run(60);
+        assert_ne!(bits(&sim.solver.regret), bits(&s.solver.regret));
+        // too late once it has run
+        assert!(!sim.set_update(2));
+        assert_eq!(sim.solver.update(), Update::SimCfrPlus);
+        // through the C ABI
+        let cfg = cfg_vec(10.0, 1000.0, &[], &[], &[0.75]);
+        let board: Vec<u8> = "Ah 8d 7c 2s 3d".split(' ').map(card).collect();
+        let (r0, r1) = (range(&oop), range(QQ));
+        let h = unsafe { tsr_create(cfg.as_ptr(), cfg.len(), board.as_ptr(), 5, r0.as_ptr(), r1.as_ptr()) };
+        assert_eq!(tsr_set_update(h, 9), -1);
+        assert_eq!(tsr_set_update(h, 2), 0);
+        tsr_run(h, 1);
+        assert_eq!(tsr_set_update(h, 0), -1);
+        tsr_destroy(h);
+        assert_eq!(tsr_set_update(h, 2), -1);
     }
 
     #[test]
