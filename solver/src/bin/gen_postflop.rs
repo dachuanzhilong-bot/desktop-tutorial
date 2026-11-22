@@ -28,11 +28,14 @@
 //! `index.json` names `--max-iters` as the scenario's `iterations`.  `--checkpoint` works as above (its tag does not name
 //! the iteration count).  Without `--g1-target` nothing of this exists: the output is what it was.
 //!
-//! How an iteration updates (REFACTOR_PLAN 4-1, `docs/15` §2): `--update sim-cfr+` (the default: CFR+ updating both
-//! players in one walk, the solver as it always was), `alt-cfr+` (CFR+ updating one player per walk, two walks per
-//! iteration) or `alt-dcfr` (discounted CFR, alternating; it restarts no average unless `--avg-restart` is given).  The
-//! iteration counts (`--iters`, `--check-every`, `--max-iters`, `.g1.json`) are iterations, so an alternating iteration
-//! costs about two of the default.  The checkpoints of another update are not continued (their tag names it).
+//! How an iteration updates (REFACTOR_PLAN 4-1, `docs/15` §2): `--update sim-cfr+` (CFR+ updating both players in one
+//! walk, the solver as it always was; the default without `--all-cards`), `alt-cfr+` (CFR+ updating one player per walk,
+//! two walks per iteration) or `alt-dcfr` (discounted CFR, alternating; it restarts no average unless `--avg-restart` is
+//! given, and `--check-every` defaults to 125).  **With `--all-cards` the default is `alt-dcfr`** (2026-11-22,
+//! `docs/14` §18: with the device's `alt-dcfr` re-solve, G2' 0.098 / 0.260 / 0.383% against 0.303 / 0.334 / 0.405% for
+//! `sim-cfr+`, in about a fifth of the time); `--update sim-cfr+` makes the solve of 3-3-7.  The iteration counts
+//! (`--iters`, `--check-every`, `--max-iters`, `.g1.json`) are iterations, so an alternating iteration costs about two
+//! of the default.  The checkpoints of another update are not continued (their tag names it).
 //!
 //! Threads: `--threads N` solves N flops at a time; `--solve-threads M` walks one flop's turn card subtrees on M
 //! threads (REFACTOR_PLAN 3-3-2; default 1, the results are bit for bit the same for every M).  The two
@@ -293,14 +296,17 @@ fn main() {
     assert!(all_cards || checkpoint.is_empty(), "--checkpoint needs --all-cards");
     // --g1-target (see the top of the file): 0 = off
     let g1_target: f32 = arg(&args, "--g1-target", 0.0);
-    let check_every: u32 = arg(&args, "--check-every", 500);
-    let max_iters: u32 = arg(&args, "--max-iters", 5000);
-    // how an iteration updates (REFACTOR_PLAN 4-1): sim-cfr+ (the default, as before), alt-cfr+, alt-dcfr
     // the river subtrees with the general walk instead of the walk over the supports (REFACTOR_PLAN 4-2; the same bits, slower):
     // the reference of a speed measurement
     let general_walk = args.iter().any(|a| a == "--general-walk");
-    let update_name: String = arg(&args, "--update", Update::SimCfrPlus.name().to_string());
+    // how an iteration updates (REFACTOR_PLAN 4-1): alt-dcfr for the all-card production (docs/14 §18), sim-cfr+
+    // otherwise (as before); alt-cfr+
+    let default_update = if all_cards { Update::AltDcfr } else { Update::SimCfrPlus };
+    let update_name: String = arg(&args, "--update", default_update.name().to_string());
     let update = Update::parse(&update_name).unwrap_or_else(|| panic!("--update {}: sim-cfr+, alt-cfr+ or alt-dcfr", update_name));
+    // DCFR gets there in a few hundred iterations (375 for As7d2c at 0.3%, docs/14 §15-3): look more often
+    let check_every: u32 = arg(&args, "--check-every", if update == Update::AltDcfr { 125 } else { 500 });
+    let max_iters: u32 = arg(&args, "--max-iters", 5000);
     // DCFR discounts the early iterations itself: no restart of the average unless asked for
     let avg_restart: u32 = arg(&args, "--avg-restart", if update == Update::AltDcfr { 0 } else { 500 });
     // in a checkpoint's tag only when not the default, so that the checkpoints of a run made before keep their tag

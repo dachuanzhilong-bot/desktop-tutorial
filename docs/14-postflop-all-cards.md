@@ -847,3 +847,13 @@ G2' の和（配るラインの中、ポット比 %）。括弧の中はリバ�
 - web: `RIVER_UPDATE = "alt-dcfr"`（`lib/postflop/river.ts`）。平均は取り直さない（`restartAt` 0）。キャッシュのキーに `|alt-dcfr` を足した（`sim-cfr+` で解いた今までのキーはそのままの形で、`alt-dcfr` には使わない）。
 - 同じ計算であることの確かめ: (1) 全体の木の解き直しの 1 本のリバー = そのリバーを単独で `alt-dcfr` で解いたもの（`a_river_of_the_resolve_is_the_river_solved_alone`、丸め誤差の範囲）、(2) ソルバーが単独で解いたリバー（`tsp1-v3-river.bin`、`alt-dcfr`・300 反復）と、WebAssembly のワーカーの解がバイト一致（`postflop.river.test.ts`）。
 - 時間（WASM、Node、このコンテナ、As7d2c の SRP のレンジ、N = 1,000、7 回の中央値）: `sim-cfr+` 270 ms、**`alt-dcfr` 312〜325 ms（1.2 倍）**。3-3-4 の見積もり（スマホ相当で `sim-cfr+` 約 0.94 秒）から、`alt-dcfr` は約 1.1 秒の見込み。
+
+### 18-4. 63 フロップを `alt-dcfr` で作り直す（4-1 の仕上げ、2026-11-22）
+
+- `gen_postflop --all-cards` の既定を `alt-dcfr` にした（`--check-every` の既定は `alt-dcfr` で 125）。`--update sim-cfr+` で 3-3-7 の解き方になる。`pc-queue.txt` の済んだ仕事の行には `--update sim-cfr+` を書き足した（その時の方式）。
+- `pc-run.sh` に `POSTFLOP_DIR`（結果の置き場）と `G1_TARGET` を足した。
+- `pc-queue.txt` に、次の 3 つを足した。
+  - `regen-dcfr`: 63 フロップを G1 ≤ 0.3% まで解く。結果は `out/postflop-dcfr`。As7d2c は 375 反復・7.3 分（§15-3）なので、全部で 7〜9 時間の見込み。
+  - `regen-g2`: 作り直したデータの G2'。`srp-btn-bb` の 3 フロップを、量産と同じ反復数で作り直し、`alt-dcfr`・N = 1,000 で解き直して測る。
+  - `regen-publish`: `pc-publish.sh` で Release に上げる。
+- その後はクラウドの Claude が、`data-pack` ワークフローで梱包し、`web/data.lock.json` と `index.json` を差し替える PR を作る。あわせて `docs/QUALITY.md` §8 の G1・G2' の表を作り直す。
