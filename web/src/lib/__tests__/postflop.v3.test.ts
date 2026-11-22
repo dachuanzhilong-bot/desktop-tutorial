@@ -4,6 +4,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { boardAt, decodeFlop, dense, denseRange, RANGE_Q, riverStartRanges } from "../postflop/decode";
 import { COMBOS, NC } from "../postflop/combos";
+import { loadV2Flop } from "./helpers";
 
 /**
  * `TSP1` v3 (REFACTOR_PLAN 3-3-5): a small file written by the solver (test `v3_fixture_for_the_web_tests` in
@@ -101,10 +102,25 @@ describe("TSP1 v3", () => {
     expect(() => decodeFlop(v4)).toThrow();
   });
 
-  it("still reads the shipped v2 files as version 2", () => {
-    const v2 = decodeFlop(new Uint8Array(gunzipSync(readFileSync(path.resolve(__dirname, "../../../public/postflop/srp-btn-bb/0.bin.gz")))));
+  it("still reads v2 files (the data shipped before 3-3-7, kept as a fixture) as version 2", () => {
+    const v2 = loadV2Flop("srp-btn-bb", 0);
     expect(v2.version).toBe(2);
     expect(v2.nodes.some((n) => n.street === 2)).toBe(true);
     expect(v2.nodes.every((n) => n.riverStart === undefined)).toBe(true);
+  });
+
+  it("the shipped files are all v3 (REFACTOR_PLAN 3-3-7): river starts with reach ranges, no river node", () => {
+    const dir = path.resolve(__dirname, "../../../public/postflop");
+    const index = JSON.parse(readFileSync(path.join(dir, "index.json"), "utf8")) as { flops: string[]; scenarios: { id: string }[] };
+    let files = 0;
+    for (const sc of index.scenarios)
+      for (let i = 0; i < index.flops.length; i++) {
+        const f = decodeFlop(new Uint8Array(gunzipSync(readFileSync(path.join(dir, sc.id, `${i}.bin.gz`)))));
+        expect(f.version, `${sc.id}/${i}`).toBe(3);
+        expect(f.nodes.some((n) => n.street === 2), `${sc.id}/${i}`).toBe(false);
+        expect(f.nodes.some((n) => n.riverStart), `${sc.id}/${i}`).toBe(true);
+        files++;
+      }
+    expect(files).toBe(63);
   });
 });

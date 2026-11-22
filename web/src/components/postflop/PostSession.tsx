@@ -168,7 +168,7 @@ export function PostSession({ config, repo, onExit }: { config: PostConfig; repo
           </>
         )}
         {answered && round?.q && answer && (
-          <ResultPanel q={round.q} a={{ ...answer, endText: answer.endKey && t(answer.endKey) }} actions={actions} pane={pane} onNext={ses.next} onTogglePane={ses.togglePane} nextLabel={config.kind === "through" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")} approx={t("pf.approx")} terms={["ev", "evLoss", "equity", "range", "spr"]} />
+          <ResultPanel q={round.q} a={{ ...answer, endText: answer.endKey && t(answer.endKey) }} actions={actions} pane={pane} onNext={ses.next} onTogglePane={ses.togglePane} nextLabel={config.kind === "through" && answer.nextNode !== null ? t("common.next") : t("practice.nextHand")} approx={t(round.flop.version === 3 ? "pf.approxAll" : "pf.approx")} terms={["ev", "evLoss", "equity", "range", "spr"]} />
         )}
         {phase === "handEnd" && round && (
           <div className="rounded-sheet border border-line bg-surface p-4 text-center shadow-xl" data-testid="hand-end">

@@ -14,7 +14,7 @@ import path from "node:path";
 import { afterAll, describe, expect, it } from "vitest";
 import { ALL_CLASSES, NUM_CLASSES } from "../poker/hands";
 import { COMBOS, NC } from "../postflop/combos";
-import { decodeFlop } from "../postflop/decode";
+import { boardAt, decodeFlop, riverStartRanges } from "../postflop/decode";
 import { decodeChunk, parseManifest } from "../solution/decode";
 import { flopBuild } from "../postflop/loader";
 import { DEPTHS, solutionBuild, solutionId } from "../solution/loader";
@@ -261,6 +261,32 @@ describe("postflop solutions", () => {
         rows++;
       }
     }
+    // TSP1 v3 (the river is solved on the device): no river node is stored, every river start has its two reach ranges
+    if (f.version === 3) {
+      let starts = 0;
+      for (const n of f.nodes) {
+        check(n.street !== 2, () => `node ${n.id}: a river node in a v3 file`);
+        if (!n.riverStart) continue;
+        starts++;
+        const free = Array.from({ length: 52 }, (_, c) => c).filter((c) => !boardAt(f, n.id).includes(c));
+        const ranges = riverStartRanges(f, n.id, free[0]);
+        check(ranges !== null, () => `node ${n.id}: no river start ranges`);
+        if (!ranges) continue;
+        for (let p = 0; p < 2; p++) {
+          check(ranges[p].length === NC, () => `node ${n.id}: range ${p} is not ${NC} wide`);
+          let mass = 0;
+          for (let h = 0; h < NC; h++) {
+            const v = ranges[p][h];
+            check(v >= 0 && v <= 1 + 1e-6, () => `node ${n.id}: range ${p} value ${v}`);
+            const { c1, c2 } = COMBOS[h];
+            if (v > 0) check(!boardAt(f, n.id).includes(c1) && !boardAt(f, n.id).includes(c2) && c1 !== free[0] && c2 !== free[0], () => `node ${n.id}: range ${p} holds a dead combo ${h}`);
+            mass += v;
+          }
+          check(mass > 0, () => `node ${n.id}: range ${p} is empty`);
+        }
+      }
+      check(starts > 0, () => "no river start in a v3 file");
+    }
     // raw byte sums: re-read the frequency block of every decision node
     const dv = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
     let o = 5;
@@ -274,6 +300,16 @@ describe("postflop solutions", () => {
       o += 1 + 4;
       const ne = bytes[o++];
       o += ne * 9;
+      if (kind === 2) {
+        // TSP1 v3 river start (docs/03): per player f32 scale | u8 bitmap[166] | u16 q[n]
+        for (let p = 0; p < 2; p++) {
+          o += 4;
+          let m = 0;
+          for (let h = 0; h < NC; h++) if (bytes[o + (h >> 3)] & (1 << (h & 7))) m++;
+          o += Math.ceil(NC / 8) + 2 * m;
+        }
+        continue;
+      }
       if (kind !== 0) continue;
       let n = 0;
       for (let h = 0; h < NC; h++) if (bytes[o + (h >> 3)] & (1 << (h & 7))) n++;

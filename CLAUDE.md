@@ -17,7 +17,7 @@
 | `solver/` | Rust。外部 crate なし（方針。`docs/04`）。CFR+ ソルバー、事前計算ツール（`src/bin/gen_*`）、WASM 用の C ABI（`src/ffi.rs`） |
 | `web/src/lib/` | React に依存しないロジック。**`components/` や `app/` を import しない** |
 | `web/src/components/`, `web/src/app/` | 画面。1 ルート = `app/<name>/page.tsx` |
-| `web/public/solutions`, `postflop`, `wasm`, `data` | 生成物。手で編集しない（`npm run solutions:pack` / `npm run wasm` で作る） |
+| `web/public/solutions`, `postflop`, `wasm`, `data` | 生成物。手で編集しない（`npm run solutions:pack` / `npm run wasm` で作る）。ポストフロップの `.bin.gz` は git に入れず Release に置く（`web/data.lock.json`、`npm run data:fetch`） |
 | `supabase/schema.sql` | 同期用テーブルの正本。冪等に書く |
 
 ## コマンド
@@ -25,6 +25,7 @@
 ```bash
 cd web
 npm run typecheck && npm run lint && npm test   # 毎回
+npm run data:fetch                               # ポストフロップの解データを Release から取る（test・build の前に自動）
 npm run validate:data                            # 解データを触ったら
 npm run e2e                                      # 画面の動きを変えたら（ビルド込みで数分）
 npm run e2e:subpath                              # ルーティングや sw.js を触ったら

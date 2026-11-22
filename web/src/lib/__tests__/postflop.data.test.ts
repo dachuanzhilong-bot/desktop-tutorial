@@ -128,14 +128,23 @@ describe("postflop solution files", () => {
   });
 
   it("is close to an equilibrium: played actions are nearly EV-optimal, tighter on the frequent lines", () => {
-    // Tiered by how often the line occurs (measured: 0.23 / 0.44 / 0.55 bb); rare lines of 3-bet pots are looser (see docs/08).
+    // Tiered by how often the line occurs, and measured against the pot of the scenario (5.5 bb in a single-raised pot, 22.5 bb in
+    // a 3-bet pot: the same loss in bb means four times less in the 3-bet pot).  The limits are in % of the pot.
+    // Before REFACTOR_PLAN 3-3-7 (sampled river, 0.14 - 0.94% exploitability inside the sample) they were 0.3 / 0.5 / 0.8 bb for
+    // every scenario (measured 0.23 / 0.44 / 0.55 bb).  The data of 3-3-7 (every turn and river card, all-card exploitability
+    // <= 0.5% of the pot, docs/14 section 13, `scripts` `g1-summary`) measured, as the worst hand of any flop, in bb (and % of the pot):
+    //   reach >= 0.2: 0.0625 (1.1%) srp-btn-bb, 0.0781 (1.4%) srp-co-bb, 0.3438 (1.5%) 3bp-btn-bb
+    //   reach >= 0.1: 0.0781 (1.4%) srp-btn-bb, 0.0781 (1.4%) srp-co-bb, 0.5000 (2.2%) 3bp-btn-bb
+    //   reach >= 0.05: 0.1094 (2.0%) srp-btn-bb, 0.1250 (2.3%) srp-co-bb, 0.7969 (3.5%) 3bp-btn-bb
+    // so single-raised pots are now much tighter than the old limits (0.3 bb = 5.5% of the pot) and the 3-bet pot, the same in
+    // % of the pot, is above them in bb only because its pot is four times as big.  The limits are those measured with about 30% room.
     const tiers = [
-      { minReach: 0.2, max: 0.3 },
-      { minReach: 0.1, max: 0.5 },
-      { minReach: 0.05, max: 0.8 },
+      { minReach: 0.2, max: 0.02 },
+      { minReach: 0.1, max: 0.03 },
+      { minReach: 0.05, max: 0.045 },
     ];
     for (const tier of tiers) {
-      let worst = 0;
+      let worst = 0; // % of the pot
       let checked = 0;
       for (const { scenario, flop } of files) {
         const f = load(scenario, flop);
@@ -147,14 +156,14 @@ describe("postflop solution files", () => {
             if (d.weight[j] < 0.1) continue;
             for (let a = 0; a < na; a++) {
               if (d.freq[a * d.n + j] < 0.3) continue;
-              worst = Math.max(worst, d.loss[a * d.n + j]);
+              worst = Math.max(worst, d.loss[a * d.n + j] / f.pot);
               checked++;
             }
           }
         }
       }
       expect(checked, `reach>=${tier.minReach}`).toBeGreaterThan(500);
-      expect(worst, `reach>=${tier.minReach}`).toBeLessThan(tier.max); // bb
+      expect(worst, `reach>=${tier.minReach}`).toBeLessThan(tier.max); // fraction of the pot
     }
   });
 

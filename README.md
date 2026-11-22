@@ -39,6 +39,7 @@ RUSTFLAGS="-C target-cpu=native" cargo run --release --bin gen_preflop -- --out 
 RUSTFLAGS="-C target-cpu=native" cargo run --release --bin gen_postflop -- --out out/postflop \
     --scenario srp-btn-bb,3bp-btn-bb,srp-co-bb --flops 21 --iters 1400 --avg-from 0.5                         # ポストフロップ解(約1.5時間, 4スレッド。`--from-flop` と `scripts/merge-postflop.mjs` で追加分だけ計算して結合もできる)
 cd ../web && npm run solutions:pack  # public/solutions と public/postflop にgzipで梱包
+# ポストフロップの .bin.gz は git に無い（GitHub の Release に置く）。npm test / build の前に自動で取ってくる（npm run data:fetch）
 
 # クラウド同期（任意）: Supabaseのプロジェクトを作り、supabase/schema.sql をSQLエディタで実行、Email認証を有効にして
 cp web/.env.example web/.env.local   # URLと anon キーを書き、再ビルド。詳細は docs/10
@@ -114,7 +115,7 @@ web/       Next.js 16 (App Router, 静的書き出し) + TypeScript + Tailwind 4
 ## 残っている課題（正直なリスト）
 
 1. **プリフロップ解は近似モデル**（[07](docs/07-preflop-model.md)）。ポストフロップを解かずEQR(エクイティ実現率)モデルで代用しているため、細部は商用ソルバーと一致しない（例: SBがリンプ寄り、BBのディフェンスが広め）。ポストフロップ解の統計からEQRを校正し直す作業は未着手。
-2. **ポストフロップ解も近似**（[08](docs/08-postflop-model.md)）。ターン6枚・リバー2枚の**サンプルしたカード**で解いており、ベットサイズも少数（フロップ33%/75%、ターン66%、リバー50%/100%）。計算済みは**3シナリオ×21フロップ**のみ（1,755種のうち代表）で、集計レポートはその範囲。
+2. **ポストフロップ解も近似**（[08](docs/08-postflop-model.md)）。**全ターン・全リバーのカードで解いた**近似（リバーはこの端末で解き直します）で、ベットサイズは少数（フロップ33%/75%、ターン66%、リバー50%/100%）。計算済みは**3シナリオ×21フロップ**のみ（1,755種のうち代表）で、集計レポートはその範囲。
 3. 対応範囲: 6-max のみ。プリフロップは 20/40/60/100/200bb（**100bb以外はEQRモデルを調整しておらず、粗い近似**。[07](docs/07-preflop-model.md)）。HU・9-max は未生成。ポストフロップは100bbのみ。プリフロップは4人以上のポット・複数サイズ未対応。ポストフロップはBTN vs BB（シングルレイズ・3ベットポット）とCO vs BB（シングルレイズ）のみ。
 4. 低頻度のライン（到達確率 <1%）は収束が粗い。
 5. 振動(Haptics)は Vibration API のため iOS Safari では動かない。

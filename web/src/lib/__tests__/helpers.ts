@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import { gunzipSync } from "node:zlib";
 import path from "node:path";
 import { decodeChunk, parseManifest } from "../solution/decode";
+import { decodeFlop } from "../postflop/decode";
+import type { PfFlop } from "../postflop/decode";
 import type { Manifest, NodeSolution } from "../solution/types";
 
 const DIR = path.resolve(__dirname, "../../../public/solutions/cash6max-100bb");
@@ -67,4 +69,14 @@ export function loadNodeFor(depth: number, m: Manifest, id: number): NodeSolutio
     depthCache.set(key, map);
   }
   return map.get(id)!;
+}
+
+/**
+ * A flop of the data shipped before REFACTOR_PLAN 3-3-7 (`TSP1` v2: sampled turn and river cards, river nodes stored), kept as
+ * a fixture: the shipped data are v3 now (no river nodes), and the v2 reader, the river keys and the showdown ends need a
+ * file that has them.  `build` is made up.
+ */
+export function loadV2Flop(scenario: string, flop: number): PfFlop {
+  const file = path.resolve(__dirname, `fixtures/v2/${scenario}-${flop}.bin.gz`);
+  return { ...decodeFlop(new Uint8Array(gunzipSync(readFileSync(file)))), build: `v2-${scenario}-${flop}` };
 }
