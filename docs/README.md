@@ -20,6 +20,7 @@
 | 13 | [13-hosting.md](13-hosting.md) | 公開（GitHub Pages・Vercel・Netlify など）の手順と確認済みの範囲 |
 | 14 | [14-postflop-all-cards.md](14-postflop-all-cards.md) | ポストフロップを全カードで解く方針（A / B 案の設計レビュー、実験、目標、計算資源） |
 | 15 | [15-review-2026-11.md](15-review-2026-11.md) | 根本からの見直し（2026-11-21）: 解き方（交互更新）・ベットサイズの価値・データの置き場所・進め方の提案と、決めてほしいこと |
+| 16 | [16-gpu.md](16-gpu.md) | GPU で学習する設計（REFACTOR_PLAN 4-6）: 速くなる範囲（VRAM 8 GB に載る大きさ）、作り方、確かめ方、PC での手順 |
 
 ## 設計上の大原則
 
