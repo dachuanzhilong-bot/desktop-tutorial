@@ -8,6 +8,8 @@
 #   SOLVE_THREADS  1 フロップを解くスレッド数（既定: nproc）。12 コア 24 スレッドの CPU なら 12 と 24 を比べるとよい
 #   FLOPS_AT_ONCE  同時に解くフロップ数（既定: 1。メモリは 1 フロップ約 8 GB）
 #   OUT_DIR        出力先（既定: out）
+#   POSTFLOP_DIR   結果を書くディレクトリの名前（OUT_DIR の下。既定: postflop-v3）
+#   G1_TARGET      G1 の目標（% of pot、既定: 0.5）。解き方は gen_postflop --all-cards の既定（2026-11-22 から alt-dcfr）
 #   EXTRA_ARGS     gen_postflop にそのまま渡す引数（動作確認用）
 #
 # 終わっても、Ctrl-C で止めても、$OUT_DIR/pc-report.txt（機械の情報・秒/反復・G1 の推移）を書く。それを貼ってください。
@@ -19,7 +21,8 @@ threads=${SOLVE_THREADS:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null ||
 at_once=${FLOPS_AT_ONCE:-1}
 out_dir=${OUT_DIR:-out}
 pre="$out_dir/pre/cash6max-100bb"
-out="$out_dir/postflop-v3"
+out="$out_dir/${POSTFLOP_DIR:-postflop-v3}"
+g1_target=${G1_TARGET:-0.5}
 report="$out_dir/pc-report.txt"
 extra=${EXTRA_ARGS:-}
 
@@ -65,7 +68,7 @@ run() { # scenario [more gen_postflop arguments]
   local sc=$1
   shift
   # shellcheck disable=SC2086 # EXTRA_ARGS is a list of arguments
-  ./target/release/gen_postflop --all-cards --g1-target 0.5 --pre "$pre" --out "$out" --scenario "$sc" "$@" \
+  ./target/release/gen_postflop --all-cards --g1-target "$g1_target" --pre "$pre" --out "$out" --scenario "$sc" "$@" \
     --threads "$at_once" --solve-threads "$threads" --checkpoint "$out_dir/ck" --checkpoint-every 100 $extra 2>&1 | tee -a "$out_dir/gen-$sc.log"
   return "${PIPESTATUS[0]}"
 }
