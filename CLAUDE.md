@@ -20,6 +20,22 @@
 | `web/public/solutions`, `postflop`, `wasm`, `data` | 生成物。手で編集しない（`npm run solutions:pack` / `npm run wasm` で作る）。ポストフロップの `.bin.gz` は git に入れず Release に置く（`web/data.lock.json`、`npm run data:fetch`） |
 | `supabase/schema.sql` | 同期用テーブルの正本。冪等に書く |
 
+## 参考リポジトリ（読む・比べるだけ。コードは持ち込まない）
+
+ソルバーやゲーム進行の正しさを確かめるときの比較対象。持ち主の PC では `C:\Users\os060\dev\poker-references` にある（中身と注意は同じフォルダの `README.md`）。クラウドのセッションでは、要るときに `git clone --depth 1 https://github.com/<名前>` で取る。
+
+| リポジトリ | 使いどころ | ライセンス |
+|------------|-----------|-----------|
+| `bupticybee/TexasSolver` | 同じスポットを解き、自作ソルバーの戦略・EV・exploitability と突き合わせる | AGPL-3.0 |
+| `b-inary/postflop-solver` | CFR の実装・木の作り方・メモリ圧縮の参考（2023-10 で開発停止） | AGPL-3.0 |
+| `b-inary/wasm-postflop` | ソルバーを WASM にしてブラウザで動かす作りの参考 | AGPL-3.0 |
+| `HenryRLee/PokerHandEvaluator` | 役判定の参考。`test_data/` の正解データで自作の役判定を検査できる | Apache-2.0 |
+| `uoftcprg/pokerkit` | ベット処理・ゲーム進行が正しいかを確かめる基準 | MIT |
+
+- AGPL の 3 つはコードを写さない（配るアプリに入れるとソース公開の義務が出る）。アルゴリズムを読む・結果を比べるだけにする。
+- `solver/` は外部 crate なしの方針（`docs/04`）なので、どれも依存関係に入れない。
+- 比べた結果を解データとして使わない（大原則）。検査と `docs/QUALITY.md` の数字にだけ使う。
+
 ## コマンド
 
 ```bash
