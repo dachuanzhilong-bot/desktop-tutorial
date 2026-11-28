@@ -51,6 +51,33 @@ cargo test --release                             # 約 2〜3 分
 - push は作業ブランチだけ。`main` へのマージは、CI が緑で完了条件を確かめた PR に限って行ってよい（持ち主の委任。画面の文言を変える PR は、持ち主の確認の後）。公開の設定とリポジトリの設定は持ち主が行う。
 - 文書には、決めたこと・数字・理由を書く。実験の経過は短くまとめ、長い記録は `docs/archive/` に置く（毎回読む量を増やさない）。
 
+## スキル（作業ごとに使うもの）
+
+このリポジトリの手順は `.claude/skills/` にある。該当する作業の前に読む。
+
+| 作業 | スキル |
+|------|--------|
+| 変更を確かめる・PR・マージ・公開の確認 | `tessera-checks` |
+| 持ち主の PC で重い計算を流す（`pc-queue.txt`） | `pc-job` |
+| PC から届いた結果（`pc/results`）を読んで記録する | `pc-results` |
+| 作り直した解データを Release から差し替える | `data-publish` |
+
+このアカウントで有効な汎用のスキルのうち、ここで役に立つもの（無い環境では飛ばす）:
+
+| 場面 | スキル |
+|------|--------|
+| 計画に無い機能・設計を考える | `superpowers:brainstorming`、設計判断の記録は `engineering:architecture` |
+| 複数の手順がある実装の前 | `superpowers:writing-plans` |
+| 実装 | `superpowers:test-driven-development`、`karpathy-guidelines`（変更を小さく、確かめられる完了条件） |
+| テストの失敗・不具合 | `superpowers:systematic-debugging`（直す前に原因を確かめる） |
+| 「できた」と言う前 | `superpowers:verification-before-completion` |
+| PR の前の見直し | `/code-review`、`/simplify`、同期・ログインを変えたら `/security-review` |
+| 画面（HTML/CSS/クライアント JS） | `modern-web-guidance:modern-web-guidance`、見た目の確認は `run` |
+| 画面の使いやすさ・文言・a11y | `design:accessibility-review`（44px・コントラスト）、`design:ux-copy`（文言。変えるのは持ち主の確認の後） |
+| 成績画面などのグラフ | `dataviz` |
+| テストの組み立て | `engineering:testing-strategy` |
+| 別のセッションに引き継ぐ | `handoff` |
+
 ## モデルの使い分け
 
 - 実装: Sonnet。REFACTOR_PLAN のステップを順に。
